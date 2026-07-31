@@ -22,6 +22,7 @@ EXIT_AUTH = 2
 EXIT_UNREACHABLE = 3
 EXIT_SCHEMA_DRIFT = 4
 EXIT_PARTIAL = 5
+EXIT_STORAGE = 6
 
 EXIT_MEANINGS = {
     EXIT_OK: "success",
@@ -29,6 +30,7 @@ EXIT_MEANINGS = {
     EXIT_UNREACHABLE: "ESB API unreachable",
     EXIT_SCHEMA_DRIFT: "API response shape changed",
     EXIT_PARTIAL: "too many detail fetches failed",
+    EXIT_STORAGE: "data directory not writable",
 }
 
 
@@ -92,6 +94,22 @@ def schema_banner(problems: list[str]) -> str:
             "Raw responses were still written to the JSONL log verbatim, so no",
             "data has been lost. Update esb_outages/parse.py to handle the new",
             "shape, then run 'rebuild' to re-derive the database.",
+        ],
+    )
+
+
+def storage_banner(data_dir, problem: str) -> str:
+    return banner(
+        "ESB POLLER: DATA DIRECTORY NOT WRITABLE",
+        [
+            f"{problem}",
+            "",
+            "Nothing was collected. The usual cause is a Docker bind mount: the",
+            "host directory's ownership replaces the image's, and this container",
+            "runs as uid 1000 rather than root.",
+            "",
+            "Fix on the NAS:",
+            "  sudo chown -R 1000:1000 /volume1/docker/esb/data",
         ],
     )
 

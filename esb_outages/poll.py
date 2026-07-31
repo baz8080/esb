@@ -51,11 +51,37 @@ def poll_lock(data_dir: Path):
         handle.close()
 
 
+def check_writable(data_dir: Path) -> str | None:
+    """Return a human explanation if the data directory is unusable, else None.
+
+    Worth checking explicitly because the usual cause is a Docker bind mount:
+    the host directory's ownership replaces the image's, so a container running
+    as a non-root user cannot write to it. Left uncaught that surfaces as a bare
+    PermissionError traceback in the alert email, which is a poor way to learn
+    that one chown is needed.
+    """
+    try:
+        data_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        return f"cannot create {data_dir}: {exc}"
+    probe = data_dir / ".write-test"
+    try:
+        probe.touch()
+        probe.unlink()
+    except OSError as exc:
+        return f"cannot write inside {data_dir}: {exc}"
+    return None
+
+
 def run_poll(data_dir, client: EsbClient | None = None, delay_ms: int | None = None) -> int:
     data_dir = Path(data_dir)
     client = client or EsbClient()
     if delay_ms is None:
         delay_ms = int(os.environ.get("ESB_POLL_DELAY_MS", DEFAULT_DELAY_MS))
+
+    problem = check_writable(data_dir)
+    if problem:
+        return alert.fail(alert.storage_banner(data_dir, problem), alert.EXIT_STORAGE)
 
     with poll_lock(data_dir) as acquired:
         if not acquired:

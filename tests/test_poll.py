@@ -166,6 +166,30 @@ class TestFailurePaths(PollTestCase):
         self.assertEqual(len(client.detail_calls), 1)
 
 
+class TestUnwritableDataDir(PollTestCase):
+    def test_readonly_directory_exits_six_without_a_traceback(self):
+        # Mirrors the Docker bind-mount case: the directory exists but the
+        # process cannot write to it.
+        import os
+
+        target = self.data_dir / "readonly"
+        target.mkdir()
+        os.chmod(target, 0o500)
+        try:
+            client = self.client_with("fault")
+            self.assertEqual(
+                run_poll(target, client=client, delay_ms=0), alert.EXIT_STORAGE
+            )
+            # Fails before touching the network: nothing to report on.
+            self.assertEqual(client.list_calls, 0)
+        finally:
+            os.chmod(target, 0o700)
+
+    def test_leaves_no_probe_file_behind(self):
+        self.poll(self.client_with("fault"))
+        self.assertFalse((self.data_dir / ".write-test").exists())
+
+
 class TestLocking(PollTestCase):
     def test_second_run_backs_off_while_first_holds_the_lock(self):
         with poll_lock(self.data_dir) as acquired:

@@ -37,7 +37,11 @@ if [ ! -x /usr/local/bin/docker ]; then
     exit 1
 fi
 
+# The container runs as uid 1000, not root. A bind mount takes the host
+# directory's ownership, so a directory created by root (or by `docker run -v`
+# on first use) would be unwritable inside the container. Cheap and idempotent.
 mkdir -p "$DATA_DIR"
+chown 1000:1000 "$DATA_DIR"
 
 exec /usr/local/bin/docker run --rm \
     --name esb-outages-poll \

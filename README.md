@@ -104,6 +104,7 @@ secrets, and nothing extra to keep running.
 | 3 | ESB API unreachable after retries |
 | 4 | API response shape changed (raw data still safe) |
 | 5 | A broad failure of detail fetches |
+| 6 | Data directory not writable |
 
 Deliberately *not* alerts: a per-outage 404 (the outage was purged between the
 list call and its detail call — routine), and one or two isolated fetch failures.
@@ -127,6 +128,17 @@ Confirm it works before scheduling anything:
 ```bash
 docker run --rm esb-outages:latest check
 ```
+
+The container runs as uid 1000 rather than root, and a bind mount takes its
+ownership from the host directory. Create the data directory with matching
+ownership before the first run, or the poller exits 6:
+
+```bash
+sudo mkdir -p /volume1/docker/esb/data && sudo chown -R 1000:1000 /volume1/docker/esb/data
+```
+
+`scripts/synology-task.sh` does this on every run, so the scheduled task is
+self-healing; it only needs doing by hand for one-off `docker run` commands.
 
 Then create the scheduled task: **Control Panel → Task Scheduler → Create →
 Scheduled Task → User-defined script**, user **root**, schedule daily repeating
