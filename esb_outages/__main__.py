@@ -1,0 +1,93 @@
+"""CLI entry point: python -m esb_outages <command>"""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+
+from . import __version__, alert
+from .client import EsbClient
+from .poll import run_check, run_poll
+from .store import Store
+
+DEFAULT_DATA_DIR = os.environ.get("ESB_DATA_DIR", "/data")
+
+
+def _human_bytes(n: int) -> str:
+    for unit in ("B", "KiB", "MiB", "GiB"):
+        if n < 1024 or unit == "GiB":
+            return f"{n:.1f} {unit}" if unit != "B" else f"{n} B"
+        n /= 1024.0
+    return f"{n:.1f} GiB"
+
+
+def cmd_stats(args) -> int:
+    with Store(args.data_dir) as store:
+        s = store.stats()
+    print(f"outages tracked : {s['outages']}")
+    print(f"  with detail   : {s['detailed']}")
+    print(f"  finalised     : {s['final']}")
+    print(f"  DST-ambiguous : {s['tz_ambiguous']}")
+    for outage_type, n in s["by_type"]:
+        print(f"    {outage_type or '(unknown)':<10} {n}")
+    print(f"field changes   : {s['changes']}")
+    print(f"runs recorded   : {s['runs']}")
+    print(f"coverage        : {s['first_run'] or '-'} .. {s['last_run'] or '-'}")
+    print(f"raw log size    : {_human_bytes(s['raw_bytes'])}")
+    print(f"database size   : {_human_bytes(s['db_bytes'])}")
+    return alert.EXIT_OK
+
+
+def cmd_rebuild(args) -> int:
+    with Store(args.data_dir) as store:
+        result = store.rebuild(verbose=True)
+    if result["runs"] == 0 and result["observations"] == 0:
+        print("nothing to replay: no raw logs found", file=sys.stderr)
+    return alert.EXIT_OK
+
+
+def cmd_compact(args) -> int:
+    with Store(args.data_dir) as store:
+        done = store.compact()
+    print(f"compacted {len(done)} file(s): {', '.join(done) or 'none'}")
+    return alert.EXIT_OK
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="esb_outages", description="Collect ESB Networks outage data."
+    )
+    parser.add_argument("--version", action="version", version=__version__)
+    parser.add_argument(
+        "--data-dir", default=DEFAULT_DATA_DIR, help="storage root (env: ESB_DATA_DIR)"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    p_poll = sub.add_parser("poll", help="run one collection pass (the scheduled command)")
+    p_poll.add_argument(
+        "--delay-ms", type=int, default=None,
+        help="pause between detail requests (env: ESB_POLL_DELAY_MS, default 1000)",
+    )
+    sub.add_parser("check", help="verify the API key and connectivity; writes nothing")
+    sub.add_parser("rebuild", help="rebuild the database from the raw JSONL logs")
+    sub.add_parser("stats", help="summarise what has been collected")
+    sub.add_parser("compact", help="gzip raw logs from previous months")
+
+    args = parser.parse_args(argv)
+
+    if args.command == "poll":
+        return run_poll(args.data_dir, delay_ms=args.delay_ms)
+    if args.command == "check":
+        return run_check(EsbClient())
+    if args.command == "rebuild":
+        return cmd_rebuild(args)
+    if args.command == "stats":
+        return cmd_stats(args)
+    if args.command == "compact":
+        return cmd_compact(args)
+    return alert.EXIT_OK  # pragma: no cover - argparse enforces a command
+
+
+if __name__ == "__main__":
+    sys.exit(main())
