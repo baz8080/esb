@@ -39,6 +39,35 @@ def cmd_stats(args) -> int:
     return alert.EXIT_OK
 
 
+def cmd_test_alert(args) -> int:
+    """Fire a real alert through the real channel.
+
+    Exists because an untested alarm is not an alarm, and the alternative way to
+    test it - deliberately breaking the API key - stops collection while you do.
+    """
+    if not os.environ.get("ESB_ALERT_WEBHOOK"):
+        print(
+            "ESB_ALERT_WEBHOOK is not set, so failures would reach nobody.\n"
+            "Set it in scripts/synology-task.sh, e.g. an ntfy.sh topic URL.",
+            file=sys.stderr,
+        )
+        return 1
+    message = alert.banner(
+        "ESB POLLER: TEST ALERT",
+        [
+            "This is a test. Nothing is wrong.",
+            "",
+            "If you are reading this, a real failure would have reached you too.",
+        ],
+    )
+    print(message)
+    if not alert.notify(message):
+        print("alert delivery FAILED - see the warning above", file=sys.stderr)
+        return 1
+    print("alert delivered")
+    return alert.EXIT_OK
+
+
 def cmd_rebuild(args) -> int:
     with Store(args.data_dir) as store:
         result = store.rebuild(verbose=True)
@@ -70,6 +99,7 @@ def main(argv=None) -> int:
         help="pause between detail requests (env: ESB_POLL_DELAY_MS, default 1000)",
     )
     sub.add_parser("check", help="verify the API key and connectivity; writes nothing")
+    sub.add_parser("test-alert", help="send a test alert through ESB_ALERT_WEBHOOK")
     sub.add_parser("rebuild", help="rebuild the database from the raw JSONL logs")
     sub.add_parser("stats", help="summarise what has been collected")
     sub.add_parser("compact", help="gzip raw logs from previous months")
@@ -80,6 +110,8 @@ def main(argv=None) -> int:
         return run_poll(args.data_dir, delay_ms=args.delay_ms)
     if args.command == "check":
         return run_check(EsbClient())
+    if args.command == "test-alert":
+        return cmd_test_alert(args)
     if args.command == "rebuild":
         return cmd_rebuild(args)
     if args.command == "stats":

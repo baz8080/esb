@@ -71,6 +71,7 @@ python -m esb_outages --data-dir ./data poll
 | --- | --- |
 | `poll` | One collection pass. This is the scheduled command. |
 | `check` | Verify the API key and connectivity. Writes nothing. |
+| `test-alert` | Send a test alert through `ESB_ALERT_WEBHOOK`. |
 | `rebuild` | Drop the database and replay it from the raw logs. |
 | `stats` | Summarise what has been collected. |
 | `compact` | Gzip raw logs from previous months. |
@@ -93,9 +94,24 @@ biggest risk to this project, hence the alerting below.
 
 ## Alerting
 
-The process exit code *is* the alerting mechanism. Synology's Task Scheduler
-emails a task's output only when it exits non-zero, so no SMTP config, no
-secrets, and nothing extra to keep running.
+Set `ESB_ALERT_WEBHOOK` in `scripts/synology-task.sh`. An [ntfy.sh](https://ntfy.sh)
+topic needs no account — pick an unguessable name and subscribe to it in the app.
+Discord and Slack incoming webhooks work too.
+
+> **Do not rely on DSM's "Send run details by email".** It is a documented dead
+> end: the Control Panel test email arrives, but per-task notifications silently
+> never send. This was found the hard way during deployment. Leave the
+> checkboxes ticked if you like — they cost nothing — but treat the webhook as
+> the real channel.
+
+Prove it works, which takes seconds and does not interrupt collection:
+
+```bash
+docker run --rm -e ESB_ALERT_WEBHOOK="$ESB_ALERT_WEBHOOK" esb-outages:latest test-alert
+```
+
+The process exit code drives all of this: the poller exits non-zero only when
+something needs a human, and pushes the same banner it prints.
 
 | Exit | Meaning |
 | --- | --- |
@@ -117,8 +133,9 @@ notifications as well.
 
 ## Deploying on a Synology NAS
 
-Get the source onto the NAS and build it. `git` is not installed on DSM by
-default, so rsync from a machine that has the repo:
+Get the source onto the NAS and build it. If DSM has `git` (it is not present on
+a stock install, but the Git Server package provides it), clone or pull into
+`/volume1/docker/esb`. Otherwise rsync from a machine that has the repo:
 
 ```bash
 rsync -av --exclude data --exclude .git ./ <user>@<nas>:/volume1/docker/esb/
@@ -160,14 +177,16 @@ Notification → Email to be configured first.
 
 ### Verify the alerting actually works
 
-An untested alarm is not an alarm. Run this by hand with a deliberately broken
-key and confirm an email arrives:
+An untested alarm is not an alarm, and this project's whole failure mode is
+silent death. Confirm a notification actually reaches your phone:
 
 ```bash
-docker run --rm -e ESB_API_KEY=definitely-not-valid esb-outages:latest check
+sudo bash /volume1/docker/esb/scripts/synology-task.sh
 ```
 
-That should print the recovery instructions and exit 2.
+with `ESB_API_KEY="broken"` temporarily set in that script. Expect exit 2, the
+recovery banner, and a push notification. Then remove the line and run once more
+to confirm a healthy run stays silent.
 
 ## Development
 

@@ -1,5 +1,7 @@
+import os
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 from esb_outages import alert
@@ -204,6 +206,55 @@ class TestLocking(PollTestCase):
             self.assertTrue(acquired)
         with poll_lock(self.data_dir) as acquired:
             self.assertTrue(acquired)
+
+
+class TestWebhookAlerting(unittest.TestCase):
+    """The webhook is the alerting channel that actually works on DSM."""
+
+    def setUp(self):
+        import http.server
+        import threading
+
+        self.received = []
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                length = int(self.headers.get("Content-Length", 0))
+                outer.received.append(self.rfile.read(length).decode())
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/topic"
+        threading.Thread(target=self.server.handle_request, daemon=True).start()
+
+    def tearDown(self):
+        self.server.server_close()
+
+    def test_failure_is_pushed_to_the_webhook(self):
+        with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
+            alert.fail(alert.auth_banner("abc...xyz"), alert.EXIT_AUTH)
+        self.assertEqual(len(self.received), 1)
+        self.assertIn("SUBSCRIPTION KEY REJECTED", self.received[0])
+
+    def test_notify_reports_delivery(self):
+        with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
+            self.assertTrue(alert.notify("hello"))
+
+    def test_notify_is_a_no_op_when_unconfigured(self):
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(alert.notify("hello"))
+
+    def test_unreachable_webhook_does_not_raise(self):
+        # Alerting must never be able to break the run it is reporting on.
+        with unittest.mock.patch.dict(
+            os.environ, {"ESB_ALERT_WEBHOOK": "http://127.0.0.1:9/dead"}
+        ):
+            self.assertFalse(alert.notify("hello"))
 
 
 class TestCheck(unittest.TestCase):

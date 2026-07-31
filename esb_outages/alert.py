@@ -128,15 +128,20 @@ def partial_banner(failed: int, attempted: int, errors: list[str]) -> str:
     )
 
 
-def notify(message: str) -> None:
-    """Optional secondary channel, off unless ESB_ALERT_WEBHOOK is set.
+def notify(message: str) -> bool:
+    """Push to ESB_ALERT_WEBHOOK. Returns whether it was delivered.
 
-    Best-effort by design: a webhook failure must never mask the underlying
-    problem or change the exit code.
+    This is the primary alerting channel. DSM's per-task "send run details by
+    email" is a documented dead end - the Control Panel test email arrives, but
+    task notifications silently never send - so the exit code alone cannot be
+    relied on to reach anyone.
+
+    Still best-effort: a webhook failure must never mask the underlying problem
+    or change the exit code.
     """
     url = os.environ.get("ESB_ALERT_WEBHOOK")
     if not url:
-        return
+        return False
     try:
         if "ntfy" in url:
             data, headers = message.encode("utf-8"), {"Title": "ESB poller failure"}
@@ -145,8 +150,10 @@ def notify(message: str) -> None:
             headers = {"Content-Type": "application/json"}
         req = urllib.request.Request(url, data=data, headers=headers, method="POST")
         urllib.request.urlopen(req, timeout=10).close()
+        return True
     except Exception as exc:  # pragma: no cover - never let alerting break the run
         print(f"warning: alert webhook failed: {exc}", file=sys.stderr)
+        return False
 
 
 def fail(message: str, code: int) -> int:
