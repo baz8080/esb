@@ -117,11 +117,20 @@ notifications as well.
 
 ## Deploying on a Synology NAS
 
-Build the image on the NAS over SSH:
+Get the source onto the NAS and build it. `git` is not installed on DSM by
+default, so rsync from a machine that has the repo:
 
 ```bash
-git clone <this repo> /volume1/docker/esb/src && cd /volume1/docker/esb/src && docker build -t esb-outages:latest .
+rsync -av --exclude data --exclude .git ./ <user>@<nas>:/volume1/docker/esb/
 ```
+
+```bash
+sudo /usr/local/bin/docker build -t esb-outages:latest /volume1/docker/esb
+```
+
+The collected data lives in `data/` inside that directory. Keep the `--exclude
+data` above, and never add `--delete` to the rsync, or a deploy would take the
+history with it.
 
 Confirm it works before scheduling anything:
 

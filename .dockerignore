@@ -1,0 +1,12 @@
+# The data directory lives inside the repo, so without this every build would
+# upload the entire collected history to the Docker daemon as build context.
+data/
+
+.git/
+.gitignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+README.md
