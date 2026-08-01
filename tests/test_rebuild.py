@@ -5,6 +5,7 @@ entire history re-derived. If they ever fail, the project has silently become
 dependent on state that only exists inside a database file.
 """
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -108,6 +109,44 @@ class TestRebuild(unittest.TestCase):
             ]
         self.assertIn("est_restore_time_utc", fields_before)
         self.assertEqual(fields_before, fields_after)
+
+    def test_merged_logs_from_two_hosts_replay_in_time_order(self):
+        """Migration case: concatenated logs must replay chronologically.
+
+        Two collectors running in parallel produce interleaved runs. Appending
+        one host's log to the other's puts them out of order on disk, so replay
+        has to sort rather than trust file order.
+        """
+        fault = detail("fault")
+        raw = self.data_dir / "raw"
+
+        def write(run_id, started_at, outage_type):
+            body = dict(fault, outageType=outage_type)
+            with (raw / "runs-2026-07.jsonl").open("a") as fh:
+                fh.write(json.dumps({
+                    "run_id": run_id, "started_at": started_at,
+                    "list_status": 200, "list_body": make_list(body),
+                }, sort_keys=True) + "\n")
+            with (raw / "observations-2026-07.jsonl").open("a") as fh:
+                fh.write(json.dumps({
+                    "run_id": run_id, "observed_at": started_at,
+                    "outage_id": body["outageId"], "http_status": 200, "body": body,
+                }, sort_keys=True) + "\n")
+
+        raw.mkdir(parents=True, exist_ok=True)
+        # Host A's runs appended first, then host B's - interleaved in time.
+        write("2026-07-31T10:00:00Z-aaaa", "2026-07-31T10:00:00Z", "Fault")
+        write("2026-07-31T12:00:00Z-aaaa", "2026-07-31T12:00:00Z", "Restored")
+        write("2026-07-31T11:00:00Z-bbbb", "2026-07-31T11:00:00Z", "Fault")
+
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            row = st.conn.execute("SELECT * FROM outage").fetchone()
+            # The 12:00 run is last in time, so its state must win despite the
+            # 11:00 record sitting after it in the file.
+            self.assertEqual(row["outage_type"], "Restored")
+            self.assertEqual(row["first_seen_utc"], "2026-07-31T10:00:00Z")
+            self.assertEqual(row["last_seen_utc"], "2026-07-31T12:00:00Z")
 
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:

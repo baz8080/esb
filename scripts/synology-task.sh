@@ -59,6 +59,11 @@ fi
 mkdir -p "$DATA_DIR"
 chown 1000:1000 "$DATA_DIR"
 
+# If the host powered off mid-run, --rm never completed and the named container
+# is still there. Without this, every subsequent run dies with "name already in
+# use" and collects nothing. Relevant on a NAS that is not on 24/7.
+/usr/local/bin/docker rm -f esb-outages-poll >/dev/null 2>&1 || true
+
 status=0
 /usr/local/bin/docker run --rm \
     --name esb-outages-poll \

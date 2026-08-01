@@ -188,6 +188,65 @@ with `ESB_API_KEY="broken"` temporarily set in that script. Expect exit 2, the
 recovery banner, and a push notification. Then remove the line and run once more
 to confirm a healthy run stays silent.
 
+## Deploying on a Raspberry Pi (or any systemd host)
+
+The image builds natively on ARM — `python:3.12-slim` has arm64 and armv7
+variants — so build it on the Pi itself and nothing else changes.
+
+```bash
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+```bash
+docker build -t esb-outages:latest /home/pi/esb
+```
+
+Put the webhook (and the API key, if it ever needs overriding) in
+`/etc/esb-outages.env`, readable only by root:
+
+```bash
+sudo install -m 600 /dev/null /etc/esb-outages.env && echo 'ESB_ALERT_WEBHOOK=https://ntfy.sh/your-topic' | sudo tee /etc/esb-outages.env
+```
+
+Then install the units from `scripts/systemd/`:
+
+```bash
+sudo cp scripts/systemd/esb-outages.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now esb-outages.timer
+```
+
+A systemd timer is preferred over cron for one reason: `Persistent=true` runs a
+missed trigger as soon as the machine is back. Since ESB purges outages a few
+hours after restoration, a window missed during downtime is gone for good.
+
+Check on it with `systemctl list-timers esb-outages.timer` and
+`journalctl -u esb-outages.service -n 50`.
+
+### Migrating existing data
+
+Stop the old collector first, so you are not running two that diverge:
+
+```bash
+rsync -av nastacha@nasty:/volume1/docker/esb/data/ pi@raspberrypi:/var/lib/esb-outages/
+```
+
+Then verify the history survived the move — this rebuilds the database from the
+raw logs and is the strongest check available that nothing was truncated:
+
+```bash
+docker run --rm -v /var/lib/esb-outages:/data esb-outages:latest rebuild && docker run --rm -v /var/lib/esb-outages:/data esb-outages:latest stats
+```
+
+If you do end up running both hosts for a while, the datasets can be merged:
+concatenate the matching `raw/*.jsonl` files and run `rebuild`. Replay sorts runs
+by start time, so interleaved logs from two collectors reconstruct correctly.
+
+### Back up the data directory
+
+On a NAS this was somebody else's problem. On a Pi it is yours, and an SD card
+failure would destroy a dataset that cannot be re-collected at any price. Copy
+`raw/` somewhere else on a schedule — it is append-only and compresses well, and
+`esb.db` can always be rebuilt from it, so the raw logs alone are enough.
+
 ## Development
 
 ```bash

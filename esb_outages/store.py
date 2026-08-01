@@ -404,8 +404,15 @@ class Store:
                 return 1
             return 0
 
+        # Sorted by start time, stably, so file order still breaks ties within a
+        # second. For a single collector this is identical to file order; it
+        # matters when logs from two hosts are concatenated during a migration,
+        # where interleaved runs would otherwise replay out of order and skew
+        # first_seen / last_seen.
+        run_records = sorted(self.iter_raw("runs"), key=lambda r: r["started_at"])
+
         seen_run_ids = set()
-        for rec in self.iter_raw("runs"):
+        for rec in run_records:
             run_id = rec["run_id"]
             seen_run_ids.add(run_id)
             body = rec.get("list_body")
