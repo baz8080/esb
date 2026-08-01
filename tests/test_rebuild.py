@@ -148,9 +148,30 @@ class TestRebuild(unittest.TestCase):
             self.assertEqual(row["first_seen_utc"], "2026-07-31T10:00:00Z")
             self.assertEqual(row["last_seen_utc"], "2026-07-31T12:00:00Z")
 
+    def test_a_truncated_final_line_does_not_destroy_the_history(self):
+        """A power cut mid-append, or a backup snapshotting mid-write.
+
+        Losing the last observation is acceptable. Losing everything before it,
+        because one line will not parse, is not.
+        """
+        self.run_a_realistic_history()
+        with Store(self.data_dir) as st:
+            before = st.snapshot()
+
+        obs_file = self.data_dir / "raw" / "observations-2026-07.jsonl"
+        with obs_file.open("a") as fh:
+            fh.write('{"run_id": "x", "observed_at": "2026-07-31T23:59:5')
+
+        with Store(self.data_dir) as st:
+            result = st.rebuild()
+            self.assertEqual(result["malformed"], 1)
+            self.assertEqual(st.snapshot(), before)
+
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:
-            self.assertEqual(st.rebuild(), {"runs": 0, "observations": 0})
+            self.assertEqual(
+                st.rebuild(), {"runs": 0, "observations": 0, "malformed": 0}
+            )
             self.assertEqual(st.snapshot(), [])
 
     def test_rebuild_reads_compacted_logs(self):

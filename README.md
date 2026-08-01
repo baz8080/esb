@@ -243,9 +243,43 @@ by start time, so interleaved logs from two collectors reconstruct correctly.
 ### Back up the data directory
 
 On a NAS this was somebody else's problem. On a Pi it is yours, and an SD card
-failure would destroy a dataset that cannot be re-collected at any price. Copy
-`raw/` somewhere else on a schedule — it is append-only and compresses well, and
-`esb.db` can always be rebuilt from it, so the raw logs alone are enough.
+failure would destroy a dataset that cannot be re-collected at any price.
+
+Only `raw/` needs backing up. It is append-only, compresses well, and `esb.db`
+rebuilds from it, so the raw logs alone are a complete backup.
+
+`scripts/backup-to-git.sh` commits and pushes them to a git remote daily. Set it
+up once:
+
+```bash
+cd /var/lib/esb-outages && git init -b main && git remote add origin git@github.com:<you>/esb-data.git
+```
+
+Use a **private** repository, and a deploy key with write access scoped to that
+one repo rather than an account-wide token. Then install it:
+
+```bash
+sudo cp scripts/backup-to-git.sh /usr/local/bin/esb-backup-to-git.sh && sudo chmod +x /usr/local/bin/esb-backup-to-git.sh && sudo cp scripts/systemd/esb-backup.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now esb-backup.timer
+```
+
+A failed push alerts through the same `ESB_ALERT_WEBHOOK`, because a backup that
+silently stopped is the same failure mode as a collector that silently stopped.
+
+Two caveats:
+
+- **Do not run `compact` if you back up via git.** Git already compresses blobs
+  and deltas append-only text well; replacing a `.jsonl` with a `.jsonl.gz`
+  destroys that and churns the history for no gain.
+- `esb.db` is excluded deliberately. It is a binary rewritten wholesale every
+  run, so git cannot delta it, and it is derived data anyway.
+
+Git alone is a single point of failure in the same way the SD card is. Pairing it
+with a second copy on different hardware — the `rsync` below, run from the NAS —
+is what makes the dataset genuinely safe:
+
+```bash
+rsync -av --delete pi@raspberrypi:/var/lib/esb-outages/raw/ /volume1/backups/esb-raw/
+```
 
 ## Development
 

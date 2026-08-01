@@ -15,6 +15,7 @@ import io
 import json
 import os
 import sqlite3
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -136,6 +137,7 @@ class Store:
         self.raw_dir = self.data_dir / "raw"
         self.db_path = self.data_dir / "esb.db"
         self._conn: sqlite3.Connection | None = None
+        self.malformed_lines: list[str] = []
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -219,12 +221,23 @@ class Store:
         return sorted(found, key=lambda p: p.name)
 
     def iter_raw(self, kind: str):
+        """Yield records from the raw log, skipping any line that will not parse.
+
+        A single damaged line must never cost the whole history. The last line of
+        a file can be truncated by a power cut mid-write, or captured mid-append
+        by a backup, and neither is a reason to refuse to read the other 99.99%.
+        Skips are counted and reported rather than passing silently.
+        """
         for path in self.raw_files(kind):
             with _open_maybe_gzip(path) as fh:
-                for line in fh:
+                for lineno, line in enumerate(fh, 1):
                     line = line.strip()
-                    if line:
+                    if not line:
+                        continue
+                    try:
                         yield json.loads(line)
+                    except json.JSONDecodeError as exc:
+                        self.malformed_lines.append(f"{path.name}:{lineno}: {exc}")
 
     # ---- applying observations ------------------------------------------
 
@@ -437,7 +450,13 @@ class Store:
         self.conn.commit()
         if verbose:
             print(f"replayed {n_runs} runs and {n_obs} detail observations")
-        return {"runs": n_runs, "observations": n_obs}
+            for problem in self.malformed_lines:
+                print(f"  skipped unreadable line {problem}", file=sys.stderr)
+        return {
+            "runs": n_runs,
+            "observations": n_obs,
+            "malformed": len(self.malformed_lines),
+        }
 
     # ---- reporting -------------------------------------------------------
 
