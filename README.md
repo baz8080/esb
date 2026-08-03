@@ -274,6 +274,14 @@ OnCalendar=*:0/15
 Running both collectors for a while is safe and avoids a gap. Each writes its
 own run IDs, and replay sorts runs by start time, so the logs merge cleanly.
 
+Stop the local collector first, and **wait for any in-flight run to finish**.
+Stopping the timer does not stop a service already running, and a poll takes
+tens of seconds; merging underneath it will clobber whatever it was writing:
+
+```bash
+sudo systemctl stop esb-outages.timer && sudo systemctl stop esb-outages.service
+```
+
 Copy the other host's raw logs somewhere, then merge file by file:
 
 ```bash
