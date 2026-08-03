@@ -141,6 +141,13 @@ notifications as well.
 
 ## Deploying on a Synology NAS
 
+> An alternative. For a machine that is on permanently, see
+> [Deploying on a Raspberry Pi](#deploying-on-a-raspberry-pi-or-any-systemd-host)
+> — that route needs no Docker and is simpler to operate.
+>
+> Note that DSM's per-task email notification does not work (see
+> [Alerting](#alerting)), so a webhook is required here too.
+
 Get the source onto the NAS and build it. If DSM has `git` (it is not present on
 a stock install, but the Git Server package provides it), clone or pull into
 `/volume1/docker/esb`. Otherwise rsync from a machine that has the repo:
@@ -314,6 +321,35 @@ larger source, with the run count being the sum of both:
 ```bash
 sudo -u esb ESB_DATA_DIR=/var/lib/esb-outages python3 -m esb_outages rebuild && sudo -u esb ESB_DATA_DIR=/var/lib/esb-outages python3 -m esb_outages stats
 ```
+
+### Collecting from a second machine (power cut, or the collector is down)
+
+A power cut takes out the collector exactly when the data is most interesting.
+`Persistent=true` fires a catch-up run at boot, and restored outages stay visible
+for at least ~112 minutes, so a short outage costs only the live detail — status
+messages and ETA revisions, which are unrecoverable — rather than the outages
+themselves. A long one loses events entirely.
+
+Any machine that can reach the API can stand in. The collector is standard
+library only, so a checkout of this repo is the entire requirement — no install,
+no config, no root:
+
+```bash
+cd /path/to/this/repo && while true; do python3 -m esb_outages --data-dir ~/esb-standby poll; sleep 1800; done
+```
+
+A laptop on a phone hotspot is plenty: each run transfers roughly 12KB, so a full
+day of standby collection costs well under a megabyte.
+
+Afterwards, copy `~/esb-standby/raw/` to the collector host and merge it exactly
+as under [Migrating from another host](#migrating-from-another-host). Run IDs
+carry a uuid so the two machines cannot collide, `sort -u` collapses any overlap
+where both were briefly running, and replay sorts runs by start time so the
+interleaving reconstructs correctly.
+
+This needs no special support because of the property the whole design rests on:
+the raw JSONL is the source of truth and the database is derived. Any pile of raw
+logs, from any number of machines, rebuilds into one complete database.
 
 ### Back up the data directory
 
