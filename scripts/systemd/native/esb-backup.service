@@ -16,7 +16,7 @@ Environment=ESB_DATA_DIR=/var/lib/esb-outages
 # inside the tree being backed up.
 # Quoted: systemd splits an unquoted Environment= value on whitespace into
 # separate assignments, which would set GIT_SSH_COMMAND to just "ssh".
-Environment="GIT_SSH_COMMAND=ssh -i /etc/esb-outages-deploy-key -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+Environment="GIT_SSH_COMMAND=ssh -i /etc/esb-outages-deploy-key -o IdentitiesOnly=yes -o UserKnownHostsFile=/etc/esb-outages-known_hosts -o StrictHostKeyChecking=accept-new"
 
 EnvironmentFile=-/etc/esb-outages.env
 ExecStart=/opt/esb-outages/scripts/backup-to-git.sh

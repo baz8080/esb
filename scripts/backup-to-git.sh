@@ -49,13 +49,16 @@ fi
 git add -A .gitignore raw
 
 if git diff --cached --quiet; then
-    echo "no new data since last backup"
-    exit 0
+    echo "no new data to commit"
+else
+    git -c user.name="esb-collector" -c user.email="esb-collector@localhost" \
+        commit -q -m "Outage data through $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 fi
 
-git -c user.name="esb-collector" -c user.email="esb-collector@localhost" \
-    commit -q -m "Outage data through $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-
+# Push unconditionally, even when there was nothing new to commit. A previous
+# push may have failed and left commits sitting only on this disk; treating
+# "nothing to commit" as "nothing to do" would report success forever while the
+# data was never actually offsite. Pushing an up-to-date branch is a cheap no-op.
 if ! git push -q origin HEAD 2>/tmp/esb-backup-push.err; then
     notify "ESB backup: git push failed. The data is committed locally but is
 NOT offsite, so an SD card failure would still lose everything since the last

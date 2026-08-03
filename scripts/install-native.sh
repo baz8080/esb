@@ -54,6 +54,18 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 echo "installing the 'esb' command to /usr/local/bin"
 install -m 755 "$SRC/scripts/esb-wrapper.sh" /usr/local/bin/esb
 
+# Pre-seed the host key for the backup push. The service user's HOME is the data
+# directory, and relying on ssh writing a known_hosts file there on first
+# connect is both untidy and a silent trust-on-first-use. Seeding it here makes
+# the backup work on its first run instead of failing with "Host key
+# verification failed".
+KNOWN_HOSTS="/etc/esb-outages-known_hosts"
+if [ ! -s "$KNOWN_HOSTS" ] && command -v ssh-keyscan >/dev/null 2>&1; then
+    echo "seeding $KNOWN_HOSTS for github.com"
+    ssh-keyscan -t rsa,ecdsa,ed25519 github.com > "$KNOWN_HOSTS" 2>/dev/null || true
+    chmod 644 "$KNOWN_HOSTS"
+fi
+
 if [ ! -f "$ENV_FILE" ]; then
     echo "creating $ENV_FILE"
     cat > "$ENV_FILE" <<'ENVEOF'
