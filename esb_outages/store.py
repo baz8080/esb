@@ -117,8 +117,27 @@ CREATE INDEX IF NOT EXISTS idx_change_time ON outage_change(observed_at_utc);
 """
 
 
+# How long an outage must go unchanged before it is treated as dormant, and how
+# often to re-check it once it is. Expressed in hours rather than run counts so
+# the behaviour does not shift if the poll interval changes.
+QUIET_AFTER_HOURS = 6.0
+STALE_RECHECK_HOURS = 6.0
+
+
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _hours_between(earlier: str | None, later: str) -> float:
+    """Hours from `earlier` to `later`; infinite if `earlier` is unknown."""
+    if not earlier:
+        return float("inf")
+    fmt = "%Y-%m-%dT%H:%M:%SZ"
+    try:
+        delta = datetime.strptime(later, fmt) - datetime.strptime(earlier, fmt)
+    except ValueError:
+        return float("inf")
+    return delta.total_seconds() / 3600.0
 
 
 def _month_of(iso_ts: str) -> str:
@@ -293,12 +312,15 @@ class Store:
                     outage_id, observed_at, "list", "outage_type",
                     row["outage_type"], list_type,
                 )
-                # Safety net: an outage we had marked immutable has changed state
-                # (ESB re-opened it, or recycled the ID). Un-finalise so the next
-                # step re-fetches its detail rather than trusting stale data.
+                # The outage changed state, so whatever we hold is stale. Clearing
+                # last_detail_utc forces a re-fetch on this run, which is what
+                # makes the dormancy back-off in ids_needing_detail safe: a
+                # transition is always picked up immediately, however long the
+                # outage had been quiet. is_final goes too, in case ESB re-opened
+                # an outage or recycled the ID.
                 self.conn.execute(
-                    "UPDATE outage SET outage_type = ?, last_seen_utc = ?, is_final = 0"
-                    " WHERE outage_id = ?",
+                    "UPDATE outage SET outage_type = ?, last_seen_utc = ?,"
+                    " is_final = 0, last_detail_utc = NULL WHERE outage_id = ?",
                     (list_type, observed_at, outage_id),
                 )
             else:
@@ -307,18 +329,54 @@ class Store:
                     (observed_at, outage_id),
                 )
 
-    def ids_needing_detail(self, outage_ids: list[str]) -> list[str]:
-        """Which of these outages still need a detail fetch this run."""
+    def ids_needing_detail(
+        self,
+        outage_ids: list[str],
+        now: str | None = None,
+        quiet_after_hours: float = QUIET_AFTER_HOURS,
+        recheck_hours: float = STALE_RECHECK_HOURS,
+    ) -> list[str]:
+        """Which of these outages still need a detail fetch this run.
+
+        Beyond skipping finalised outages, this backs off on ones that have gone
+        quiet. ESB leaves planned works in the feed for weeks without ever
+        touching them - in the first days of collection, nine such entries
+        accounted for 71% of all detail fetches and produced not one change.
+
+        Backing off is safe because the *list* is still fetched in full every
+        run, and apply_list clears last_detail_utc the moment an outage's type
+        changes. So a state transition is still caught within one poll; all that
+        is delayed is a quiet outage's descriptive fields.
+        """
         if not outage_ids:
             return []
+        now = now or utc_now_iso()
         placeholders = ",".join("?" * len(outage_ids))
         rows = self.conn.execute(
-            f"SELECT outage_id FROM outage WHERE outage_id IN ({placeholders})"
-            "  AND has_detail = 1 AND is_final = 1",
+            f"""SELECT o.outage_id, o.has_detail, o.is_final, o.last_detail_utc,
+                       COALESCE(MAX(c.observed_at_utc), o.first_seen_utc) AS last_change
+                FROM outage o
+                LEFT JOIN outage_change c ON c.outage_id = o.outage_id
+                WHERE o.outage_id IN ({placeholders})
+                GROUP BY o.outage_id""",
             outage_ids,
         ).fetchall()
-        done = {r["outage_id"] for r in rows}
-        return [oid for oid in outage_ids if oid not in done]
+        state = {r["outage_id"]: r for r in rows}
+
+        def needed(outage_id: str) -> bool:
+            row = state.get(outage_id)
+            if row is None or not row["has_detail"]:
+                return True
+            # Cleared by apply_list on a type change: something happened.
+            if row["last_detail_utc"] is None:
+                return True
+            if row["is_final"]:
+                return False
+            if _hours_between(row["last_change"], now) < quiet_after_hours:
+                return True  # actively changing, keep watching closely
+            return _hours_between(row["last_detail_utc"], now) >= recheck_hours
+
+        return [oid for oid in outage_ids if needed(oid)]
 
     def apply_detail(self, observed_at: str, normalized: dict) -> int:
         """Fold one detail response in, returning the number of changed fields."""

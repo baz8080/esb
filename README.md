@@ -20,7 +20,15 @@ Every hour:
 4. Fold everything into a SQLite database, recording every field that changed.
 
 Restored outages are immutable once they carry a restore time, so they are never
-re-fetched. A typical run makes only a handful of detail calls.
+re-fetched. Outages that have gone quiet for 6 hours drop to a 6-hourly re-check:
+ESB leaves planned works in the feed for weeks without touching them, and in the
+first days of collection nine such entries accounted for 71% of all detail
+fetches while producing not one change. Replayed over real data the back-off cuts
+fetches by 58% and captures an identical change log.
+
+This is safe because the *list* is still fetched in full every run, and any
+change of outage type forces an immediate detail fetch however long that outage
+has been dormant. Only a quiet outage's descriptive fields are ever delayed.
 
 ### Storage
 

@@ -54,11 +54,25 @@ class TestDatetime(unittest.TestCase):
 
 
 class TestPoint(unittest.TestCase):
-    def test_parses_lat_lon(self):
+    def test_parses_lat_lon_rounded_with_raw_preserved(self):
         lat, lon, raw = parse_point({"c": "52.399424975954,-8.854789413876"})
-        self.assertAlmostEqual(lat, 52.399424975954)
-        self.assertAlmostEqual(lon, -8.854789413876)
+        self.assertEqual(lat, 52.39942)
+        self.assertEqual(lon, -8.85479)
         self.assertEqual(raw, "52.399424975954,-8.854789413876")
+
+    def test_list_and_detail_precision_agree(self):
+        # The bug this rounding fixes: the list endpoint sends 5 decimals and the
+        # detail endpoint sends full float precision for the same point, which
+        # was being logged as the location having changed.
+        from_list = parse_point({"c": "55.14151,-8.19117"})[:2]
+        from_detail = parse_point({"c": "55.14151191932,-8.191171142627"})[:2]
+        self.assertEqual(from_list, from_detail)
+
+    def test_a_real_relocation_is_still_detected(self):
+        # Crews narrowing down a fault move it by tens or hundreds of metres.
+        before = parse_point({"c": "53.90795,-7.00000"})[:2]
+        after = parse_point({"c": "53.91262,-7.00000"})[:2]
+        self.assertNotEqual(before, after)
 
     def test_tolerates_junk(self):
         self.assertEqual(parse_point(None), (None, None, None))

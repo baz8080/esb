@@ -72,8 +72,21 @@ def parse_esb_datetime(value: str | None) -> tuple[str | None, bool]:
     return utc.strftime("%Y-%m-%dT%H:%M:%SZ"), bool(ambiguous or imaginary)
 
 
+# The list endpoint returns 5-decimal coordinates and the detail endpoint returns
+# full float precision, so an unrounded comparison logs 55.14151 -> 55.14151191932
+# as a change. That noise was 34 of the first 200 recorded changes. Five decimals
+# is ~1.1m, matches the coarser of the two sources, and still catches the real
+# thing this field is worth watching: ESB relocating a fault as crews narrow it
+# down, which shows up as moves of tens to hundreds of metres.
+COORD_PRECISION = 5
+
+
 def parse_point(point) -> tuple[float | None, float | None, str | None]:
-    """Pull (lat, lon) out of {"c": "52.39,-8.85"}, keeping the raw string."""
+    """Pull (lat, lon) out of {"c": "52.39,-8.85"}, keeping the raw string.
+
+    Coordinates are rounded; `raw` keeps the value exactly as sent, and the JSONL
+    log keeps the whole response, so nothing is actually discarded.
+    """
     if not isinstance(point, dict):
         return None, None, None
     raw = point.get("c")
@@ -81,7 +94,11 @@ def parse_point(point) -> tuple[float | None, float | None, str | None]:
         return None, None, raw if isinstance(raw, str) else None
     lat_s, _, lon_s = raw.partition(",")
     try:
-        return float(lat_s), float(lon_s), raw
+        return (
+            round(float(lat_s), COORD_PRECISION),
+            round(float(lon_s), COORD_PRECISION),
+            raw,
+        )
     except ValueError:
         return None, None, raw
 

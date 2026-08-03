@@ -125,7 +125,7 @@ def _run(data_dir: Path, client: EsbClient, delay_ms: int) -> int:
 
         store.apply_list(started_at, items)
         listed_ids = [str(i.get("i")) for i in items if isinstance(i, dict)]
-        todo = store.ids_needing_detail(listed_ids)
+        todo = store.ids_needing_detail(listed_ids, now=started_at)
         skipped = len(listed_ids) - len(todo)
 
         # --- details ------------------------------------------------------

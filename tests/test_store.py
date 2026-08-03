@@ -94,6 +94,62 @@ class TestIdsNeedingDetail(StoreTestCase):
         self.assertEqual(self.store.ids_needing_detail([]), [])
 
 
+class TestDormancyBackoff(StoreTestCase):
+    """ESB leaves planned works in the feed for weeks without touching them."""
+
+    def setUp(self):
+        super().setUp()
+        self.planned = detail("planned")
+        self.oid = self.planned["outageId"]
+        self.store.apply_list("2026-07-01T00:00:00Z", make_list(self.planned)["outageMessage"])
+        self.store.apply_detail("2026-07-01T00:00:00Z", normalize_detail(self.planned))
+
+    def needed(self, now):
+        return self.store.ids_needing_detail([self.oid], now=now)
+
+    def test_recently_changed_outage_is_always_fetched(self):
+        self.assertEqual(self.needed("2026-07-01T03:00:00Z"), [self.oid])
+
+    def test_dormant_outage_is_skipped(self):
+        # Quiet for 8h and checked 8h ago... but recheck is due, so it fetches.
+        # At 7h quiet with a 7h-old check it is also due; use a case where the
+        # last check is recent to prove the skip.
+        self.store.conn.execute(
+            "UPDATE outage SET last_detail_utc = ? WHERE outage_id = ?",
+            ("2026-07-01T20:00:00Z", self.oid),
+        )
+        self.assertEqual(self.needed("2026-07-01T22:00:00Z"), [])
+
+    def test_dormant_outage_is_rechecked_periodically(self):
+        self.store.conn.execute(
+            "UPDATE outage SET last_detail_utc = ? WHERE outage_id = ?",
+            ("2026-07-01T00:00:00Z", self.oid),
+        )
+        self.assertEqual(self.needed("2026-07-01T07:00:00Z"), [self.oid])
+
+    def test_a_type_change_defeats_the_backoff_immediately(self):
+        # The safety property: however long an outage has been dormant, a state
+        # transition seen in the list forces a detail fetch on that same run.
+        self.store.conn.execute(
+            "UPDATE outage SET last_detail_utc = ? WHERE outage_id = ?",
+            ("2026-07-05T00:00:00Z", self.oid),
+        )
+        self.assertEqual(self.needed("2026-07-05T01:00:00Z"), [])
+
+        faulted = dict(self.planned, outageType="Fault")
+        self.store.apply_list("2026-07-05T01:00:00Z", make_list(faulted)["outageMessage"])
+        self.assertEqual(self.needed("2026-07-05T01:00:00Z"), [self.oid])
+
+    def test_finalised_outages_stay_skipped(self):
+        restored = detail("restored")
+        self.store.apply_list("2026-07-01T00:00:00Z", make_list(restored)["outageMessage"])
+        self.store.apply_detail("2026-07-01T00:00:00Z", normalize_detail(restored))
+        self.assertEqual(
+            self.store.ids_needing_detail([restored["outageId"]], now="2026-08-01T00:00:00Z"),
+            [],
+        )
+
+
 class TestApplyDetail(StoreTestCase):
     def test_filling_a_stub_is_not_recorded_as_change(self):
         fault = detail("fault")
