@@ -101,6 +101,7 @@ def _run(data_dir: Path, client: EsbClient, delay_ms: int) -> int:
         try:
             list_body = client.get_outage_list()
         except AuthError as exc:
+            store.write_run_raw(run_id, started_at, 401, None, status="auth_error")
             store.record_run(
                 run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
                 status="auth_error", exit_code=alert.EXIT_AUTH, n_errors=1,
@@ -108,6 +109,7 @@ def _run(data_dir: Path, client: EsbClient, delay_ms: int) -> int:
             )
             return alert.fail(alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH)
         except (TransientError, ApiError) as exc:
+            store.write_run_raw(run_id, started_at, 0, None, status="unreachable")
             store.record_run(
                 run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
                 status="unreachable", exit_code=alert.EXIT_UNREACHABLE, n_errors=1,
@@ -158,6 +160,9 @@ def _run(data_dir: Path, client: EsbClient, delay_ms: int) -> int:
                     alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH
                 )
             except (TransientError, ApiError) as exc:
+                # Logged with status 0 so a rebuild can still account for the
+                # attempt rather than showing a run that quietly fetched less.
+                store.write_observation_raw(run_id, observed_at, outage_id, 0, None)
                 errors.append(f"{outage_id}: {exc}")
                 continue
 

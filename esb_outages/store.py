@@ -204,9 +204,18 @@ class Store:
             os.fsync(fh.fileno())
 
     def write_run_raw(
-        self, run_id: str, started_at: str, list_status: int, list_body
+        self,
+        run_id: str,
+        started_at: str,
+        list_status: int,
+        list_body,
+        status: str = "ok",
     ) -> None:
-        """Record the list response verbatim, before any detail fetching starts."""
+        """Record the list response verbatim, before any detail fetching starts.
+
+        Also written for runs that failed outright, with a null body, so that a
+        rebuilt database still shows the failure rather than a silent gap.
+        """
         self._append_raw(
             "runs",
             _month_of(started_at),
@@ -215,6 +224,7 @@ class Store:
                 "started_at": started_at,
                 "list_status": list_status,
                 "list_body": list_body,
+                "status": status,
             },
         )
 
@@ -487,15 +497,33 @@ class Store:
             run_id = rec["run_id"]
             seen_run_ids.add(run_id)
             body = rec.get("list_body")
-            if isinstance(body, dict) and isinstance(body.get("outageMessage"), list):
-                self.apply_list(rec["started_at"], body["outageMessage"])
+            items = body.get("outageMessage") if isinstance(body, dict) else None
+            if isinstance(items, list):
+                self.apply_list(rec["started_at"], items)
+
+            # Reconstruct the run counters rather than leaving them null: they
+            # are all derivable from the raw log, and they are what tells you
+            # whether the dormancy back-off is working.
+            run_obs = observations.get(run_id, [])
+            fetched = sum(1 for o in run_obs if o.get("http_status") == 200)
+            purged = sum(1 for o in run_obs if o.get("http_status") == 404)
+            errors = sum(
+                1 for o in run_obs if o.get("http_status") not in (200, 404)
+            )
+            listed = len(items) if isinstance(items, list) else None
             self.record_run(
                 run_id=run_id,
                 started_at_utc=rec["started_at"],
-                status="rebuilt",
+                status=rec.get("status", "ok"),
+                n_listed=listed,
+                n_detail_fetched=fetched,
+                n_detail_skipped=(
+                    listed - fetched - purged - errors if listed is not None else None
+                ),
+                n_errors=errors,
             )
             n_runs += 1
-            for obs in observations.get(run_id, []):
+            for obs in run_obs:
                 n_obs += apply_observation(obs)
 
         # Observations whose run record never made it to disk (a crash between
@@ -550,6 +578,17 @@ class Store:
             for kind in ("runs", "observations")
             for p in self.raw_files(kind)
         )
+        recent = c.execute(
+            "SELECT started_at_utc, status, n_listed, n_detail_fetched,"
+            " n_detail_skipped, n_errors FROM run"
+            " WHERE n_listed IS NOT NULL ORDER BY started_at_utc DESC LIMIT 6"
+        ).fetchall()
+        # Fetch efficiency over the recent window: the number to watch after a
+        # change to the poll interval or the dormancy back-off.
+        window = c.execute(
+            "SELECT SUM(n_detail_fetched) f, SUM(n_detail_skipped) s FROM run"
+            " WHERE status = 'ok' AND n_listed IS NOT NULL"
+        ).fetchone()
         return {
             "outages": row["n"] or 0,
             "final": row["final"] or 0,
@@ -564,6 +603,9 @@ class Store:
             "changes": changes["n"] or 0,
             "raw_bytes": raw_bytes,
             "db_bytes": self.db_path.stat().st_size if self.db_path.exists() else 0,
+            "recent_runs": [dict(r) for r in recent],
+            "total_fetched": window["f"] or 0,
+            "total_skipped": window["s"] or 0,
         }
 
     def compact(self) -> list[str]:

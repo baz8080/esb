@@ -36,6 +36,22 @@ def cmd_stats(args) -> int:
     print(f"coverage        : {s['first_run'] or '-'} .. {s['last_run'] or '-'}")
     print(f"raw log size    : {_human_bytes(s['raw_bytes'])}")
     print(f"database size   : {_human_bytes(s['db_bytes'])}")
+
+    fetched, skipped = s["total_fetched"], s["total_skipped"]
+    if fetched or skipped:
+        pct = skipped / (fetched + skipped) * 100
+        print(f"\ndetail fetches  : {fetched} made, {skipped} skipped ({pct:.0f}% avoided)")
+    if s["recent_runs"]:
+        print("\nrecent runs:")
+        print(f"  {'started':<21}{'status':<9}{'listed':>7}{'fetched':>9}{'cached':>8}{'errors':>8}")
+        for r in s["recent_runs"]:
+            print(
+                f"  {r['started_at_utc']:<21}{r['status'] or '':<9}"
+                f"{r['n_listed'] if r['n_listed'] is not None else '-':>7}"
+                f"{r['n_detail_fetched'] if r['n_detail_fetched'] is not None else '-':>9}"
+                f"{r['n_detail_skipped'] if r['n_detail_skipped'] is not None else '-':>8}"
+                f"{r['n_errors'] if r['n_errors'] is not None else '-':>8}"
+            )
     return alert.EXIT_OK
 
 

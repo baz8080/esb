@@ -167,6 +167,44 @@ class TestRebuild(unittest.TestCase):
             self.assertEqual(result["malformed"], 1)
             self.assertEqual(st.snapshot(), before)
 
+    def test_run_counters_survive_a_rebuild(self):
+        """They are derivable from the raw log, so a rebuild must restore them.
+
+        Without this, `stats` after a rebuild cannot show whether the dormancy
+        back-off is working - the counters it reads are all null.
+        """
+        self.run_a_realistic_history()
+        with Store(self.data_dir) as st:
+            before = [
+                dict(r) for r in st.conn.execute(
+                    "SELECT run_id, n_listed, n_detail_fetched, n_detail_skipped"
+                    " FROM run ORDER BY started_at_utc"
+                )
+            ]
+            st.rebuild()
+            after = [
+                dict(r) for r in st.conn.execute(
+                    "SELECT run_id, n_listed, n_detail_fetched, n_detail_skipped"
+                    " FROM run ORDER BY started_at_utc"
+                )
+            ]
+        self.assertEqual(before, after)
+        self.assertTrue(all(r["n_listed"] for r in after))
+
+    def test_a_failed_run_is_not_lost_by_a_rebuild(self):
+        from esb_outages.client import AuthError
+        from esb_outages.poll import run_poll
+        from tests.helpers import FakeClient
+
+        self.poll(FakeClient(list_body=make_list(detail("fault")),
+                             details={detail("fault")["outageId"]: detail("fault")}))
+        run_poll(self.data_dir, client=FakeClient(list_error=AuthError("401")), delay_ms=0)
+
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            statuses = [r[0] for r in st.conn.execute("SELECT status FROM run")]
+        self.assertIn("auth_error", statuses)
+
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:
             self.assertEqual(
