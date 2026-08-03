@@ -51,6 +51,9 @@ chmod +x "$PREFIX/scripts/"*.sh
 mkdir -p "$DATA_DIR"
 chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 
+echo "installing the 'esb' command to /usr/local/bin"
+install -m 755 "$SRC/scripts/esb-wrapper.sh" /usr/local/bin/esb
+
 if [ ! -f "$ENV_FILE" ]; then
     echo "creating $ENV_FILE"
     cat > "$ENV_FILE" <<'ENVEOF'
@@ -81,8 +84,12 @@ done
 echo
 echo "Installed. Next:"
 echo "  1. Set ESB_ALERT_WEBHOOK in $ENV_FILE"
-echo "  2. Verify:  sudo -u $SERVICE_USER ESB_DATA_DIR=$DATA_DIR python3 -m esb_outages check"
-echo "     (run it from $PREFIX)"
-echo "  3. One run: sudo systemctl start esb-outages.service"
-echo "  4. Enable:  sudo systemctl enable --now esb-outages.timer"
-echo "  5. Watch:   journalctl -u esb-outages.service -n 20"
+echo "  2. Prove alerts work:  sudo esb test-alert"
+echo "  3. Check the API key:  sudo esb check"
+echo "  4. One run now:        sudo systemctl start esb-outages.service"
+echo "  5. Enable the timer:   sudo systemctl enable --now esb-outages.timer"
+echo
+echo "Day to day:"
+echo "  sudo esb stats                          what has been collected"
+echo "  systemctl list-timers esb-outages.timer when it next runs"
+echo "  journalctl -u esb-outages.service -n 20 what the last runs did"

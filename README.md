@@ -203,31 +203,71 @@ nothing but Python 3.9+ and the system timezone data. Running it natively also
 removes the bind-mount ownership problem entirely, since systemd's
 `StateDirectory=` creates the data directory with the right owner every run.
 
+Clone this repo anywhere, then run the installer from your checkout:
+
 ```bash
-git clone https://github.com/baz8080/esb.git ~/esb && sudo sh ~/esb/scripts/install-native.sh
+sudo sh scripts/install-native.sh
 ```
 
 The installer checks the Python version and that `Europe/Dublin` resolves,
-creates an `esb` service user, installs the code to `/opt/esb-outages` and the
-units from `scripts/systemd/native/`. It is idempotent — re-run it after a
-`git pull` to deploy an update.
+creates an `esb` service user, installs the code to `/opt/esb-outages`, the units
+from `scripts/systemd/native/`, and an `esb` command to `/usr/local/bin`. It is
+idempotent — re-run it after a `git pull` to deploy an update, and it re-arms the
+timers so a changed schedule actually takes effect.
 
 Then set `ESB_ALERT_WEBHOOK` in `/etc/esb-outages.env` and start it:
 
 ```bash
-sudo systemctl start esb-outages.service && journalctl -u esb-outages.service -n 20 --no-pager
+sudo esb test-alert && sudo esb check
 ```
 
 ```bash
 sudo systemctl enable --now esb-outages.timer && systemctl list-timers esb-outages.timer
 ```
 
-A timer beats cron for one reason: `Persistent=true` runs a missed trigger as
-soon as the machine is back. Observed retention after restoration has been as
-short as 112 minutes, so a window missed during downtime is gone for good.
+Polling is every 30 minutes. A timer beats cron for one reason: `Persistent=true`
+runs a missed trigger as soon as the machine is back, and observed retention
+after restoration has been as short as 112 minutes, so a window missed during
+downtime is gone for good.
 
 Docker variants of the units are in `scripts/systemd/docker/` if you prefer
 that route.
+
+### Day to day
+
+Everything below is the `esb` command installed above, which runs the collector
+as its service user with the right data directory. It needs `sudo` because the
+environment file holding the webhook is root-only.
+
+| Command | What it tells you |
+| --- | --- |
+| `sudo esb stats` | What has been collected, plus the recent runs and how many fetches the dormancy back-off avoided |
+| `sudo esb check` | Whether the API key still works. Writes nothing |
+| `sudo esb test-alert` | Whether a failure would actually reach you |
+| `sudo esb rebuild` | Re-derive the database from the raw logs |
+| `sudo esb compact` | Gzip previous months (skip this if backing up via git) |
+| `systemctl list-timers esb-outages.timer` | When it next runs |
+| `journalctl -u esb-outages.service -n 20` | What the last runs did |
+| `sudo systemctl start esb-outages.service` | Run one poll right now |
+
+To change the interval without editing the repo, `sudo systemctl edit
+esb-outages.timer` and add — the empty first line is required, it clears the
+inherited value rather than adding a second schedule:
+
+```
+[Timer]
+OnCalendar=
+OnCalendar=*:0/15
+```
+
+### Health checks worth doing occasionally
+
+- `sudo esb stats` — the `detail fetches` line should show a rising proportion
+  avoided as dormant planned works accumulate.
+- `sudo esb test-alert` — after any change to the environment file or the units.
+  Alerting has silently broken twice in this project's short life.
+- `sudo esb rebuild` — proves the raw logs are still a sufficient source of
+  truth. Outage and change counts must not move.
 
 ### Migrating from another host
 
