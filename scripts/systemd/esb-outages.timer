@@ -1,5 +1,5 @@
 [Unit]
-Description=Run the ESB outage collector hourly
+Description=Run the ESB outage collector every 30 minutes
 Documentation=https://github.com/baz8080/esb
 
 [Timer]

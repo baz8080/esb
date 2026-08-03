@@ -10,8 +10,7 @@ User=esb
 Group=esb
 
 # systemd creates /var/lib/esb-outages with the right ownership before every
-# run. This is why the native install cannot hit the permission problem the
-# containerised one did - there is no bind mount whose ownership can disagree.
+# run, so there is no directory-permission setup to get wrong.
 StateDirectory=esb-outages
 Environment=ESB_DATA_DIR=/var/lib/esb-outages
 

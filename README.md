@@ -329,8 +329,15 @@ Then enable it:
 sudo cp scripts/backup-to-git.sh /usr/local/bin/esb-backup-to-git.sh && sudo chmod +x /usr/local/bin/esb-backup-to-git.sh && sudo cp scripts/systemd/esb-backup.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now esb-backup.timer
 ```
 
-A failed push alerts through the same `ESB_ALERT_WEBHOOK`, because a backup that
-silently stopped is the same failure mode as a collector that silently stopped.
+It runs **daily**, at midnight local plus up to 30 minutes of jitter, so
+worst-case exposure is about a day of collection. To tighten that, `sudo
+systemctl edit esb-backup.timer` and set `OnCalendar=*:0/360` for every 6 hours —
+a push is a few KB, so frequency costs nothing but commit count.
+
+A failed push alerts through the same `ESB_ALERT_WEBHOOK`, and keeps failing
+until the data is genuinely offsite: the script pushes on every run even when
+there is nothing new to commit, because commits left behind by an earlier failed
+push would otherwise sit on local disk forever while the backup reported success.
 
 Two caveats:
 
