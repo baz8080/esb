@@ -1,0 +1,19 @@
+[Unit]
+Description=Run the ESB outage collector hourly
+Documentation=https://github.com/baz8080/esb
+
+[Timer]
+# Change to *:0/30 for every 30 minutes. The dormancy back-off means that costs
+# fewer total requests than hourly did before it existed.
+OnCalendar=hourly
+
+# Run immediately if the Pi was off or asleep when a trigger was due. Observed
+# retention after restoration has been as short as 112 minutes, so a missed
+# window is data lost permanently.
+Persistent=true
+
+# Do not hit the API exactly on the hour along with every other cron on earth.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

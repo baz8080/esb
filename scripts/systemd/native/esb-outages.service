@@ -1,0 +1,38 @@
+[Unit]
+Description=Collect ESB Networks outage data
+Documentation=https://github.com/baz8080/esb
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=esb
+Group=esb
+
+# systemd creates /var/lib/esb-outages with the right ownership before every
+# run. This is why the native install cannot hit the permission problem the
+# containerised one did - there is no bind mount whose ownership can disagree.
+StateDirectory=esb-outages
+Environment=ESB_DATA_DIR=/var/lib/esb-outages
+
+# ESB_ALERT_WEBHOOK, and ESB_API_KEY if ESB ever rotates the public one.
+# chmod 600, owned by root. The leading '-' allows the file not to exist.
+EnvironmentFile=-/etc/esb-outages.env
+
+WorkingDirectory=/opt/esb-outages
+ExecStart=/usr/bin/python3 -m esb_outages poll
+
+# A storm could take a while at one request per second; nothing here is urgent.
+TimeoutStartSec=900
+
+# It reads its own code and writes one state directory. Nothing else.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

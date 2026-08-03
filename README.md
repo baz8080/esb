@@ -198,55 +198,57 @@ to confirm a healthy run stays silent.
 
 ## Deploying on a Raspberry Pi (or any systemd host)
 
-The image builds natively on ARM — `python:3.12-slim` has arm64 and armv7
-variants — so build it on the Pi itself and nothing else changes.
+Docker is unnecessary here — the collector is standard library only, so it needs
+nothing but Python 3.9+ and the system timezone data. Running it natively also
+removes the bind-mount ownership problem entirely, since systemd's
+`StateDirectory=` creates the data directory with the right owner every run.
 
 ```bash
-sudo usermod -aG docker $USER && newgrp docker
+git clone https://github.com/baz8080/esb.git ~/esb && sudo sh ~/esb/scripts/install-native.sh
+```
+
+The installer checks the Python version and that `Europe/Dublin` resolves,
+creates an `esb` service user, installs the code to `/opt/esb-outages` and the
+units from `scripts/systemd/native/`. It is idempotent — re-run it after a
+`git pull` to deploy an update.
+
+Then set `ESB_ALERT_WEBHOOK` in `/etc/esb-outages.env` and start it:
+
+```bash
+sudo systemctl start esb-outages.service && journalctl -u esb-outages.service -n 20 --no-pager
 ```
 
 ```bash
-docker build -t esb-outages:latest /home/pi/esb
+sudo systemctl enable --now esb-outages.timer && systemctl list-timers esb-outages.timer
 ```
 
-Put the webhook (and the API key, if it ever needs overriding) in
-`/etc/esb-outages.env`, readable only by root:
+A timer beats cron for one reason: `Persistent=true` runs a missed trigger as
+soon as the machine is back. Observed retention after restoration has been as
+short as 112 minutes, so a window missed during downtime is gone for good.
+
+Docker variants of the units are in `scripts/systemd/docker/` if you prefer
+that route.
+
+### Migrating from another host
+
+Running both collectors for a while is safe and avoids a gap. Each writes its
+own run IDs, and replay sorts runs by start time, so the logs merge cleanly.
+
+Copy the other host's raw logs somewhere, then merge file by file:
 
 ```bash
-sudo install -m 600 /dev/null /etc/esb-outages.env && echo 'ESB_ALERT_WEBHOOK=https://ntfy.sh/your-topic' | sudo tee /etc/esb-outages.env
+for f in /path/to/other/raw/*.jsonl; do b=$(basename "$f"); cat "$f" /var/lib/esb-outages/raw/"$b" 2>/dev/null | sort -u > /tmp/"$b" && sudo mv /tmp/"$b" /var/lib/esb-outages/raw/"$b"; done
 ```
 
-Then install the units from `scripts/systemd/`:
+`sort -u` makes this idempotent: records are written with sorted keys, so
+duplicates are byte-identical and collapse. Re-running the merge changes nothing.
+
+Then rebuild and check the totals — outage and change counts should match the
+larger source, with the run count being the sum of both:
 
 ```bash
-sudo cp scripts/systemd/esb-outages.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now esb-outages.timer
+sudo -u esb ESB_DATA_DIR=/var/lib/esb-outages python3 -m esb_outages rebuild && sudo -u esb ESB_DATA_DIR=/var/lib/esb-outages python3 -m esb_outages stats
 ```
-
-A systemd timer is preferred over cron for one reason: `Persistent=true` runs a
-missed trigger as soon as the machine is back. Since ESB purges outages a few
-hours after restoration, a window missed during downtime is gone for good.
-
-Check on it with `systemctl list-timers esb-outages.timer` and
-`journalctl -u esb-outages.service -n 50`.
-
-### Migrating existing data
-
-Stop the old collector first, so you are not running two that diverge:
-
-```bash
-rsync -av nastacha@nasty:/volume1/docker/esb/data/ pi@raspberrypi:/var/lib/esb-outages/
-```
-
-Then verify the history survived the move — this rebuilds the database from the
-raw logs and is the strongest check available that nothing was truncated:
-
-```bash
-docker run --rm -v /var/lib/esb-outages:/data esb-outages:latest rebuild && docker run --rm -v /var/lib/esb-outages:/data esb-outages:latest stats
-```
-
-If you do end up running both hosts for a while, the datasets can be merged:
-concatenate the matching `raw/*.jsonl` files and run `rebuild`. Replay sorts runs
-by start time, so interleaved logs from two collectors reconstruct correctly.
 
 ### Back up the data directory
 

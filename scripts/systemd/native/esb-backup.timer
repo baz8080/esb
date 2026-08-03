@@ -1,0 +1,11 @@
+[Unit]
+Description=Back up ESB outage data daily
+Documentation=https://github.com/baz8080/esb
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=1800
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,17 @@
+[Unit]
+Description=Push ESB outage raw logs to a git remote
+Documentation=https://github.com/baz8080/esb
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=esb
+Group=esb
+StateDirectory=esb-outages
+Environment=ESB_DATA_DIR=/var/lib/esb-outages
+EnvironmentFile=-/etc/esb-outages.env
+ExecStart=/opt/esb-outages/scripts/backup-to-git.sh
+
+[Install]
+WantedBy=multi-user.target
