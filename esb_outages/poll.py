@@ -54,11 +54,8 @@ def poll_lock(data_dir: Path):
 def check_writable(data_dir: Path) -> str | None:
     """Return a human explanation if the data directory is unusable, else None.
 
-    Worth checking explicitly because the usual cause is a Docker bind mount:
-    the host directory's ownership replaces the image's, so a container running
-    as a non-root user cannot write to it. Left uncaught that surfaces as a bare
-    PermissionError traceback in the alert email, which is a poor way to learn
-    that one chown is needed.
+    Checked explicitly so a full disk or a wrong owner surfaces as a legible
+    alert naming the directory, rather than as a bare PermissionError traceback.
     """
     try:
         data_dir.mkdir(parents=True, exist_ok=True)
@@ -216,8 +213,8 @@ def _run(data_dir: Path, client: EsbClient, delay_ms: int) -> int:
 def run_check(client: EsbClient | None = None) -> int:
     """Validate connectivity and the API key without writing anything.
 
-    Useful as a second, independent Synology task: if the collector's own emails
-    ever stop arriving, this one failing separately still surfaces the problem.
+    Safe to run at any time, including while a poll is in progress, since it
+    takes no lock and touches no files.
     """
     client = client or EsbClient()
     try:

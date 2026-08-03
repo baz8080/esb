@@ -1,7 +1,7 @@
 #!/bin/sh
 #
-# Install the collector natively (no Docker) on a systemd host such as a
-# Raspberry Pi. Run from a checkout of this repository:
+# Install the collector on a systemd host such as a Raspberry Pi.
+# Run from a checkout of this repository:
 #
 #   sudo sh scripts/install-native.sh
 #
@@ -80,7 +80,7 @@ ENVEOF
 fi
 
 echo "installing systemd units"
-cp "$SRC/scripts/systemd/native/"*.service "$SRC/scripts/systemd/native/"*.timer \
+cp "$SRC/scripts/systemd/"*.service "$SRC/scripts/systemd/"*.timer \
     /etc/systemd/system/
 systemctl daemon-reload
 

@@ -170,8 +170,8 @@ class TestFailurePaths(PollTestCase):
 
 class TestUnwritableDataDir(PollTestCase):
     def test_readonly_directory_exits_six_without_a_traceback(self):
-        # Mirrors the Docker bind-mount case: the directory exists but the
-        # process cannot write to it.
+        # The directory exists but the process cannot write to it: a full disk,
+        # or an owner that does not match the user the collector runs as.
         import os
 
         target = self.data_dir / "readonly"
@@ -209,7 +209,7 @@ class TestLocking(PollTestCase):
 
 
 class TestWebhookAlerting(unittest.TestCase):
-    """The webhook is the alerting channel that actually works on DSM."""
+    """The webhook is the alerting channel; failures must reach it."""
 
     def setUp(self):
         import http.server

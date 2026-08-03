@@ -7,12 +7,13 @@ hours after restoration. There is no historical archive and no way to backfill,
 so the only way to study Irish outages over time is to snapshot the live API on a
 schedule and keep the results. That is all this does.
 
-It is designed to run unattended for years on a Synology NAS: standard library
-only, no services to keep alive, and loud failure when something breaks.
+It is designed to run unattended for years on a small always-on machine such as
+a Raspberry Pi: standard library only, nothing to keep alive between runs, and
+loud failure when something breaks.
 
 ## How it works
 
-Every hour:
+Every 30 minutes:
 
 1. Fetch the outage list (~20 outages on a calm day, far more during a storm).
 2. Write that response to an append-only JSONL log, verbatim, before anything else.
@@ -88,7 +89,7 @@ Environment variables:
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ESB_DATA_DIR` | `/data` | Storage root |
+| `ESB_DATA_DIR` | `/var/lib/esb-outages` | Storage root |
 | `ESB_API_KEY` | built-in public key | Override if ESB rotates it |
 | `ESB_POLL_DELAY_MS` | `1000` | Pause between detail requests |
 | `ESB_ALERT_WEBHOOK` | unset | Optional ntfy/Discord/Slack URL for failures |
@@ -102,28 +103,22 @@ biggest risk to this project, hence the alerting below.
 
 ## Alerting
 
-Set `ESB_ALERT_WEBHOOK` in `scripts/synology-task.sh`. An [ntfy.sh](https://ntfy.sh)
+Set `ESB_ALERT_WEBHOOK` in `/etc/esb-outages.env`. An [ntfy.sh](https://ntfy.sh)
 topic needs no account — pick an unguessable name and subscribe to it in the app.
 Discord and Slack incoming webhooks work too.
-
-> **Do not rely on DSM's "Send run details by email".** It is a documented dead
-> end: the Control Panel test email arrives, but per-task notifications silently
-> never send. This was found the hard way during deployment. Leave the
-> checkboxes ticked if you like — they cost nothing — but treat the webhook as
-> the real channel.
 
 Prove it works, which takes seconds and does not interrupt collection:
 
 ```bash
-docker run --rm -e ESB_ALERT_WEBHOOK="$ESB_ALERT_WEBHOOK" esb-outages:latest test-alert
+sudo esb test-alert
 ```
 
-The process exit code drives all of this: the poller exits non-zero only when
-something needs a human, and pushes the same banner it prints.
+The poller exits non-zero only when something needs a human, and pushes the same
+banner it prints:
 
 | Exit | Meaning |
 | --- | --- |
-| 0 | Success — no email |
+| 0 | Success — silent |
 | 2 | **API key rejected (HTTP 401)** — collection has stopped |
 | 3 | ESB API unreachable after retries |
 | 4 | API response shape changed (raw data still safe) |
@@ -134,81 +129,13 @@ Deliberately *not* alerts: a per-outage 404 (the outage was purged between the
 list call and its detail call — routine), and one or two isolated fetch failures.
 Neither loses data, because unfinalised outages stay listed for the retention
 window and are retried on the next run. Alerting on recoverable blips only trains
-you to ignore the emails that matter.
-
-Set `ESB_ALERT_WEBHOOK` for a second, independent channel if you want push
-notifications as well.
-
-## Deploying on a Synology NAS
-
-> An alternative. For a machine that is on permanently, see
-> [Deploying on a Raspberry Pi](#deploying-on-a-raspberry-pi-or-any-systemd-host)
-> — that route needs no Docker and is simpler to operate.
->
-> Note that DSM's per-task email notification does not work (see
-> [Alerting](#alerting)), so a webhook is required here too.
-
-Get the source onto the NAS and build it. If DSM has `git` (it is not present on
-a stock install, but the Git Server package provides it), clone or pull into
-`/volume1/docker/esb`. Otherwise rsync from a machine that has the repo:
-
-```bash
-rsync -av --exclude data --exclude .git ./ <user>@<nas>:/volume1/docker/esb/
-```
-
-```bash
-sudo /usr/local/bin/docker build -t esb-outages:latest /volume1/docker/esb
-```
-
-The collected data lives in `data/` inside that directory. Keep the `--exclude
-data` above, and never add `--delete` to the rsync, or a deploy would take the
-history with it.
-
-Confirm it works before scheduling anything:
-
-```bash
-docker run --rm esb-outages:latest check
-```
-
-The container runs as uid 1000 rather than root, and a bind mount takes its
-ownership from the host directory. Create the data directory with matching
-ownership before the first run, or the poller exits 6:
-
-```bash
-sudo mkdir -p /volume1/docker/esb/data && sudo chown -R 1000:1000 /volume1/docker/esb/data
-```
-
-`scripts/synology-task.sh` does this on every run, so the scheduled task is
-self-healing; it only needs doing by hand for one-off `docker run` commands.
-
-Then create the scheduled task: **Control Panel → Task Scheduler → Create →
-Scheduled Task → User-defined script**, user **root**, schedule daily repeating
-every hour, with the contents of [`scripts/synology-task.sh`](scripts/synology-task.sh)
-as the script.
-
-On the **Notification** tab, tick both *Send run details by email* and *Send run
-details only when the script terminates abnormally*. This needs Control Panel →
-Notification → Email to be configured first.
-
-### Verify the alerting actually works
-
-An untested alarm is not an alarm, and this project's whole failure mode is
-silent death. Confirm a notification actually reaches your phone:
-
-```bash
-sudo bash /volume1/docker/esb/scripts/synology-task.sh
-```
-
-with `ESB_API_KEY="broken"` temporarily set in that script. Expect exit 2, the
-recovery banner, and a push notification. Then remove the line and run once more
-to confirm a healthy run stays silent.
+you to ignore the ones that matter.
 
 ## Deploying on a Raspberry Pi (or any systemd host)
 
-Docker is unnecessary here — the collector is standard library only, so it needs
-nothing but Python 3.9+ and the system timezone data. Running it natively also
-removes the bind-mount ownership problem entirely, since systemd's
-`StateDirectory=` creates the data directory with the right owner every run.
+The collector needs nothing but Python 3.9+ and the system timezone data.
+systemd's `StateDirectory=` creates the data directory with the right owner
+before every run, so there is no ownership setup to get wrong.
 
 Clone this repo anywhere, then run the installer from your checkout:
 
@@ -218,7 +145,7 @@ sudo sh scripts/install-native.sh
 
 The installer checks the Python version and that `Europe/Dublin` resolves,
 creates an `esb` service user, installs the code to `/opt/esb-outages`, the units
-from `scripts/systemd/native/`, and an `esb` command to `/usr/local/bin`. It is
+from `scripts/systemd/`, and an `esb` command to `/usr/local/bin`. It is
 idempotent — re-run it after a `git pull` to deploy an update, and it re-arms the
 timers so a changed schedule actually takes effect.
 
@@ -236,9 +163,6 @@ Polling is every 30 minutes. A timer beats cron for one reason: `Persistent=true
 runs a missed trigger as soon as the machine is back, and observed retention
 after restoration has been as short as 112 minutes, so a window missed during
 downtime is gone for good.
-
-Docker variants of the units are in `scripts/systemd/docker/` if you prefer
-that route.
 
 ### Day to day
 
@@ -421,7 +345,7 @@ with a second copy on different hardware — the `rsync` below, run from the NAS
 is what makes the dataset genuinely safe:
 
 ```bash
-rsync -av --delete pi@raspberrypi:/var/lib/esb-outages/raw/ /volume1/backups/esb-raw/
+rsync -av --delete pi@raspberrypi:/var/lib/esb-outages/raw/ /path/on/the/other/machine/
 ```
 
 ## Development
@@ -436,11 +360,6 @@ in `tests/fixtures/`. The most important one is the rebuild round-trip in
 replays it from the raw logs, and asserts the result is identical. If that ever
 fails, the raw log has stopped being a sufficient source of truth.
 
-To run the suite inside the built image (this is what catches a missing `tzdata`):
-
-```bash
-docker run --rm --entrypoint python esb-outages:latest -m unittest discover -s tests -t .
-```
 
 ## Not included
 

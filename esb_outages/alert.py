@@ -1,13 +1,10 @@
 """Failure signalling.
 
-The primary alerting channel is the process exit code. Synology's Task Scheduler
-option "Send run details only when the script terminates abnormally" emails the
-captured output of any task that exits non-zero, which means correct exit codes
-buy us alerting with no SMTP config, no secrets in the repo, and nothing extra to
-keep running.
-
-Because that email contains only what we printed, every fatal message has to
-stand on its own: what broke, and what to do about it.
+Failures are pushed to ESB_ALERT_WEBHOOK, and the exit code carries the same
+information for whatever is running the collector. Since this project's whole
+failure mode is stopping silently while ESB keeps purging data, an alert has to
+stand on its own: what broke, and what to do about it. Nobody reading one of
+these has the context of this repository in front of them.
 """
 
 from __future__ import annotations
@@ -61,9 +58,8 @@ def auth_banner(masked_key: str, detail: str = "") -> str:
             "  2. Open developer tools -> Network, and reload the map.",
             "  3. Find a request to api.esb.ie and copy the value of the",
             "     'API-Subscription-Key' request header.",
-            "  4. Set it on the Synology task, e.g.:",
-            "       docker run --rm -e ESB_API_KEY=<newkey> ...",
-            "  5. Run the task manually and confirm it exits 0.",
+            "  4. Set ESB_API_KEY to it in /etc/esb-outages.env",
+            "  5. Confirm it works:  sudo esb check",
             "",
             f"Raw error: {detail}" if detail else "",
         ],
@@ -104,12 +100,13 @@ def storage_banner(data_dir, problem: str) -> str:
         [
             f"{problem}",
             "",
-            "Nothing was collected. The usual cause is a Docker bind mount: the",
-            "host directory's ownership replaces the image's, and this container",
-            "runs as uid 1000 rather than root.",
+            "Nothing was collected. Usual causes are a full disk, or the",
+            "directory not being owned by the user the collector runs as.",
             "",
-            "Fix on the NAS:",
-            "  sudo chown -R 1000:1000 /volume1/docker/esb/data",
+            "Check:",
+            f"  df -h {data_dir}",
+            f"  ls -ld {data_dir}",
+            "  sudo chown -R esb:esb /var/lib/esb-outages",
         ],
     )
 
@@ -131,13 +128,8 @@ def partial_banner(failed: int, attempted: int, errors: list[str]) -> str:
 def notify(message: str) -> bool:
     """Push to ESB_ALERT_WEBHOOK. Returns whether it was delivered.
 
-    This is the primary alerting channel. DSM's per-task "send run details by
-    email" is a documented dead end - the Control Panel test email arrives, but
-    task notifications silently never send - so the exit code alone cannot be
-    relied on to reach anyone.
-
-    Still best-effort: a webhook failure must never mask the underlying problem
-    or change the exit code.
+    This is the alerting channel. Best-effort by design: a webhook failure must
+    never mask the underlying problem or change the exit code.
     """
     url = os.environ.get("ESB_ALERT_WEBHOOK")
     if not url:

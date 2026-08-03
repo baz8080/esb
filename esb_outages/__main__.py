@@ -64,7 +64,7 @@ def cmd_test_alert(args) -> int:
     if not os.environ.get("ESB_ALERT_WEBHOOK"):
         print(
             "ESB_ALERT_WEBHOOK is not set, so failures would reach nobody.\n"
-            "Set it in scripts/synology-task.sh, e.g. an ntfy.sh topic URL.",
+            "Set it in /etc/esb-outages.env, e.g. an ntfy.sh topic URL.",
             file=sys.stderr,
         )
         return 1

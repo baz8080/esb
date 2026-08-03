@@ -2,7 +2,8 @@
 
 Stdlib only, deliberately: this job has to keep running unattended for years and
 every dependency is a future breakage. The error taxonomy here drives the process
-exit code, which is in turn what Synology's Task Scheduler turns into an email.
+exit code and the alert that gets pushed, so the distinctions it draws are the
+ones a human will be woken by.
 """
 
 from __future__ import annotations
