@@ -3,9 +3,13 @@ Description=Run the ESB outage collector hourly
 Documentation=https://github.com/baz8080/esb
 
 [Timer]
-# Change to *:0/30 for every 30 minutes. The dormancy back-off means that costs
-# fewer total requests than hourly did before it existed.
-OnCalendar=hourly
+# Every 30 minutes, on the hour and the half hour. Measured against real data:
+# median outage duration is 83 minutes and 37% last under an hour, so hourly
+# polling caught only 58% of outages while they were still live - and a status
+# message is wiped on restoration, so anything missed live is lost for good.
+# The dormancy back-off means this costs fewer requests than hourly did before
+# that existed. Use `systemctl edit esb-outages.timer` to override locally.
+OnCalendar=*:0/30
 
 # Run immediately if the Pi was off or asleep when a trigger was due. Observed
 # retention after restoration has been as short as 112 minutes, so a missed
@@ -13,7 +17,8 @@ OnCalendar=hourly
 Persistent=true
 
 # Do not hit the API exactly on the hour along with every other cron on earth.
-RandomizedDelaySec=300
+# Kept well under the interval so spacing stays roughly even.
+RandomizedDelaySec=180
 
 [Install]
 WantedBy=timers.target

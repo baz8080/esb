@@ -69,6 +69,15 @@ cp "$SRC/scripts/systemd/native/"*.service "$SRC/scripts/systemd/native/"*.timer
     /etc/systemd/system/
 systemctl daemon-reload
 
+# daemon-reload alone does not re-arm a running timer, so a changed schedule
+# would silently not take effect until the next reboot.
+for timer in esb-outages.timer esb-backup.timer; do
+    if systemctl is-active --quiet "$timer"; then
+        echo "restarting $timer to pick up any schedule change"
+        systemctl restart "$timer"
+    fi
+done
+
 echo
 echo "Installed. Next:"
 echo "  1. Set ESB_ALERT_WEBHOOK in $ENV_FILE"

@@ -3,7 +3,7 @@ Description=Run the ESB outage collector hourly
 Documentation=https://github.com/baz8080/esb
 
 [Timer]
-OnCalendar=hourly
+OnCalendar=*:0/30
 
 # Run immediately if the machine was off or asleep when a trigger was due. This
 # is the whole reason a timer beats cron here: ESB purges outages a few hours
@@ -11,7 +11,7 @@ OnCalendar=hourly
 Persistent=true
 
 # Do not hammer the API on the hour along with everyone else's cron.
-RandomizedDelaySec=300
+RandomizedDelaySec=180
 
 [Install]
 WantedBy=timers.target
