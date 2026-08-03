@@ -272,6 +272,19 @@ OnCalendar=*:0/15
   Alerting has silently broken twice in this project's short life.
 - `sudo esb rebuild` — proves the raw logs are still a sufficient source of
   truth. Outage and change counts must not move.
+- Restore from the backup, which proves it is recoverable rather than merely
+  present. Counts should match the live database:
+
+  ```bash
+  git clone <your data repo> /tmp/restore-test && cd /opt/esb-outages && python3 -m esb_outages --data-dir /tmp/restore-test rebuild && python3 -m esb_outages --data-dir /tmp/restore-test stats
+  ```
+
+- **After each DST transition** (last Sunday of October and March), check
+  `sudo esb stats` for a non-zero `DST-ambiguous` count. Times in the repeated
+  hour of the October fall-back are recorded with `fold=0` and flagged rather
+  than silently trusted; the raw strings are kept, so flagged rows can be
+  revisited. A count of zero across an October transition would suggest the
+  flagging is not working, not that the problem does not exist.
 
 ### Migrating from another host
 
