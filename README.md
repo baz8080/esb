@@ -314,8 +314,16 @@ rebuilds from it, so the raw logs alone are a complete backup.
 needs **write** access, so this is the one part of the setup that requires
 credentials.
 
-Create a **private** repository for the data — separate from this code repo, and
-private because it is scraped data whose redistribution terms are unclear.
+Create a repository for the data, **separate from this code repo**. Public or
+private is your call — it is ESB's own public map data — but keep it separate:
+
+- The data grows by roughly 100MB a year, forever. In the code repo, every
+  future clone of the collector drags that whole history along with it.
+- The deploy key needs write access to wherever it pushes. Pointed at the code
+  repo, a key sitting on the collector could rewrite the collector's own source.
+
+An orphan branch in the same repo does not avoid the size problem, since
+`git clone` fetches all branches by default.
 
 Generate a deploy key on the collector host. A deploy key is scoped to a single
 repository, unlike an account-wide token:
