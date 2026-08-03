@@ -34,6 +34,12 @@ setup in scripts/backup-to-git.sh. Nothing is being backed up."
     exit 1
 fi
 
+if ! git remote get-url origin >/dev/null 2>&1; then
+    notify "ESB backup: no 'origin' remote configured in $DATA_DIR.
+Nothing is being backed up."
+    exit 1
+fi
+
 # Belt and braces: the poller never writes anything but raw/ and esb.db, but an
 # accidentally committed database would bloat the repo permanently.
 if [ ! -f .gitignore ]; then

@@ -246,9 +246,13 @@ environment file holding the webhook is root-only.
 | `sudo esb test-alert` | Whether a failure would actually reach you |
 | `sudo esb rebuild` | Re-derive the database from the raw logs |
 | `sudo esb compact` | Gzip previous months (skip this if backing up via git) |
-| `systemctl list-timers esb-outages.timer` | When it next runs |
+| `systemctl list-timers` | When the collector and backup next run |
 | `journalctl -u esb-outages.service -n 20` | What the last runs did |
 | `sudo systemctl start esb-outages.service` | Run one poll right now |
+| `sudo systemctl start esb-backup.service` | Push a backup right now |
+
+Note that `journalctl` prints local time while the collector logs UTC, so a run
+started at 20:30 IST appears as `19:30Z`. They are the same run.
 
 To change the interval without editing the repo, `sudo systemctl edit
 esb-outages.timer` and add — the empty first line is required, it clears the
@@ -306,15 +310,39 @@ failure would destroy a dataset that cannot be re-collected at any price.
 Only `raw/` needs backing up. It is append-only, compresses well, and `esb.db`
 rebuilds from it, so the raw logs alone are a complete backup.
 
-`scripts/backup-to-git.sh` commits and pushes them to a git remote daily. Set it
-up once:
+`scripts/backup-to-git.sh` commits and pushes them to a git remote daily. It
+needs **write** access, so this is the one part of the setup that requires
+credentials.
+
+Create a **private** repository for the data — separate from this code repo, and
+private because it is scraped data whose redistribution terms are unclear.
+
+Generate a deploy key on the collector host. A deploy key is scoped to a single
+repository, unlike an account-wide token:
 
 ```bash
-cd /var/lib/esb-outages && git init -b main && git remote add origin git@github.com:<you>/esb-data.git
+sudo ssh-keygen -t ed25519 -N "" -f /etc/esb-outages-deploy-key -C "esb-collector"
 ```
 
-Use a **private** repository, and a deploy key with write access scoped to that
-one repo rather than an account-wide token. Then install it:
+Add the **public** half (`/etc/esb-outages-deploy-key.pub`) to that repository on
+GitHub under Settings → Deploy keys, with **Allow write access** ticked. Then let
+the service user read the private half, and point the repo at the remote:
+
+```bash
+sudo chown esb:esb /etc/esb-outages-deploy-key && sudo chmod 600 /etc/esb-outages-deploy-key
+```
+
+```bash
+cd /var/lib/esb-outages && sudo -u esb git init -b main && sudo -u esb git remote add origin git@github.com:<you>/esb-data.git
+```
+
+Verify the credential works before trusting the schedule:
+
+```bash
+sudo systemctl start esb-backup.service && journalctl -u esb-backup.service -n 20 --no-pager
+```
+
+Then enable it:
 
 ```bash
 sudo cp scripts/backup-to-git.sh /usr/local/bin/esb-backup-to-git.sh && sudo chmod +x /usr/local/bin/esb-backup-to-git.sh && sudo cp scripts/systemd/esb-backup.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now esb-backup.timer
