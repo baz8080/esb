@@ -87,6 +87,8 @@
   .empty { color: var(--muted); font-size: 13.5px; }
   footer { margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
   footer p { margin-bottom: 7px; }
+  footer a { color: var(--ink-2); }
+  footer q { font-style: italic; }
 </style>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
@@ -94,11 +96,16 @@
 <div class="wrap">
 <!--BODY-->
 <footer>
-  <p><b>What this measures.</b> Customer Minutes Lost is the minutes an average customer spends
-  without supply, shown as an annual rate. Counties are graded on unplanned CML against the national
-  figure measured the same way, with the CRU's target carried across as its published ratio to what
-  ESB Networks actually delivered. Planned works are excluded from the grade, as the regulator's own
-  incentive excludes them.</p>
+  <p><b>How the grade works.</b> It is ESB Networks' own published service standard, from the
+  <a href="https://esbnetworksprdsastd01.blob.core.windows.net/media/docs/default-source/publications/customer-charter.pdf">Customer
+  Charter</a> the CRU approves: <q>our aim is to restore supply within less than 4 hours in 95% of
+  cases</q>. A county is scored on the share of fault-interrupted customers back inside that window
+  — A meets the 95% aim, then B 90%, C 80%, D 70%, F below. Planned works are excluded, as the
+  regulator's own incentive excludes them.</p>
+  <p>ESB excludes storm days from its published figures and the charter exempts storms from the
+  guarantee; nothing in the public feed identifies one, so this site excludes nothing and will read
+  worse than ESB's own numbers in winter. Full method and sources on the
+  <a href="../index.html">main page</a>.</p>
   <p>Unofficial, and not affiliated with ESB Networks or the CRU. Built from snapshots of ESB's
   public PowerCheck feed, which keeps no history of its own.</p>
 </footer>

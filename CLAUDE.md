@@ -45,13 +45,18 @@ Every one of these has already cost someone an hour:
 - **Run records may lack `status`** (86 early ones do), and an observation's
   `body` is `null` when `http_status` is 404.
 - **`numCustAffected` is not constant** over an outage's life, and runs about
-  1.6× the count ESB finally reports. See `notes/grading.md`.
+  1.3× the count ESB finally reports even after merging. See `notes/grading.md`.
+- **One real outage is several ESB ids.** A new record is opened each time a
+  fault's scope changes, sharing the location and start time of its siblings.
+  `model.merge_events` folds them back; never count raw ids.
 
 ## Settled — don't re-litigate without reading the note
 
 | Decision | Where |
 |---|---|
-| A–F bands are ratios to the national figure, not ESB's absolute minutes | `notes/grading.md` § Why that forced a ratio-based grade |
+| The grade is ESB's own 4-hour/95% charter aim, not Customer Minutes Lost | `notes/grading.md` § The grade |
+| Why CML was rejected as the basis (scale bias, and a relative scale mislabels a good network) | `notes/grading.md` § Why not Customer Minutes Lost |
+| One ESB event is one row: ids sharing a location and start time are merged | `notes/grading.md` § Settled |
 | Planned works are excluded from the grade | `notes/grading.md` § Settled |
 | Storm days are *not* excluded, and the page says so | `notes/grading.md` § Settled |
 | Ending an outage on ESB's estimate rather than its last sighting | `notes/grading.md` § Settled (measured: 1.18× vs 2.26×) |

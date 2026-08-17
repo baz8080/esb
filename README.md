@@ -379,15 +379,19 @@ python -m esb_site --data-dir /var/lib/esb-outages     # writes out/site/
 ```
 
 It reads `esb.db`, so run `rebuild` first if the database is stale. Counties are
-derived from Census Small Area centroids (the feed has no county field), and
-each county-month is graded A–F on **Customer Minutes Lost**, the unit the CRU
-regulates ESB Networks in.
+derived from Census Small Area centroids, because the feed has no county field.
 
-The grade is a ratio to the national figure rather than to ESB's published
-minutes, because this data reproduces ESB's *durations* almost exactly while
-counting about 1.6× as many affected customers. `notes/grading.md` has the
-derivation, the published figures it rests on, and the measurements behind every
-choice; `tests/test_site_national.py` holds the pipeline to them.
+Each county-month is graded A–F on ESB Networks' own published service standard,
+from the CRU-approved Customer Charter: *"our aim is to restore supply within
+less than 4 hours in 95% of cases"*. A county scores on the share of its
+fault-interrupted customers back inside that window. Customer Minutes Lost, the
+unit the CRU's incentive uses, is reported alongside but does not set the grade —
+this data reproduces ESB's durations almost exactly while counting about a third
+more affected customers, which a share cancels and a total does not.
+
+`notes/grading.md` has the derivation, the published figures it rests on, and the
+measurements behind every choice; `tests/test_site_national.py` holds the
+pipeline to them.
 
 ## Not included
 

@@ -38,37 +38,41 @@ NATIONAL_CUSTOMERS = 2_400_000
 
 MINUTES_PER_YEAR = 365.0 * 24 * 60
 
-# --- Grade bands ------------------------------------------------------------
-# Published reference points, ESB Networks 2024, unplanned and excluding storm
-# days: the CRU incentive target was 78.7 CML and ESB actually delivered 117.47.
+# --- Published reference points ---------------------------------------------
+# ESB Networks 2024, unplanned and excluding storm days: the CRU incentive
+# target was 78.7 CML and ESB actually delivered 117.47, against 1.38
+# interruptions per customer (137.86 per 100). Reported on the page for
+# comparison; see notes/grading.md for why they do not set the grade.
 ESB_CRU_TARGET_CML = 78.7
 ESB_NATIONAL_CML = 117.47
-ESB_NATIONAL_CI = 1.38  # interruptions per customer per year (137.86 per 100)
+ESB_NATIONAL_CI = 1.38
 
-# Counties are graded against the national average measured by *this* pipeline,
-# with the CRU target carried across as its published ratio to what ESB actually
-# delivered (78.7 / 117.47 = 0.67).
+# --- Grade bands ------------------------------------------------------------
+# The grade is ESB Networks' own published service standard, from the Customer
+# Charter the CRU approves: "our aim is to restore supply within less than
+# 4 hours in 95% of cases". A county is measured on the share of its
+# fault-interrupted customers who got supply back inside that window.
 #
-# Grading on the ratio rather than on ESB's absolute minutes is the load-bearing
-# decision here, and it is forced by a measurement. This dataset reproduces
-# ESB's duration per interrupted customer almost exactly - an implied CAIDI of
-# 88 minutes against ESB's 85 - but reports 2.31 interruptions per customer per
-# year against ESB's 1.38. The gap is not in the clock, it is in the count:
-# PowerCheck's numCustAffected is the customers on the affected section when the
-# fault is logged, and ESB settles on a smaller number once crews have isolated
-# it. That bias multiplies every county equally, so it cancels in a ratio and
-# would otherwise hand all 26 counties a letter they had not earned.
-# See notes/grading.md.
-GRADE_RATIOS = (
-    ("A", ESB_CRU_TARGET_CML / ESB_NATIONAL_CML),
-    ("B", 1.0),
-    ("C", 1.5),
-    ("D", 3.0),
-)
+# This replaced a grade built on Customer Minutes Lost, for two reasons. It is
+# an *absolute* standard, so a letter means "measured against what ESB promises"
+# rather than "compared with the other counties", and a relative scale hands out
+# an F for being three times the national average even when the national average
+# is good. And because it is a proportion of customers rather than a count of
+# them, the one known bias in this data - PowerCheck reports the customers on the
+# affected section, which runs above the number ESB settles on - appears in the
+# numerator and the denominator alike and cancels out.
+CHARTER_TARGET_HOURS = 4.0
+CHARTER_TARGET_SHARE = 95.0
+# The charter's other number: past this, compensation is due, and it is the
+# point at which an outage stops being an inconvenience.
+CHARTER_COMPENSATION_HOURS = 24.0
 
-# A month needs this many observed days before its grade means anything.
-# Annualising a two-day window multiplies its noise by 180.
+GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0))
+
+# A month needs this many observed days, and this many faults, before its grade
+# means anything: a county with three outages can swing two bands on one of them.
 MIN_GRADED_DAYS = 5
+MIN_GRADED_FAULTS = 5
 
 # --- Day cells --------------------------------------------------------------
 # Fault minutes lost per customer, for one county on one day. Bucketing by
@@ -107,6 +111,9 @@ INLINE_UPDATES = 3
 
 # Changes closer together than this came from the same 30-minute poll cycle.
 COALESCE_WINDOW = timedelta(minutes=15)
+# One poll cycle plus the timer's jitter, used to decide whether two records
+# ending at different times ended at the same moment as far as we can tell.
+POLL_INTERVAL = timedelta(minutes=35)
 
 
 def parse_utc(value):
@@ -141,18 +148,17 @@ def merge(intervals):
     return merged
 
 
-def grade(cml, national):
-    """A-F from a county's annualised unplanned CML against the national figure.
+def grade(share_within_target):
+    """A-F from the share of fault-interrupted customers back inside 4 hours.
 
-    Graded off the raw figures, never the rounded ones the page prints: a county
+    Graded off the raw share, never the rounded one the page prints: a county
     sitting a thousandth under a cut should keep the letter its arithmetic
-    earned rather than lose it to two decimal places of display.
+    earned rather than lose it to one decimal place of display.
     """
-    if national <= 0:
+    if share_within_target is None:
         return None
-    ratio = cml / national
-    for letter, ceiling in GRADE_RATIOS:
-        if ratio <= ceiling:
+    for letter, floor in GRADE_BANDS:
+        if share_within_target >= floor:
             return letter
     return "F"
 
@@ -260,8 +266,115 @@ class Update(NamedTuple):
     location: str | None
 
 
+def merge_events(outages):
+    """Fold the several IDs ESB issues for one outage back into one event.
+
+    ESB's system opens a new outage record each time a fault's scope changes, so
+    a single event arrives as a family of IDs sharing a location and a start
+    time. Bealistown on 14 August was five: a Fault at 2,427 customers and four
+    Restored records at 1,118, 2,078, 1,547 and 880 as the sections came back.
+    Left alone they read as five separate outages on the page, and their
+    customer counts sum to 5,623 for an event that never took out more than
+    2,427 - which was inflating every count on the site.
+
+    Members are matched on an identical location string and an identical start
+    time. Requiring the coordinates to be close as well was tried and changed
+    almost nothing (two extra pairs in the first month), so the simpler rule
+    stands. 1,457 IDs collapse to 1,321 events.
+    """
+    groups = defaultdict(list)
+    for o in outages:
+        groups[(o.county, o.location, o.start, o.planned)].append(o)
+    return sorted(
+        (_merge_group(members) for members in groups.values()),
+        key=lambda o: o.start,
+    )
+
+
+def _merge_group(members):
+    if len(members) == 1:
+        return members[0]
+    lead = max(members, key=lambda o: o.customers)
+    start = lead.start
+    confirmed = [o.end for o in members if o.end_src == "restored"]
+    others = [o.end for o in members if o.end_src != "restored"]
+    if confirmed and (not others or max(others) <= max(confirmed) + POLL_INTERVAL):
+        # Every section has a confirmed restore time, and nothing outlasts them
+        # by more than a poll cycle. A record lingering a minute past the last
+        # restoration is the feed catching up, not the outage continuing, and
+        # taking the latest end regardless would downgrade a confirmed end to a
+        # guess over that minute.
+        end, end_src = max(confirmed), "restored"
+    else:
+        end = max(o.end for o in members)
+        end_src = max(members, key=lambda o: o.end).end_src
+
+    # Customers off at any instant is the envelope over the members, not their
+    # sum: each record describes part of the same event, and adding them counts
+    # the same customer once per record. The envelope decays as sections return,
+    # which is the shape the underlying restoration actually has.
+    bounds = sorted({b for o in members for seg in o.segments for b in seg[:2]})
+    segments = []
+    for a, b in zip(bounds, bounds[1:]):
+        n = max(
+            (c for o in members for (s, e, c) in o.segments if s <= a and e >= b),
+            default=0,
+        )
+        if n and (not segments or segments[-1][2] != n):
+            segments.append((a, b, n))
+        elif n:
+            segments[-1] = (segments[-1][0], b, n)
+
+    segments = segments or lead.segments
+    return lead._replace(
+        ids=sorted((i for o in members for i in o.ids), key=int),
+        start=start,
+        end=end,
+        end_src=end_src,
+        restored=all(o.restored for o in members),
+        customers=max(c for _, _, c in segments),
+        updates=_envelope_updates(members, segments, end, end_src, lead.planned),
+        segments=segments,
+    )
+
+
+def _envelope_updates(members, segments, end, end_src, planned):
+    """One timeline for the whole event, in customers still off.
+
+    Concatenating the members' own updates produces a run of near-identical
+    lines - Bealistown gave four "Restored" entries in the same minute, one per
+    section - which tells a reader nothing about what was happening. Reporting
+    the envelope instead says the thing they want: how many customers were still
+    without supply at each point, falling as sections came back.
+    """
+    times = []
+    for at in sorted({u.at for o in members for u in o.updates}):
+        if times and at - times[-1] <= COALESCE_WINDOW:
+            times[-1] = at
+        else:
+            times.append(at)
+
+    kind = "Planned" if planned else "Fault"
+    updates = []
+    for at in times:
+        off = max((c for s, e, c in segments if s <= at < e), default=0)
+        u = Update(
+            at=at,
+            kind=kind if off else "Restored",
+            customers=off or None,
+            start=None,
+            est_restore=None,
+            restore=end.strftime("%Y-%m-%dT%H:%M:%SZ") if not off and end_src == "restored" else None,
+            location=None,
+        )
+        if not updates or u[1:] != updates[-1][1:]:
+            updates.append(u)
+    return updates
+
+
 class Outage(NamedTuple):
     id: str
+    ids: list  # every ESB outage id folded into this event
     county: str
     town: str
     location: str
@@ -437,6 +550,7 @@ def load_outages(db_path, sa_index, now):
             outages.append(
                 Outage(
                     id=row["outage_id"],
+                    ids=[row["outage_id"]],
                     county=county,
                     town=town,
                     location=row["location"] or town,
@@ -451,7 +565,7 @@ def load_outages(db_path, sa_index, now):
                     segments=segments,
                 )
             )
-        return outages, unplaced
+        return merge_events(outages), unplaced
     finally:
         conn.close()
 
@@ -476,6 +590,11 @@ def county_month(outages, county, customers, ym, now, national):
     fault_cm = planned_cm = 0.0
     faults = planned = 0
     customers_hit = 0
+    # The charter measure counts only outages that both started and finished
+    # inside the observed window, because an outage still running has no
+    # restoration time to judge and one that began earlier was judged already.
+    judged = judged_within = 0
+    over_compensation = 0
     per_day_fault = defaultdict(float)
     per_day_planned = set()
 
@@ -492,6 +611,13 @@ def county_month(outages, county, customers, ym, now, national):
             faults += 1
             fault_cm += cm
             customers_hit += o.customers
+            if o.start >= lo and o.end <= hi:
+                hours = o.minutes / 60.0
+                judged += o.customers
+                if hours <= CHARTER_TARGET_HOURS:
+                    judged_within += o.customers
+                if hours > CHARTER_COMPENSATION_HOURS:
+                    over_compensation += 1
 
         # Split the outage across the days it spans, so a fault running past
         # midnight colours both days in proportion to the time it took from each.
@@ -526,16 +652,22 @@ def county_month(outages, county, customers, ym, now, national):
                 day_bucket(per_day_fault.get(day, 0.0) / customers, day in per_day_planned)
             )
 
+    within = 100.0 * judged_within / judged if judged else None
+    gradeable = (
+        within is not None
+        and observed_days >= MIN_GRADED_DAYS
+        and faults >= MIN_GRADED_FAULTS
+    )
     return {
         "cells": "".join(str(c) for c in cells),
+        "within": within,
         "cml": annualised,
         "cml_month": cml,
-        "grade": (
-            grade(annualised, national) if observed_days >= MIN_GRADED_DAYS else None
-        ),
+        "grade": grade(within) if gradeable else None,
         "faults": faults,
         "planned": planned,
         "customers_hit": customers_hit,
+        "over_compensation": over_compensation,
         "fault_hours": fault_cm / 60.0,
         "planned_hours": planned_cm / 60.0,
         "observed_days": observed_days,

@@ -77,15 +77,53 @@ class NationalCase(unittest.TestCase):
     def test_the_customer_count_bias_is_where_we_left_it(self):
         """PowerCheck reports more interrupted customers than ESB settles on.
 
-        Nothing here can fix that - it is the feed's own figure - but the grade
-        is built as a ratio precisely so the bias cancels, and that reasoning
-        only holds while the bias stays roughly constant. If this test fails,
-        re-read notes/grading.md before touching the bands: either the feed
-        changed, or the window stopped being representative.
+        Nothing here can fix that - it is the feed's own figure - which is why
+        the grade is a share of customers rather than a count of them, so the
+        bias appears above and below the line and cancels. This test exists to
+        notice if the bias moves, because the CML figure the page reports beside
+        the grade is not immune to it. See notes/grading.md.
         """
         ratio = self.national_ci() / ESB_CI
-        self.assertGreater(ratio, 1.2, f"CI ratio {ratio:.2f}")
-        self.assertLess(ratio, 2.4, f"CI ratio {ratio:.2f}")
+        self.assertGreater(ratio, 1.0, f"CI ratio {ratio:.2f}")
+        self.assertLess(ratio, 2.0, f"CI ratio {ratio:.2f}")
+
+    def test_one_esb_event_is_one_row(self):
+        """ESB opens a new id per scope change; unmerged they inflate everything."""
+        merged = [o for o in self.outages if len(o.ids) > 1]
+        self.assertGreater(len(merged), 0)
+        ids = sum(len(o.ids) for o in self.outages)
+        self.assertGreater(ids, len(self.outages))
+        # No event should swallow an implausible number of ids.
+        self.assertLess(max(len(o.ids) for o in self.outages), 12)
+
+    def test_national_restoration_is_near_but_under_esbs_aim(self):
+        """The grade's own scale, sanity-checked against lived experience.
+
+        Ireland's supply is good: nearly every fault is cleared the same day. If
+        this ever reads far below the band, suspect the duration model before
+        concluding the network fell over.
+        """
+        judged = [
+            o for o in self.faults if o.start >= self.lo and o.end <= self.hi
+        ]
+        seen = sum(o.customers for o in judged)
+        within = sum(
+            o.customers
+            for o in judged
+            if o.minutes / 60.0 <= model.CHARTER_TARGET_HOURS
+        )
+        share = 100.0 * within / seen
+        self.assertGreater(share, 75.0, f"{share:.1f}% back inside 4h")
+        self.assertLessEqual(share, 100.0)
+
+    def test_almost_nothing_reaches_the_compensation_threshold(self):
+        """24 hours is where the charter starts paying out. It should be rare."""
+        over = [
+            o
+            for o in self.faults
+            if o.minutes / 60.0 > model.CHARTER_COMPENSATION_HOURS
+        ]
+        self.assertLess(len(over) / len(self.faults), 0.01)
 
     def test_national_cml_tracks_the_bias_and_nothing_else(self):
         """CML should be off by the same factor CI is, and no more.
@@ -108,6 +146,15 @@ class NationalCase(unittest.TestCase):
             for c in self.index.counties
         }
         self.assertGreaterEqual(len(grades - {None}), 4, f"grades seen: {sorted(grades - {None})}")
+
+    def test_the_payload_row_matches_what_the_model_produces(self):
+        """Guards the positional stats row the templates index into."""
+        row = render.build(self.outages, self.index, self.now)[0]["stats"]["Dublin"]["2026-08"]
+        cells, grade, within, cml, faults, planned, hit, over = row
+        self.assertEqual(len(cells), 31)
+        self.assertIn(grade, set("ABCDF") | {None})
+        self.assertTrue(within is None or 0 <= within <= 100)
+        self.assertGreater(faults, 0)
 
     def test_the_disclosure_stays_the_exception(self):
         """The whole design rests on most outages being short enough to show."""

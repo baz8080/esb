@@ -88,10 +88,12 @@ def build(outages, sa_index, now):
             per_month[ym] = [
                 s["cells"],
                 s["grade"],
+                None if s["within"] is None else round(s["within"], 1),
                 round(s["cml"], 1),
                 s["faults"],
                 s["planned"],
                 s["customers_hit"],
+                s["over_compensation"],
             ]
         stats[county] = per_month
 
@@ -99,12 +101,20 @@ def build(outages, sa_index, now):
         lo, hi = model.observed_window(ym, now)
         live = [o for o in outages if o.start and o.end and o.end > lo and o.start < hi]
         faults = [o for o in live if not o.planned]
+        judged = [o for o in faults if o.start >= lo and o.end <= hi]
+        seen = sum(o.customers for o in judged)
+        within = sum(
+            o.customers
+            for o in judged
+            if o.minutes / 60.0 <= model.CHARTER_TARGET_HOURS
+        )
         national[ym] = [
             round(model.national_cml(outages, now, ym), 1),
             len(faults),
             len(live) - len(faults),
             sum(o.customers for o in faults),
             round(sum(o.customer_minutes(lo, hi) for o in faults) / 60.0, 1),
+            None if not seen else round(100.0 * within / seen, 1),
         ]
 
     # Names a reader might type, grouped by county so the county name is stored
@@ -123,7 +133,12 @@ def build(outages, sa_index, now):
         "generated": _stamp(now),
         "start": model.COLLECTION_START.strftime("%-d %B %Y"),
         "months": months,
-        "esb": {"national": model.ESB_NATIONAL_CML, "target": model.ESB_CRU_TARGET_CML},
+        "esb": {
+            "national": model.ESB_NATIONAL_CML,
+            "target": model.ESB_CRU_TARGET_CML,
+            "hours": model.CHARTER_TARGET_HOURS,
+            "share": model.CHARTER_TARGET_SHARE,
+        },
         "counties": sa_index.counties,
         "customers": {c: round(sa_index.customers[c]) for c in sa_index.counties},
         "stats": stats,
@@ -269,14 +284,14 @@ def county_page(county, data, cases, ym, all_counties):
     label = month_label(ym)
     title = f"Power outages in County {county} — {label}"
     desc = (
-        f"{m[3]} faults and {m[4]} planned power outages recorded in County {county} "
+        f"{m[4]} faults and {m[5]} planned power outages recorded in County {county} "
         f"during {label}, from ESB Networks' PowerCheck feed."
     )
     tiles = [
-        (f"{m[2]:g}" if m[2] < 100 else f"{round(m[2])}", "CML/yr, unplanned"),
-        (m[3], "faults"),
-        (m[4], "planned outages"),
-        (f"{m[5]:,}", "customers hit by faults"),
+        ("–" if m[2] is None else f"{m[2]:g}%", "back within 4 hours"),
+        (m[4], "faults"),
+        (m[5], "planned outages"),
+        (f"{m[6]:,}", "customers hit by faults"),
     ]
     shown = cases[:COUNTY_PAGE_CASES]
     body = [

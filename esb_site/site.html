@@ -172,6 +172,8 @@
   footer h3 { font-size: 13px; color: var(--ink-2); margin: 14px 0 5px; font-weight: 650; }
   footer p { margin-bottom: 7px; }
   footer code { font-size: 12px; }
+  footer a { color: var(--ink-2); }
+  footer q { font-style: italic; }
 
   @media (max-width: 640px) {
     .row { grid-template-columns: 1fr auto; grid-template-areas: "name stats" "bar bar"; gap: 10px 12px; padding: 12px 14px; }
@@ -234,33 +236,52 @@
     results. ESB publishes no historical archive and purges each outage from the feed a few hours
     after restoration, so nothing before <span id="startdate"></span> exists here, and days before
     it are shown as “no data” rather than as no outages.</p>
-    <p>The headline figure is <b>Customer Minutes Lost</b> (CML) — the minutes an average customer
-    in a county spends without supply, expressed as an annual rate. It is the unit the Commission
-    for Regulation of Utilities uses to regulate ESB Networks, which is why it is used here rather
-    than something invented for the page.</p>
-
     <h3>How the grade works</h3>
-    <p>A county is graded on unplanned CML against the national figure measured the same way, with
-    the regulator's target carried across as its published ratio: in 2024 the CRU target was 78.7
-    CML against the 117.47 ESB actually delivered, so <b>A</b> is 0.67× the national average or
-    better, <b>B</b> is at or below it, <b>C</b> up to 1.5×, <b>D</b> up to 3×, and <b>F</b> worse.</p>
-    <p>Grading on the ratio rather than on ESB's published minutes is deliberate. This dataset
-    reproduces ESB's duration per interrupted customer almost exactly — 88 minutes against ESB's 85
-    — but counts about 1.7× as many interrupted customers, because the feed reports everyone on the
-    affected section when a fault is logged and ESB settles on a smaller number once crews have
-    isolated it. That bias is the same everywhere, so it cancels in a ratio.</p>
-    <p><b>Planned works are excluded from the grade</b>, exactly as the CRU's incentive is. They are
+    <p>The grade is ESB Networks' own published service standard, from the <a
+    href="https://esbnetworksprdsastd01.blob.core.windows.net/media/docs/default-source/publications/customer-charter.pdf">Customer
+    Charter</a> the CRU approves. Under its Restore Supply Guarantee, ESB Networks states: <q>our
+    aim is to restore supply within less than 4 hours in 95% of cases</q>. A county is scored on the
+    share of customers interrupted by a fault who had supply back inside that window.</p>
+    <p><b>A</b> meets the 95% aim; <b>B</b> is 90% or better, <b>C</b> 80%, <b>D</b> 70%, and
+    <b>F</b> is below that. A month with fewer than five faults is left ungraded, because one long
+    outage in a quiet county would swing the letter two bands.</p>
+    <p>The same charter guarantees a payment if you are <b>without power for 24 hours</b> after ESB
+    was made aware, and a further payment for each additional 12 hours. Outages passing that mark
+    are counted separately on each county's page.</p>
+    <p><b>Planned works are excluded</b>, exactly as the CRU's incentive excludes them. They are
     notified in advance, and they never report a restore time — they simply stop being listed — so
     their true duration is not something this data knows. They are shown on the bars in blue and
     counted separately.</p>
 
+    <h3>The other figure: Customer Minutes Lost</h3>
+    <p><b>CML</b> is the minutes an average customer spends without supply over a year. It is the
+    unit the Commission for Regulation of Utilities regulates ESB Networks in, and money rides on
+    it: for 2024 the CRU target was <b>78.7</b> CML and ESB Networks reported <b>117.47</b>
+    (<a href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">Distribution
+    Annual Performance Report 2024</a>, p.35; the targets are set under the CRU's
+    <a href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
+    incentive framework</a>).</p>
+    <p>CML is reported here for comparison but does <b>not</b> set the grade, because this data
+    cannot reproduce it on ESB's scale. The durations match almost exactly — an implied 88 minutes
+    per interrupted customer against ESB's 85 — but the feed counts about a third more interrupted
+    customers, since it reports everyone on the affected section when a fault is logged while ESB
+    settles on a smaller number once crews have isolated it. A share of customers is immune to that;
+    a total of them is not.</p>
+
     <h3>What it cannot tell you</h3>
-    <p>ESB excludes storm days from its published figures to make them comparable between utilities.
-    This site cannot identify a storm day and does not exclude anything, so winter months here will
-    read worse than ESB's own numbers for reasons that are not ESB's fault.</p>
+    <p>ESB excludes storm days from its published figures, so that they compare with other
+    utilities: <q>To benchmark our outage performance against other utilities storm days (the
+    effects of severe weather) are removed for unplanned CI and CML reporting</q>
+    (<a href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">DAPR
+    2024</a>, p.34). The Customer Charter likewise exempts <q>exceptional cases such as storms</q>
+    from the restoration guarantee. Nothing in the public feed identifies a storm day, so this site
+    excludes nothing — which means winter months here will read worse than ESB's own figures, and
+    worse than the guarantee is meant to be judged on.</p>
     <p>Counties come from the nearest Census Small Area to each outage's coordinates; the feed
     carries no county field. Customers per county are apportioned from Census population, because
-    ESB publishes no per-county customer count.</p>
+    ESB publishes no per-county customer count. ESB opens a new outage record each time a fault's
+    scope changes, so records sharing a location and start time are folded back into one event
+    here — without that, one fault restored in five stages reads as five outages.</p>
     <p id="src"></p>
   </footer>
 </div>
@@ -281,9 +302,13 @@ var END_LABEL = {
   estimated: "due back {when}",
   listed: "last seen out at {when}"
 };
-var GRADES = { A: "meets the regulator's target rate", B: "better than the national average",
-  C: "up to 1.5× the national average", D: "up to 3× the national average",
-  F: "more than 3× the national average" };
+var GRADES = {
+  A: "meets ESB's aim of 95% back inside 4 hours",
+  B: "90% or more back inside 4 hours",
+  C: "80% or more back inside 4 hours",
+  D: "70% or more back inside 4 hours",
+  F: "fewer than 70% back inside 4 hours"
+};
 
 function esc(s) {
   return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -333,7 +358,7 @@ function dayCells(cells, ym) {
 
 function gradeChip(g, big) {
   return '<span class="gradechip g-' + (g || "none") + '" title="' +
-    esc(g ? "Grade " + g + " — " + GRADES[g] : "Not enough days observed to grade") + '">' +
+    esc(g ? "Grade " + g + " — " + GRADES[g] : "Too few faults this month to grade fairly") + '">' +
     (g || "–") + "</span>";
 }
 
@@ -344,9 +369,12 @@ function renderOverview() {
   var rows = D.counties.map(function (name) {
     return { name: name, m: (D.stats[name] || {})[curMonth] };
   });
-  // Worst first: a status page's job is to put the bad news at the top.
+  // Worst first: a status page's job is to put the bad news at the top. A
+  // county with nothing to judge sorts to the bottom rather than the top.
   rows.sort(function (a, b) {
-    return (b.m ? b.m[2] : -1) - (a.m ? a.m[2] : -1) || a.name.localeCompare(b.name);
+    var x = a.m && a.m[2] != null ? a.m[2] : 1e9;
+    var y = b.m && b.m[2] != null ? b.m[2] : 1e9;
+    return x - y || a.name.localeCompare(b.name);
   });
 
   document.getElementById("list").innerHTML = rows.map(function (r) {
@@ -356,32 +384,37 @@ function renderOverview() {
         '<a href="c/' + slug(r.name) + '.html" onclick="event.preventDefault()">' + esc(r.name) + "</a></div>" +
       '<div class="bar">' + dayCells(m ? m[0] : "", curMonth) + "</div>" +
       '<div class="stats"><div class="counts">' +
-        "<b>" + (m ? m[3] : 0) + "</b><span>faults</span>" +
-        "<b>" + (m ? m[4] : 0) + "</b><span>planned</span></div>" +
-        '<div class="cml"><b>' + (m ? fmtCml(m[2]) : "–") + "</b><br>CML/yr</div>" +
+        "<b>" + (m ? m[4] : 0) + "</b><span>faults</span>" +
+        "<b>" + (m ? m[5] : 0) + "</b><span>planned</span></div>" +
+        '<div class="cml"><b>' + (m && m[2] != null ? m[2] + "%" : "–") +
+          "</b><br>back in 4h</div>" +
       '</div><span class="chev">›</span></div>' +
       '<div class="daycap"></div></div>';
   }).join("");
 
-  var n = D.national[curMonth] || [0, 0, 0, 0, 0];
+  var n = D.national[curMonth] || [0, 0, 0, 0, 0, null];
+  var within = n[5];
   document.getElementById("natdot").style.background =
-    "var(--" + (n[0] > D.esb.national * 1.5 ? "critical" : n[0] > D.esb.national ? "warning" : "good") + ")";
+    // Amber for "short of the aim", red only for a genuinely poor month: being
+    // a few points under a 95% target is a miss, not an emergency.
+    "var(--" + (within == null ? "cell-empty"
+      : within >= D.esb.share ? "good" : within >= 80 ? "warning" : "critical") + ")";
   document.getElementById("natline").textContent =
     plural(n[1], "fault") + " and " + plural(n[2], "planned outage") +
     " in " + monthLabel(curMonth);
-  document.getElementById("natmeta").innerHTML =
-    "national rate <b>" + fmtCml(n[0]) + "</b> CML/yr";
+  document.getElementById("natmeta").innerHTML = within == null ? ""
+    : "<b>" + within + "%</b> back inside " + D.esb.hours + " hours";
 
   document.getElementById("basis").innerHTML =
-    "Grades compare each county with the national rate for the same month. ESB Networks reported " +
-    "<b>" + D.esb.national + "</b> CML for 2024 against a CRU target of <b>" + D.esb.target +
-    "</b>; this site measures <b>" + fmtCml(n[0]) + "</b>, which runs high for a known reason — see below.";
+    "Counties are graded on ESB Networks' own published aim — <b>supply restored in under " +
+    D.esb.hours + " hours in " + D.esb.share + "% of cases</b> — measured across the customers each " +
+    "fault interrupted." + (within == null ? "" : " Nationally this month: <b>" + within + "%</b>.");
 
   document.getElementById("tiles").innerHTML = [
+    [within == null ? "–" : within + "%", "back inside 4 hours"],
     [num(n[3]), "customers hit by faults"],
     [fmtHours(n[4]), "total time off supply"],
-    [n[1] + n[2], "outages in the month"],
-    [fmtCml(n[0]) + " CML", "national rate, annualised"]
+    [fmtCml(n[0]) + " CML", "annualised, unplanned"]
   ].map(function (t) {
     return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
   }).join("");
@@ -414,10 +447,10 @@ function renderCounty() {
     '<div class="bar tall">' + dayCells(m ? m[0] : "", curMonth) + "</div>" +
     '<div class="daycap"></div>' +
     '<div class="tiles" style="margin-bottom:0">' + [
-      [m ? fmtCml(m[2]) : "–", "CML/yr, unplanned"],
-      [m ? m[3] : 0, "faults"],
-      [m ? m[4] : 0, "planned outages"],
-      [m ? num(m[5]) : 0, "customers hit by faults"]
+      [m && m[2] != null ? m[2] + "%" : "–", "back inside 4 hours"],
+      [m ? m[4] : 0, "faults"],
+      [m ? m[5] : 0, "planned outages"],
+      [m ? num(m[6]) : 0, "customers hit by faults"]
     ].map(function (t) {
       return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
     }).join("") + "</div></div>";
@@ -608,8 +641,7 @@ function boot() {
   document.getElementById("stamp").textContent = "Rebuilt " + D.generated + ".";
   document.getElementById("startdate").textContent = D.start;
   document.getElementById("src").innerHTML =
-    "Reference figures from ESB Networks' Distribution Annual Performance Report 2024 and the CRU's " +
-    "PR5 incentive framework. Source data collected from ESB's public PowerCheck API.";
+    "Source data collected from ESB's public PowerCheck API every 30 minutes since " + D.start + ".";
   document.getElementById("q").addEventListener("input", runSearch);
   document.addEventListener("click", function (e) {
     if (!e.target.closest(".search")) document.getElementById("results").hidden = true;

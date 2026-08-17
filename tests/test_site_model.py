@@ -64,23 +64,25 @@ class SiteModelCase(unittest.TestCase):
 
 
 class TestGrade(unittest.TestCase):
-    def test_bands_sit_on_the_published_ratios(self):
-        national = 100.0
-        # A is the CRU target expressed as its ratio to what ESB delivered.
-        self.assertEqual(model.grade(66.9, national), "A")
-        self.assertEqual(model.grade(67.1, national), "B")
-        self.assertEqual(model.grade(100.0, national), "B")
-        self.assertEqual(model.grade(100.1, national), "C")
-        self.assertEqual(model.grade(150.0, national), "C")
-        self.assertEqual(model.grade(150.1, national), "D")
-        self.assertEqual(model.grade(300.0, national), "D")
-        self.assertEqual(model.grade(300.1, national), "F")
+    def test_a_is_esbs_own_published_aim(self):
+        """95% inside 4 hours, from the CRU-approved Customer Charter."""
+        self.assertEqual(model.CHARTER_TARGET_SHARE, 95.0)
+        self.assertEqual(model.CHARTER_TARGET_HOURS, 4.0)
+        self.assertEqual(model.grade(95.0), "A")
+        self.assertEqual(model.grade(94.9), "B")
 
-    def test_a_perfect_county_still_grades(self):
-        self.assertEqual(model.grade(0.0, 100.0), "A")
+    def test_bands(self):
+        self.assertEqual(model.grade(100.0), "A")
+        self.assertEqual(model.grade(90.0), "B")
+        self.assertEqual(model.grade(89.9), "C")
+        self.assertEqual(model.grade(80.0), "C")
+        self.assertEqual(model.grade(79.9), "D")
+        self.assertEqual(model.grade(70.0), "D")
+        self.assertEqual(model.grade(69.9), "F")
+        self.assertEqual(model.grade(0.0), "F")
 
-    def test_no_national_figure_means_no_grade(self):
-        self.assertIsNone(model.grade(50.0, 0.0))
+    def test_nothing_to_judge_means_no_grade(self):
+        self.assertIsNone(model.grade(None))
 
 
 class TestDayBuckets(unittest.TestCase):
@@ -274,6 +276,97 @@ class TestCustomerMinutes(SiteModelCase):
         o = outages[0]
         after = datetime(2026, 8, 11, tzinfo=timezone.utc)
         self.assertEqual(o.customer_minutes(after, NOW), 0.0)
+
+
+class TestEventMerging(SiteModelCase):
+    """ESB opens a new outage id each time a fault's scope changes."""
+
+    def split_fault(self):
+        # One event: 900 customers off at 10:00 Dublin, restored in two stages.
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        common = dict(location="Glasnevin", startTime="10/08/2026 10:00")
+        self.observe(detail("1", numCustAffected=900, **common), t)
+        self.observe(
+            detail(
+                "1", numCustAffected=900, outageType="Restored",
+                restoreTime="10/08/2026 11:00", **common,
+            ),
+            t + timedelta(hours=1),
+        )
+        self.observe(
+            detail(
+                "2", numCustAffected=400, outageType="Restored",
+                restoreTime="10/08/2026 12:00", **common,
+            ),
+            t + timedelta(hours=2),
+        )
+
+    def test_ids_sharing_a_location_and_start_are_one_event(self):
+        self.split_fault()
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 1)
+        self.assertEqual(outages[0].ids, ["1", "2"])
+
+    def test_customers_are_the_envelope_not_the_sum(self):
+        """Adding the records counts the same customer once per record."""
+        self.split_fault()
+        outages, _, _ = self.load()
+        self.assertEqual(outages[0].customers, 900)  # not 900 + 400
+
+    def test_the_event_ends_when_its_last_section_returns(self):
+        self.split_fault()
+        outages, _, _ = self.load()
+        o = outages[0]
+        self.assertEqual(o.end, datetime(2026, 8, 10, 11, 0, tzinfo=timezone.utc))
+        self.assertEqual(o.end_src, "restored")
+        self.assertEqual(o.minutes, 120.0)
+
+    def test_customer_minutes_use_the_decaying_envelope(self):
+        """900 off for an hour, then 400 for an hour: 1300 customer-hours."""
+        self.split_fault()
+        outages, _, _ = self.load()
+        lo = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        self.assertAlmostEqual(
+            outages[0].customer_minutes(lo, NOW) / 60.0, 1300.0, places=3
+        )
+
+    def test_a_record_lingering_past_a_confirmed_restore_does_not_downgrade_it(self):
+        """The feed leaves a Fault row up briefly after the last section is back."""
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        common = dict(location="Glasnevin", startTime="10/08/2026 10:00")
+        self.observe(
+            detail(
+                "1", outageType="Restored", restoreTime="10/08/2026 11:00", **common
+            ),
+            t + timedelta(hours=1),
+        )
+        # A second id still showing as a fault five minutes later.
+        self.observe(detail("2", **common), t + timedelta(hours=1, minutes=5))
+        outages, _, _ = self.load()
+        self.assertEqual(outages[0].end_src, "restored")
+        self.assertEqual(outages[0].end, datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc))
+
+    def test_different_locations_are_not_merged(self):
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        self.observe(detail("1", location="Glasnevin"), t)
+        self.observe(detail("2", location="Santry"), t)
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 2)
+
+    def test_a_fault_and_a_planned_outage_are_never_merged(self):
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        self.observe(detail("1", outageType="Fault"), t)
+        self.observe(detail("2", outageType="Planned"), t)
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 2)
+
+    def test_the_merged_timeline_reports_customers_still_off(self):
+        """Not one line per restored section, which says nothing to a reader."""
+        self.split_fault()
+        outages, _, _ = self.load()
+        ups = outages[0].updates
+        self.assertEqual([u.customers for u in ups], [900, 400, None])
+        self.assertEqual(ups[-1].kind, "Restored")
 
 
 class TestCountyMonth(SiteModelCase):
