@@ -362,12 +362,12 @@ uv run python -m unittest discover -s tests -t .
 uv run --group dev ruff check
 ```
 
-`uv` is used to pin the interpreter and to run ruff; plain `python3` works just
-as well for the tests. There are no runtime dependencies and there will not be:
-`pyproject.toml` declares an empty `dependencies` list, because the collector is
-deployed by copying files onto a machine that has Python and nothing else. CI
-runs the suite on Python 3.9 and 3.14 — 3.9 being the floor the installer
-accepts.
+`uv` is used to pin the interpreter — 3.14, in `.python-version` — and to run
+ruff; plain `python3` works just as well for the tests. There are no runtime
+dependencies and there will not be: `pyproject.toml` declares an empty
+`dependencies` list, because the collector is deployed by copying files onto a
+machine that has Python and nothing else. That machine's floor is 3.9, which is
+what `requires-python` records and what the installer checks.
 
 Tests use the standard library only and run against real API responses captured
 in `tests/fixtures/`. The most important one is the rebuild round-trip in

@@ -21,9 +21,9 @@ package = false
 
 [tool.ruff]
 line-length = 100
-target-version = "py39"
 
 [tool.ruff.lint]
 # Pycodestyle errors, pyflakes, import order, bugbear, and comprehension and
-# pyupgrade rules that are safe on the 3.9 floor.
+# pyupgrade rules. ruff takes its target version from requires-python above, so
+# the pyupgrade rules cannot suggest syntax the Raspberry Pi floor will not run.
 select = ["E", "F", "I", "B", "C4", "UP"]

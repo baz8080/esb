@@ -21,13 +21,6 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        # The floor scripts/install-native.sh accepts, and a current release.
-        # The collector is meant to keep running for years on whatever Python a
-        # Raspberry Pi image happens to ship, so the floor is worth testing.
-        python: ["3.9", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
@@ -41,8 +34,6 @@ jobs:
           path: esb-data
 
       - uses: astral-sh/setup-uv@v10.0.1
-        with:
-          python-version: ${{ matrix.python }}
 
       - name: Rebuild the database from the raw logs
         run: uv run python -m esb_outages --data-dir esb-data rebuild

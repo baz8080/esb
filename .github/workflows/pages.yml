@@ -35,8 +35,6 @@ jobs:
           path: esb-data
 
       - uses: astral-sh/setup-uv@v10.0.1
-        with:
-          python-version: "3.14"
 
       # Unlike the sibling water site, there is no database to carry between
       # runs: the raw JSONL is the source of truth and replaying it is the
