@@ -5,7 +5,7 @@ import unittest.mock
 from pathlib import Path
 
 from esb_outages import alert
-from esb_outages.client import ApiError, AuthError, NotFound, TransientError
+from esb_outages.client import ApiError, AuthError, TransientError
 from esb_outages.poll import poll_lock, run_check, run_poll
 from esb_outages.store import Store
 

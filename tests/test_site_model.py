@@ -284,7 +284,7 @@ class TestEventMerging(SiteModelCase):
     def split_fault(self):
         # One event: 900 customers off at 10:00 Dublin, restored in two stages.
         t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
-        common = dict(location="Glasnevin", startTime="10/08/2026 10:00")
+        common = {"location": "Glasnevin", "startTime": "10/08/2026 10:00"}
         self.observe(detail("1", numCustAffected=900, **common), t)
         self.observe(
             detail(
@@ -333,7 +333,7 @@ class TestEventMerging(SiteModelCase):
     def test_a_record_lingering_past_a_confirmed_restore_does_not_downgrade_it(self):
         """The feed leaves a Fault row up briefly after the last section is back."""
         t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
-        common = dict(location="Glasnevin", startTime="10/08/2026 10:00")
+        common = {"location": "Glasnevin", "startTime": "10/08/2026 10:00"}
         self.observe(
             detail(
                 "1", outageType="Restored", restoreTime="10/08/2026 11:00", **common
@@ -407,7 +407,7 @@ class TestEventMerging(SiteModelCase):
         county's page has to carry the customers actually in it.
         """
         t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
-        common = dict(location="Little Bray", startTime="10/08/2026 10:00")
+        common = {"location": "Little Bray", "startTime": "10/08/2026 10:00"}
         self.observe(detail("1", point={"c": "53.20873,-6.12507"}, **common), t)
         self.observe(detail("2", point={"c": "53.22514,-6.13477"}, **common), t)
         outages, _, _ = self.load()

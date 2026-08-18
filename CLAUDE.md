@@ -2,16 +2,24 @@
 
 Two things live here: `esb_outages`, a collector that snapshots ESB Networks'
 PowerCheck API every 30 minutes, and `esb_site`, a static site generator that
-turns the result into https://baz8080.github.io/esb. Standard library only, both
-of them — there is no `pyproject.toml`, no virtualenv, and nothing to install.
+turns the result into https://baz8080.github.io/esb. **Both run on the standard
+library alone** — `pyproject.toml` declares no runtime dependencies and exists
+only for ruff and the dev tooling, because the collector is installed on a
+Raspberry Pi by copying files. Keep it that way.
 
 ```bash
-python -m esb_outages --data-dir <dir> poll      # one collection pass
-python -m esb_outages --data-dir <dir> rebuild   # replay the JSONL into esb.db
-python -m esb_outages --data-dir <dir> stats
-python -m esb_site --data-dir <dir>              # build out/site/
-python -m unittest discover -s tests -t .
+uv run python -m esb_outages --data-dir <dir> poll      # one collection pass
+uv run python -m esb_outages --data-dir <dir> rebuild   # replay JSONL into esb.db
+uv run python -m esb_outages --data-dir <dir> stats
+uv run python -m esb_site --data-dir <dir>              # build out/site/
+uv run --group dev ruff check
+uv run python -m unittest discover -s tests -t .
 ```
+
+Plain `python3` works for all of these too; uv only pins the interpreter. CI
+tests on **3.9 and 3.14** — 3.9 is the floor `scripts/install-native.sh`
+enforces, and the collector is meant to keep running on whatever Python a Pi
+image ships.
 
 The collected data is a separate repository, `baz8080/esb-data`, normally
 checked out at `../esb-data`. Set `ESB_DATA_DIR` to it, or pass `--data-dir`.

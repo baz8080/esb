@@ -453,7 +453,11 @@ def _envelope_updates(members, segments, end, end_src, planned):
             customers=off or None,
             start=None,
             est_restore=None,
-            restore=end.strftime("%Y-%m-%dT%H:%M:%SZ") if not off and end_src == "restored" else None,
+            restore=(
+                end.strftime("%Y-%m-%dT%H:%M:%SZ")
+                if not off and end_src == "restored"
+                else None
+            ),
             location=None,
         )
         if not updates or u[1:] != updates[-1][1:]:
