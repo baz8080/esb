@@ -859,6 +859,36 @@ def county_month(outages, county, customers, ym, now, until):
     }
 
 
+def national_ci(outages, until):
+    """Fault interruptions per customer per year, ESB's other regulated index.
+
+    Counts only faults that began inside the window: one already under way when
+    collection started was an interruption somebody else's window should carry.
+    """
+    lo, hi = COLLECTION_START, until
+    years = max((hi - lo).total_seconds(), 1.0) / (365 * 86400)
+    started = sum(
+        o.customers for o in outages if not o.planned and o.start and o.start >= lo
+    )
+    return started / NATIONAL_CUSTOMERS / years
+
+
+def national_caidi(outages, until):
+    """Minutes off supply per interrupted customer: CML over CI.
+
+    The customer count divides out, which makes this the one index of the three
+    that is not touched by the feed reporting more customers than ESB settles
+    on. It is therefore the figure that says whether the timing model is right,
+    and the page quotes it for exactly that reason.
+    """
+    lo, hi = COLLECTION_START, until
+    faults = [o for o in outages if not o.planned]
+    interrupted = sum(o.customers for o in faults if o.start and o.start >= lo)
+    if not interrupted:
+        return None
+    return sum(o.customer_minutes(lo, hi) for o in faults) / interrupted
+
+
 def national_cml(outages, until, ym=None):
     """Annualised unplanned CML across the whole network.
 

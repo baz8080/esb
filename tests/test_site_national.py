@@ -163,6 +163,26 @@ class NationalCase(unittest.TestCase):
         self.assertTrue(within is None or 0 <= within <= 100)
         self.assertGreater(faults, 0)
 
+    def test_the_page_quotes_the_figures_this_suite_derives(self):
+        """The CML explainer argues from three numbers; they have to be true.
+
+        This class computes CI and CAIDI independently of the model, which is
+        the point: if the paragraph and this suite ever disagree, the page is
+        making a claim the tests do not support.
+        """
+        compare = render.build(self.outages, self.index, self.now, self.until)[0][
+            "compare"
+        ]
+        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.faults)
+        caidi = customer_minutes / sum(o.customers for o in self.started)
+        self.assertEqual(compare["caidi"], round(caidi))
+        self.assertEqual(compare["esb_caidi"], round(ESB_CAIDI))
+        self.assertEqual(
+            compare["bias"], round((self.national_ci() / ESB_CI - 1) * 100)
+        )
+        # The sentence reads "counts about N% more", so the sign has to hold.
+        self.assertGreater(compare["bias"], 0)
+
     def test_the_disclosure_stays_the_exception(self):
         """The whole design rests on most outages being short enough to show."""
         inline = sum(1 for o in self.outages if len(o.updates) <= model.INLINE_UPDATES)
@@ -202,7 +222,8 @@ class PayloadCase(unittest.TestCase):
         self.assertEqual(
             set(self.data),
             {
-                "generated", "observed", "stale", "partial", "start", "months", "esb",
+                "generated", "observed", "stale", "partial", "compare",
+                "start", "months", "esb",
                 "counties", "customers", "stats", "national",
             },
         )

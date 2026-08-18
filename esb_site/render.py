@@ -150,6 +150,16 @@ def build(outages, sa_index, now, until):
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
         "partial": model.partial_days(until),
+        # The three figures the CML explainer quotes about itself. They move
+        # with every rebuild, and hard-coding them into the prose meant the
+        # paragraph making the site's credibility argument quietly went wrong.
+        "compare": {
+            "caidi": round(model.national_caidi(outages, until) or 0),
+            "esb_caidi": round(model.ESB_NATIONAL_CML / model.ESB_NATIONAL_CI),
+            "bias": round(
+                (model.national_ci(outages, until) / model.ESB_NATIONAL_CI - 1) * 100
+            ),
+        },
         "start": model.COLLECTION_START.strftime("%-d %B %Y"),
         "months": months,
         "esb": {

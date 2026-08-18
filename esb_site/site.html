@@ -282,11 +282,12 @@
     framework</a>).</p>
     <p>It is shown here for comparison but does not set the grade, because this
     data cannot reproduce it on ESB's scale. The durations match almost exactly —
-    an implied 88 minutes per interrupted customer against ESB's 85 — but the
-    feed counts about a third more interrupted customers, since it reports
-    everyone on the affected section when a fault is logged while ESB settles on
-    a smaller number once crews have isolated it. A <em>share</em> of customers is
-    immune to that; a <em>total</em> of them is not.</p>
+    an implied <b id="cmp-caidi">–</b> minutes per interrupted customer against
+    ESB's <b id="cmp-esb-caidi">–</b> — but the feed counts about
+    <b id="cmp-bias">–</b> more interrupted customers, since it reports everyone
+    on the affected section when a fault is logged while ESB settles on a smaller
+    number once crews have isolated it. A <em>share</em> of customers is immune
+    to that; a <em>total</em> of them is not.</p>
     </details>
 
     <details><summary>How to read an outage</summary>
@@ -721,6 +722,12 @@ function boot() {
     ", data to " + (D.stale ? '<span class="stale">' : "<span>") + esc(D.observed) +
     (D.stale ? " — collection has stopped" : "") + "</span>.";
   document.getElementById("startdate").textContent = D.start;
+  // Filled from the build, not written into the prose: these three drift every
+  // time the corpus grows, and the paragraph they sit in is the page's argument
+  // for why its CML is not ESB's.
+  document.getElementById("cmp-caidi").textContent = D.compare.caidi;
+  document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
+  document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
   document.getElementById("src").textContent =
     "Unofficial, and not affiliated with ESB Networks or the CRU.";
   document.getElementById("q").addEventListener("input", runSearch);
