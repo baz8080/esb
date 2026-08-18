@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # The site tests compare this pipeline against ESB's own published CML,
+      # CI and CAIDI, so they need the real corpus. Without it they skip, and a
+      # silently skipped credibility check is worse than none.
+      - name: Check out the collected data
+        uses: actions/checkout@v5
+        with:
+          repository: baz8080/esb-data
+          path: esb-data
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+
+      - name: Rebuild the database from the raw logs
+        run: python -m esb_outages --data-dir esb-data rebuild
+
+      - name: Run tests
+        env:
+          ESB_DATA_DIR: esb-data
+        run: python -m unittest discover -s tests -t . --verbose
