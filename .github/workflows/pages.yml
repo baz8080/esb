@@ -26,28 +26,28 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Check out the collected data
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: baz8080/esb-data
           path: esb-data
 
-      - uses: actions/setup-python@v6
+      - uses: astral-sh/setup-uv@v10.0.1
         with:
-          python-version: '3.13'
+          python-version: "3.14"
 
       # Unlike the sibling water site, there is no database to carry between
       # runs: the raw JSONL is the source of truth and replaying it is the
       # tested code path, so the index is rebuilt from scratch every time.
       - name: Rebuild the database from the raw logs
-        run: python -m esb_outages --data-dir esb-data rebuild
+        run: uv run python -m esb_outages --data-dir esb-data rebuild
 
       - name: Build the site
-        run: python -m esb_site --data-dir esb-data --out out/site
+        run: uv run python -m esb_site --data-dir esb-data --out out/site
 
-      - uses: actions/upload-pages-artifact@v4
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: out/site
 
@@ -59,4 +59,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
