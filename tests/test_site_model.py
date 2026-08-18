@@ -428,6 +428,66 @@ class TestEventMerging(SiteModelCase):
         self.assertFalse(o.planned)
 
 
+class TestRepeatChains(SiteModelCase):
+    """Same spot, failing again shortly after being restored."""
+
+    def chain_of(self, *windows):
+        t = datetime(2026, 8, 10, 6, 0, tzinfo=timezone.utc)
+        for i, (start, end) in enumerate(windows):
+            self.observe(
+                detail(
+                    str(i), numCustAffected=150, startTime=start,
+                    outageType="Restored", restoreTime=end,
+                ),
+                t + timedelta(hours=6 + i),
+            )
+        return self.load()[0]
+
+    def test_consecutive_faults_are_tagged_in_order(self):
+        outages = self.chain_of(
+            ("10/08/2026 10:00", "10/08/2026 11:00"),
+            ("10/08/2026 11:01", "10/08/2026 11:20"),
+            ("10/08/2026 11:25", "10/08/2026 11:40"),
+        )
+        self.assertEqual(len(outages), 3)
+        self.assertEqual([o.chain for o in outages], [(1, 3), (2, 3), (3, 3)])
+
+    def test_a_gap_longer_than_the_window_breaks_the_chain(self):
+        outages = self.chain_of(
+            ("10/08/2026 10:00", "10/08/2026 11:00"),
+            ("10/08/2026 11:30", "10/08/2026 11:40"),  # 30 minutes later
+        )
+        self.assertEqual([o.chain for o in outages], [(), ()])
+
+    def test_an_isolated_fault_is_not_a_chain(self):
+        outages = self.chain_of(("10/08/2026 10:00", "10/08/2026 11:00"))
+        self.assertEqual(outages[0].chain, ())
+
+    def test_planned_works_are_never_chained(self):
+        t = datetime(2026, 8, 10, 12, tzinfo=timezone.utc)
+        self.observe(
+            detail("1", outageType="Planned", startTime="10/08/2026 10:00",
+                   estRestoreTime="10/08/2026 11:00"), t)
+        self.observe(
+            detail("2", outageType="Planned", startTime="10/08/2026 11:01",
+                   estRestoreTime="10/08/2026 12:00"), t)
+        outages, _, _ = self.load()
+        self.assertTrue(all(o.chain == () for o in outages))
+
+    def test_the_same_town_far_apart_is_not_a_chain(self):
+        """Two faults in one big town are not the same spot failing twice."""
+        t = datetime(2026, 8, 10, 12, tzinfo=timezone.utc)
+        self.observe(
+            detail("1", startTime="10/08/2026 10:00", outageType="Restored",
+                   restoreTime="10/08/2026 11:00"), t)
+        self.observe(
+            detail("2", point={"c": "53.40858,-6.27098"},  # ~4.5 km north
+                   startTime="10/08/2026 11:01", outageType="Restored",
+                   restoreTime="10/08/2026 11:20"), t)
+        outages, _, _ = self.load()
+        self.assertTrue(all(o.chain == () for o in outages))
+
+
 class TestCountyMonth(SiteModelCase):
     def test_planned_works_are_kept_out_of_the_grade(self):
         t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)

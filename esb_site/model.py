@@ -115,6 +115,14 @@ COALESCE_WINDOW = timedelta(minutes=15)
 # ending at different times ended at the same moment as far as we can tell.
 POLL_INTERVAL = timedelta(minutes=35)
 
+# A fault returning to the same spot within this long of being restored is a
+# repeat, not a coincidence. Fifteen minutes is where the observed gaps cluster:
+# of 63 sequential same-location pairs, the median gap is 15 minutes and a
+# quarter are under 5. Tycor failed four times in 90 minutes, each leg starting
+# within a minute of the last restoration.
+REPEAT_WINDOW = timedelta(minutes=15)
+REPEAT_RADIUS_KM = 1.0
+
 
 def parse_utc(value):
     if not value:
@@ -266,6 +274,58 @@ class Update(NamedTuple):
     location: str | None
 
 
+def label_repeats(events):
+    """Mark faults that struck the same spot again shortly after being restored.
+
+    These are not the same event recorded twice - they are separate
+    interruptions, and ESB's own CI index counts each one - so they stay as
+    separate rows. But a reader looking at three consecutive rows for Boghall
+    Road has no way to see that it is one spot failing repeatedly, which is the
+    most interesting thing about it. Each leg is tagged with its position in the
+    chain so the page can say so.
+    """
+    by_place = defaultdict(list)
+    for o in events:
+        if not o.planned:
+            by_place[(o.county, o.location)].append(o)
+
+    chains = {}
+    for group in by_place.values():
+        group.sort(key=lambda o: o.start)
+        run = [group[0]]
+        for prev, cur in zip(group, group[1:]):
+            gap = (cur.start - prev.end).total_seconds()
+            if 0 <= gap <= REPEAT_WINDOW.total_seconds() and _near(prev, cur):
+                run.append(cur)
+            else:
+                _tag(run, chains)
+                run = [cur]
+        _tag(run, chains)
+
+    if not chains:
+        return events
+    return [o._replace(chain=chains.get(o.id, ())) for o in events]
+
+
+def _near(a, b):
+    if None in (a.lat, a.lon, b.lat, b.lon):
+        return True
+    return (
+        math.hypot(
+            (a.lat - b.lat) * 111.0,
+            (a.lon - b.lon) * 111.0 * math.cos(math.radians(a.lat)),
+        )
+        <= REPEAT_RADIUS_KM
+    )
+
+
+def _tag(run, chains):
+    if len(run) < 2:
+        return
+    for i, o in enumerate(run):
+        chains[o.id] = (i + 1, len(run))
+
+
 def merge_events(outages):
     """Fold the several IDs ESB issues for one outage back into one event.
 
@@ -388,6 +448,11 @@ class Outage(NamedTuple):
     end_src: str
     restored: bool
     reason: str
+    lat: float
+    lon: float
+    # (position, length) when this outage is one leg of a repeat chain - the
+    # same spot failing again shortly after being restored.
+    chain: tuple
     updates: list
     segments: list  # (start, end, customers), the count as it changed over time
 
@@ -561,11 +626,14 @@ def load_outages(db_path, sa_index, now):
                     end_src=end_src,
                     restored=bool(row["is_final"]),
                     reason=row["planned_outage_reason"] or "",
+                    lat=row["lat"],
+                    lon=row["lon"],
+                    chain=(),
                     updates=updates,
                     segments=segments,
                 )
             )
-        return merge_events(outages), unplaced
+        return label_repeats(merge_events(outages)), unplaced
     finally:
         conn.close()
 

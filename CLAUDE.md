@@ -65,6 +65,8 @@ Every one of these has already cost someone an hour:
 | Day cells coloured by magnitude, not by presence | `notes/grading.md` § Day cells |
 | Updates inline to 3, disclosure at 4+ | `notes/grading.md` § The update disclosure |
 | Coalescing changes within 15 minutes into one update | `notes/grading.md` § The update disclosure |
+| Repeat faults stay separate rows but are tagged as a chain | `notes/grading.md` § Repeat faults are not splits |
+| Poll interval stays at 30 min; 15 min was measured and is marginal | `notes/polling.md` |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries

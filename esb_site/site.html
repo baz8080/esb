@@ -151,6 +151,11 @@
   .case .when { color: var(--muted); font-size: 12.5px; margin-left: auto; font-variant-numeric: tabular-nums; }
   .case .sum { color: var(--ink-2); font-size: 13px; margin-top: 3px; }
 
+  .repeat {
+    display: inline-block; margin-top: 5px; font-size: 12px; font-weight: 600;
+    color: var(--serious); background: color-mix(in srgb, var(--serious) 14%, transparent);
+    border-radius: 4px; padding: 2px 8px;
+  }
   .tll { font-size: 11.5px; color: var(--muted); margin-top: 9px; }
   .tl { list-style: none; margin: 3px 0 0; padding: 0 0 0 15px; border-left: 2px solid var(--grid); }
   .tl li { position: relative; font-size: 13px; color: var(--ink-2); padding: 3px 0; }
@@ -467,8 +472,8 @@ function renderCounty() {
 }
 
 function caseHtml(k) {
-  // [id, location, planned, customers, start, end, endKnown, reason, updates]
-  var planned = k[2], ups = k[8];
+  // [id, location, planned, customers, start, end, endSrc, reason, chain, updates]
+  var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
   var bits = [plural(k[3], "customer"), "began " + when(k[4])];
   if (k[5]) bits.push(END_LABEL[k[6]].replace("{when}", when(k[5])));
@@ -479,6 +484,10 @@ function caseHtml(k) {
     '<span class="when">' +
       (dur == null ? "" : fmtHours(dur) + (k[6] === "restored" ? "" : " est.")) + "</span></div>" +
     '<div class="sum">' + bits.join(" · ") + "</div>" +
+    (chain && chain.length
+      ? '<div class="repeat">Repeat fault — outage ' + chain[0] + " of " + chain[1] +
+        " at this location in quick succession</div>"
+      : "") +
     updateList(ups) + "</div>";
 }
 

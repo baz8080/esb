@@ -158,6 +158,7 @@ def case_record(o):
         _short(o.end),
         o.end_src,
         o.reason.title() if o.reason else "",
+        list(o.chain),
         [
             [_short(u.at), u.kind, u.customers, _short_raw(u.est_restore), _short_raw(u.restore)]
             for u in o.updates
@@ -182,6 +183,7 @@ def shard(county, outages, months):
 
 def _case_html(k):
     planned = k[2]
+    chain = k[8]
     bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s"), f"began {_when(k[4])}"]
     span = ""
     if k[4] and k[5]:
@@ -201,9 +203,20 @@ def _case_html(k):
             f'{"Planned" if planned else "Fault"}</span>',
             f'<span class="when">{span}</span></div>',
             f'<div class="sum">{" · ".join(bits)}</div>',
-            _updates_html(k[8]),
+            _chain_html(chain),
+            _updates_html(k[9]),
             "</div>",
         ]
+    )
+
+
+def _chain_html(chain):
+    """A repeat fault is a separate interruption, but the reader wants the run."""
+    if not chain:
+        return ""
+    return (
+        f'<div class="repeat">Repeat fault — outage {chain[0]} of {chain[1]} '
+        f"at this location in quick succession</div>"
     )
 
 
