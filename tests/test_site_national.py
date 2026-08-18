@@ -42,8 +42,12 @@ class NationalCase(unittest.TestCase):
         # The clock is pinned so the assertions do not drift as the corpus grows
         # past them; it moves forward when the reference window is widened.
         cls.now = datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc)
-        cls.outages, cls.unplaced = model.load_outages(DB_PATH, cls.index, cls.now)
-        cls.lo, cls.hi = model.COLLECTION_START, cls.now
+        cls.outages, cls.unplaced, cls.until = model.load_outages(
+            DB_PATH, cls.index, cls.now
+        )
+        # The window ends where the data does, not where the clock is, which is
+        # the window the site publishes against.
+        cls.lo, cls.hi = model.COLLECTION_START, cls.until
         cls.faults = [o for o in cls.outages if not o.planned]
         # Only outages that began inside the window can be counted as
         # interruptions, or the rate is inflated by ones already under way.
@@ -54,7 +58,7 @@ class NationalCase(unittest.TestCase):
         return (self.hi - self.lo).total_seconds() / (365 * 86400)
 
     def national_cml(self):
-        return model.national_cml(self.outages, self.now)
+        return model.national_cml(self.outages, self.until)
 
     def national_ci(self):
         return sum(o.customers for o in self.started) / model.NATIONAL_CUSTOMERS / self.years
@@ -104,7 +108,9 @@ class NationalCase(unittest.TestCase):
         concluding the network fell over.
         """
         judged = [
-            o for o in self.faults if o.start >= self.lo and o.end <= self.hi
+            o
+            for o in self.faults
+            if o.start >= self.lo and o.end <= self.hi and not o.ongoing
         ]
         seen = sum(o.customers for o in judged)
         within = sum(
@@ -138,10 +144,9 @@ class NationalCase(unittest.TestCase):
 
     def test_grades_are_spread_across_the_bands(self):
         """A scale on which every county scores the same is not a scale."""
-        national = self.national_cml()
         grades = {
             model.county_month(
-                self.outages, c, self.index.customers[c], "2026-08", self.now, national
+                self.outages, c, self.index.customers[c], "2026-08", self.now, self.until
             )["grade"]
             for c in self.index.counties
         }
@@ -149,7 +154,9 @@ class NationalCase(unittest.TestCase):
 
     def test_the_payload_row_matches_what_the_model_produces(self):
         """Guards the positional stats row the templates index into."""
-        row = render.build(self.outages, self.index, self.now)[0]["stats"]["Dublin"]["2026-08"]
+        row = render.build(
+            self.outages, self.index, self.now, self.until
+        )[0]["stats"]["Dublin"]["2026-08"]
         cells, grade, within, cml, faults, planned, hit, over = row
         self.assertEqual(len(cells), 31)
         self.assertIn(grade, set("ABCDF") | {None})
@@ -172,10 +179,10 @@ class PayloadCase(unittest.TestCase):
     def setUpClass(cls):
         index = model.SmallAreaIndex.load()
         now = datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc)
-        outages, _ = model.load_outages(DB_PATH, index, now)
+        outages, _, until = model.load_outages(DB_PATH, index, now)
         cls._tmp = tempfile.TemporaryDirectory()
         cls.dir = Path(cls._tmp.name)
-        cls.data = render.write(cls.dir, outages, index, now)
+        cls.data = render.write(cls.dir, outages, index, now, until)
 
     @classmethod
     def tearDownClass(cls):
@@ -195,7 +202,7 @@ class PayloadCase(unittest.TestCase):
         self.assertEqual(
             set(self.data),
             {
-                "generated", "start", "months", "esb",
+                "generated", "observed", "stale", "partial", "start", "months", "esb",
                 "counties", "customers", "stats", "national",
             },
         )

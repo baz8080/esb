@@ -86,7 +86,7 @@ MIN_GRADED_FAULTS = 5
 DAY_BUCKETS = ((0.05, 0), (0.3, 1), (1.0, 2), (3.0, 3))
 DAY_SEVERE = 4
 DAY_PLANNED = 5  # planned works, and no fault worth colouring
-DAY_NO_DATA = 8  # before collection started
+DAY_NO_DATA = 8  # outside the window the collector actually covered
 DAY_FUTURE = 9
 
 # Fields whose changes a reader would recognise as an update to their outage.
@@ -199,9 +199,12 @@ class SmallAreaIndex:
         self._cache = {}
         self.county_pop = defaultdict(int)
         for lat, lon, county, town, pop in rows:
-            self._bins[(int(lat / self.BIN), int(lon / self.BIN))].append(
-                (lat, lon, county, town)
-            )
+            # math.floor, not int: Irish longitudes are negative and int()
+            # truncates towards zero, so int() here against the floor() in
+            # `place` files every centroid one bin east of where it is sought.
+            self._bins[
+                (math.floor(lat / self.BIN), math.floor(lon / self.BIN))
+            ].append((lat, lon, county, town))
             self.county_pop[county] += pop
         self.counties = sorted(self.county_pop)
         national = sum(self.county_pop.values())
@@ -421,6 +424,7 @@ def _merge_group(members):
         end=end,
         end_src=end_src,
         restored=all(o.restored for o in members),
+        ongoing=any(o.ongoing for o in members),
         customers=max(c for _, _, c in segments),
         updates=_envelope_updates(members, segments, end, end_src, lead.planned),
         segments=segments,
@@ -480,6 +484,9 @@ class Outage(NamedTuple):
     # estimate, "listed" the last time the outage was still in the feed.
     end_src: str
     restored: bool
+    # Still listed when the collector last looked, so the time it has been out
+    # is a floor rather than a length and there is nothing to judge it against.
+    ongoing: bool
     reason: str
     lat: float
     lon: float
@@ -584,11 +591,40 @@ def _build_updates(row, rows_changes):
     return deduped
 
 
+def observed_until(conn):
+    """The last instant the collector is known to have looked at the feed.
+
+    Taken from the run log rather than from the outages, because a poll that
+    listed nothing still observed that nothing was happening, and taken from
+    runs that reached the API - `n_listed` is null when a run died on auth or
+    could not connect, and a run that saw nothing saw nothing.
+
+    This is deliberately not `now`. The build clock keeps moving whether or not
+    the Raspberry Pi is still collecting, and a site that treats "no data" as
+    "no outages" publishes a clean bill of health for days nobody watched.
+    Falls back to the last sighting, and then to None for a caller to resolve.
+    """
+    row = conn.execute(
+        "SELECT MAX(started_at_utc) AS t FROM run WHERE n_listed IS NOT NULL"
+    ).fetchone()
+    if row and row["t"]:
+        return parse_utc(row["t"])
+    row = conn.execute("SELECT MAX(last_seen_utc) AS t FROM outage").fetchone()
+    return parse_utc(row["t"]) if row and row["t"] else None
+
+
 def load_outages(db_path, sa_index, now):
-    """Read every outage that can be placed and timed, newest state first."""
+    """Read every outage that can be placed and timed, newest state first.
+
+    Returns the outages, the count that could not be placed, and the instant the
+    collected data reaches - every window in this module ends at that horizon
+    rather than at `now`, which is only ever used to decide what is in the
+    future.
+    """
     conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     try:
+        until = observed_until(conn) or now
         changes = _timelines(conn)
         outages, unplaced = [], 0
         for row in conn.execute(
@@ -612,7 +648,7 @@ def load_outages(db_path, sa_index, now):
             start = parse_utc(row["start_time_utc"])
             restore = parse_utc(row["restore_time_utc"])
             est = parse_utc(row["est_restore_time_utc"])
-            last_seen = parse_utc(row["last_seen_utc"]) or now
+            last_seen = parse_utc(row["last_seen_utc"]) or until
             if restore:
                 end, end_src = restore, "restored"
             elif est and start < est <= last_seen:
@@ -630,7 +666,16 @@ def load_outages(db_path, sa_index, now):
                 # estimate), or the outage stopped being listed before reaching
                 # it, which makes leaving the feed the tighter of the two bounds.
                 end, end_src = max(start, last_seen), "listed"
-            end = min(end, now)
+            if end_src != "restored":
+                # Nothing can be *inferred* past the last poll, whatever the
+                # clock says. A restoreTime is ESB's own statement and stands
+                # even when it lands after the sighting that carried it.
+                end = min(end, until)
+            # An outage still listed when the collector last looked has not
+            # ended yet: the time it has been out so far is a lower bound, and
+            # scoring it as a restoration would count every fresh fault as a
+            # fast one.
+            ongoing = not restore and last_seen >= until - POLL_INTERVAL
 
             # The reported customer count as it changed over the outage's life,
             # so customer-minutes can be integrated rather than approximated.
@@ -643,7 +688,18 @@ def load_outages(db_path, sa_index, now):
                     segments.append((at, counts[i + 1][0] if i + 1 < len(counts) else end, n))
             else:
                 segments.append((start, end, row["num_cust_affected"] or 0))
-            segments = [(max(s, start), min(e, end), n) for s, e, n in segments if e > s]
+            # Clamped first, then tested. A segment can be non-empty in the
+            # raw observations and empty once cut to the outage's own window -
+            # an observation recorded after ESB's restore time, most often,
+            # because restored outages sit in the feed for hours. Testing the
+            # uncut bounds kept those, inverted, and `customers` below maxes
+            # over them: the peak is the highest count reported while the
+            # outage was live, not the highest ever attached to its id.
+            segments = [
+                (max(s, start), min(e, end), n)
+                for s, e, n in segments
+                if min(e, end) > max(s, start)
+            ]
 
             outages.append(
                 Outage(
@@ -658,6 +714,7 @@ def load_outages(db_path, sa_index, now):
                     end=end,
                     end_src=end_src,
                     restored=bool(row["is_final"]),
+                    ongoing=ongoing,
                     reason=row["planned_outage_reason"] or "",
                     lat=row["lat"],
                     lon=row["lon"],
@@ -666,24 +723,43 @@ def load_outages(db_path, sa_index, now):
                     segments=segments,
                 )
             )
-        return label_repeats(merge_events(outages)), unplaced
+        return label_repeats(merge_events(outages)), unplaced, until
     finally:
         conn.close()
 
 
-def observed_window(ym, now):
-    """The part of month `ym` this site actually watched."""
+def partial_days(until):
+    """The days at either end of collection that were watched for only part of.
+
+    The first day and the last are hours long rather than 24, so their cells are
+    built from less time than the days beside them - and because the buckets
+    count disruption accumulated over a day, a short day reads calmer than it
+    was. The colour still says what was seen; these dates let the page say the
+    day was short.
+    """
+    days = {COLLECTION_START.date(), (until - timedelta(microseconds=1)).date()}
+    return sorted(d.isoformat() for d in days)
+
+
+def observed_window(ym, until):
+    """The part of month `ym` this site actually watched.
+
+    Ends at the collection horizon, not at the clock: time the collector was
+    down is time this site did not watch, and dividing by it would report a
+    quiet network rather than an absent one.
+    """
     lo, hi = month_bounds(ym)
-    return max(lo, COLLECTION_START), min(hi, now)
+    return max(lo, COLLECTION_START), min(hi, until)
 
 
-def county_month(outages, county, customers, ym, now, national):
+def county_month(outages, county, customers, ym, now, until):
     """Statistics for one county in one month.
 
     `outages` is the county's full list; filtering here rather than at the call
-    site keeps the arithmetic and the selection in one place.
+    site keeps the arithmetic and the selection in one place. `now` decides only
+    what is still in the future; everything measured ends at `until`.
     """
-    lo, hi = observed_window(ym, now)
+    lo, hi = observed_window(ym, until)
     observed_minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
     observed_days = observed_minutes / 1440.0
     month_lo, month_hi = month_bounds(ym)
@@ -692,8 +768,10 @@ def county_month(outages, county, customers, ym, now, national):
     faults = planned = 0
     customers_hit = 0
     # The charter measure counts only outages that both started and finished
-    # inside the observed window, because an outage still running has no
-    # restoration time to judge and one that began earlier was judged already.
+    # inside the observed window: one that began earlier was judged already, and
+    # one still running has no restoration to judge. The window test alone
+    # cannot catch the second - a live outage ends at the horizon, and so does
+    # the window - so `ongoing` carries it.
     judged = judged_within = 0
     over_compensation = 0
     per_day_fault = defaultdict(float)
@@ -714,11 +792,14 @@ def county_month(outages, county, customers, ym, now, national):
             customers_hit += o.customers
             if o.start >= lo and o.end <= hi:
                 hours = o.minutes / 60.0
-                judged += o.customers
-                if hours <= CHARTER_TARGET_HOURS:
-                    judged_within += o.customers
+                # Past 24 hours is true of an outage still out there: the clock
+                # it has already run is a lower bound, so this one still counts.
                 if hours > CHARTER_COMPENSATION_HOURS:
                     over_compensation += 1
+                if not o.ongoing:
+                    judged += o.customers
+                    if hours <= CHARTER_TARGET_HOURS:
+                        judged_within += o.customers
 
         # Split the outage across the days it spans, so a fault running past
         # midnight colours both days in proportion to the time it took from each.
@@ -746,7 +827,10 @@ def county_month(outages, county, customers, ym, now, national):
         day_lo = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
         if day_lo >= now:
             cells.append(DAY_FUTURE)
-        elif day_lo + timedelta(days=1) <= COLLECTION_START:
+        elif day_lo + timedelta(days=1) <= COLLECTION_START or day_lo >= until:
+            # Either side of the collected window is "no data". A day the
+            # collector never reached is not a day without outages, and
+            # colouring it would publish an all-clear nobody checked.
             cells.append(DAY_NO_DATA)
         else:
             cells.append(
@@ -775,7 +859,7 @@ def county_month(outages, county, customers, ym, now, national):
     }
 
 
-def national_cml(outages, now, ym=None):
+def national_cml(outages, until, ym=None):
     """Annualised unplanned CML across the whole network.
 
     This is the number that anchors the site's credibility: it is directly
@@ -783,9 +867,9 @@ def national_cml(outages, now, ym=None):
     suite holds it to that comparison.
     """
     if ym:
-        lo, hi = observed_window(ym, now)
+        lo, hi = observed_window(ym, until)
     else:
-        lo, hi = COLLECTION_START, now
+        lo, hi = COLLECTION_START, until
     minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
     total = sum(o.customer_minutes(lo, hi) for o in outages if not o.planned)
     return total / NATIONAL_CUSTOMERS * MINUTES_PER_YEAR / minutes

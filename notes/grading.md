@@ -277,3 +277,80 @@ change seconds apart, so without coalescing them a plain `Fault → Restored`
 transition read as two updates and inflated a third of all outages into the
 disclosure. Changes within 15 minutes of each other are one update; polls are 30
 minutes apart, so nothing real is merged.
+
+## What the clock knows and what the data knows (2026-08-18)
+
+Two windows were being conflated: the build clock, and how far the collected
+data actually reaches. `now` was used for both, which is harmless only while the
+collector is keeping up.
+
+**Every measured window now ends at the collection horizon** — the last run in
+the log that reached the feed (`n_listed IS NOT NULL`; a run that died on auth
+or could not connect observed nothing). `now` survives in exactly one place: to
+decide which days are still in the future.
+
+Two things were wrong, both in the same direction — they made an absent
+collector look like a calm network.
+
+- **Days past the horizon were coloured.** A day nobody polled rendered as "no
+  significant fault", in green, with a build timestamp beside it that looked
+  fresh. On the corpus as checked out, 17 and 18 August were published as quiet
+  for all 26 counties against a last observation of 16 August 23:00. They are
+  now `DAY_NO_DATA`, and the page prints the horizon next to the build time,
+  flagged past 24 hours.
+- **CML was divided by wall-clock time.** Annualising over a window that
+  included the gap understated the rate: on that same corpus, 161.7 against a
+  corrected 176.1 CML/yr, a 9% understatement from 36 hours of absence.
+
+### An outage still listed is not a fast restoration
+
+The charter share was meant to skip outages still running — "no restoration time
+to judge" — but the test that was supposed to do it, `o.end <= hi`, could not:
+an unfinished outage ends at the horizon and so does the window, so it always
+passed and was scored on how long it had been out *so far*.
+
+A fault half an hour old counted as restored inside four hours. Replaying the
+corpus at 05:40 (the Pages build time) on each of 16 August days, **15 of the 16
+had at least one fault open** — 25 on the 4th — so this flattered the grade on
+essentially every build. `Outage.ongoing` now carries it: still listed within a
+poll cycle of the horizon, and no restore time.
+
+Rejected: excluding every outage without a confirmed `restoreTime`. That would
+also drop the ones that simply stopped being listed, which is the ordinary way a
+fault ends here, and it contradicts ending an outage on ESB's estimate above.
+The question is whether the outage was *over*, not whether ESB said so.
+
+Kept deliberately: an ongoing outage past 24 hours still counts against the
+compensation threshold. The time it has already run is a lower bound, so "this
+has been out more than a day" is true whatever happens next.
+
+### The peak is the highest count while the outage was live
+
+The customer count is clipped to the outage's own window before empty segments
+are dropped, not after. ESB leaves restored outages sitting in the feed for
+hours, and those late observations sometimes carry a revised count; testing the
+uncut bounds kept them as inverted segments, and `customers` maxes over the lot.
+
+So `customers` means *the most customers reported off at any moment the outage
+was running*, and a figure attached to the id after ESB called it restored does
+not raise it. On the corpus as it stands no event's peak came from one of these
+— 17 events carried an inverted segment and none of them was the maximum — so
+this changes no published number today. It is a definition, fixed before a
+revision upward makes it a number.
+
+### Short days say so
+
+The first day of collection and the last are watched for hours, not 24. Their
+cells are built from less time than the days beside them, and because the
+buckets count disruption accumulated across a day, a short day reads calmer than
+it was — 31 July 2026 is under three hours and renders green.
+
+Rejected: greying them out. The trailing short day is the most recent day the
+site has, which is the one a reader most wants to see. Also rejected: pro-rating
+the day's minutes up to 24 hours, which invents precision a 30-minute poll does
+not have and would make a single fault in a two-hour window look like a
+catastrophe.
+
+Kept: the colour is what was actually seen, and the day's tooltip says "only
+part of this day was recorded". Two dates for the whole site, so they sit at the
+top of the payload rather than on every county's row.

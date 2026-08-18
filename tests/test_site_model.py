@@ -7,6 +7,7 @@ actually writes rather than against a hand-made fixture.
 
 from __future__ import annotations
 
+import math
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
@@ -14,7 +15,7 @@ from pathlib import Path
 
 from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
-from esb_site import model
+from esb_site import model, render
 
 NOW = datetime(2026, 8, 20, 0, 0, 0, tzinfo=timezone.utc)
 
@@ -56,10 +57,20 @@ class SiteModelCase(unittest.TestCase):
         self.store.apply_list(iso(at), [item])
         self.store.apply_detail(iso(at), normalize_detail(body))
 
+    def poll(self, at, n_listed=0):
+        """Record a run that reached the feed, which is what sets the horizon."""
+        self.store.record_run(
+            run_id=iso(at), started_at_utc=iso(at), status="ok", n_listed=n_listed
+        )
+
     def load(self, now=NOW):
         self.store.conn.commit()
         index = model.SmallAreaIndex.load()
-        outages, unplaced = model.load_outages(self.store.db_path, index, now)
+        outages, unplaced, until = model.load_outages(self.store.db_path, index, now)
+        # Where the collected data stops, as distinct from the clock. Kept on
+        # the case so the county-month tests can measure the same window the
+        # site does.
+        self.until = until
         return outages, unplaced, index
 
 
@@ -546,7 +557,7 @@ class TestCountyMonth(SiteModelCase):
         )
         outages, _, index = self.load()
         s = model.county_month(
-            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, 100.0
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
         )
         self.assertEqual(s["planned"], 1)
         self.assertEqual(s["faults"], 0)
@@ -556,7 +567,7 @@ class TestCountyMonth(SiteModelCase):
     def test_cells_cover_the_whole_month_and_mark_the_unobserved(self):
         outages, _, index = self.load()
         s = model.county_month(
-            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, 100.0
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
         )
         self.assertEqual(len(s["cells"]), 31)
         # NOW is the 20th, so the 21st onward is still to come.
@@ -565,14 +576,14 @@ class TestCountyMonth(SiteModelCase):
     def test_days_before_collection_started_are_not_days_without_outages(self):
         outages, _, index = self.load()
         s = model.county_month(
-            outages, "Dublin", index.customers["Dublin"], "2026-07", NOW, 100.0
+            outages, "Dublin", index.customers["Dublin"], "2026-07", NOW, self.until
         )
         self.assertEqual(set(s["cells"][:30]), {str(model.DAY_NO_DATA)})
 
     def test_a_month_too_short_to_judge_is_left_ungraded(self):
         outages, _, index = self.load()
         s = model.county_month(
-            outages, "Dublin", index.customers["Dublin"], "2026-07", NOW, 100.0
+            outages, "Dublin", index.customers["Dublin"], "2026-07", NOW, self.until
         )
         self.assertLess(s["observed_days"], model.MIN_GRADED_DAYS)
         self.assertIsNone(s["grade"])
@@ -580,3 +591,247 @@ class TestCountyMonth(SiteModelCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPlacementGrid(unittest.TestCase):
+    """The grid is an index, not a model: it must agree with brute force."""
+
+    def test_the_nearest_centroid_wins_west_of_greenwich(self):
+        """Ireland is entirely at negative longitude.
+
+        `int()` truncates towards zero and `math.floor()` does not, so building
+        the bins with one and reading them with the other files every centroid
+        one bin east of where it is looked up, and the ring search can then
+        settle for a centroid across a county line.
+        """
+        index = model.SmallAreaIndex.load()
+        rows = [
+            (lat, lon, county, town)
+            for cell in index._bins.values()
+            for (lat, lon, county, town) in cell
+        ]
+
+        def nearest(lat, lon):
+            return min(
+                rows,
+                key=lambda r: math.hypot(
+                    (r[0] - lat) * 111.0,
+                    (r[1] - lon) * 111.0 * math.cos(math.radians(lat)),
+                ),
+            )[2:]
+
+        # Points either side of a county line, where a one-bin shift shows up.
+        for lat, lon in [
+            (53.38763, -6.46575),  # Macetown: Dublin, a shade off the Meath line
+            (53.55878, -7.65083),
+            (53.5254, -8.29095),
+            (53.43591, -7.99234),
+            (53.59973, -9.54275),
+            (53.48538, -9.25047),
+        ]:
+            self.assertEqual(index.place(lat, lon), nearest(lat, lon), f"{lat},{lon}")
+
+
+class TestCollectionHorizon(SiteModelCase):
+    """`now` says what is in the future; the data says what is known."""
+
+    def test_the_horizon_is_the_last_run_that_reached_the_feed(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.load()
+        self.assertEqual(self.until, datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+
+    def test_a_run_that_never_reached_the_feed_does_not_extend_it(self):
+        """An auth failure or a dead connection observed nothing."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.store.record_run(
+            run_id="dead",
+            started_at_utc=iso(datetime(2026, 8, 15, 6, tzinfo=timezone.utc)),
+            status="unreachable",
+        )
+        self.load()
+        self.assertEqual(self.until, datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+
+    def test_days_past_the_horizon_are_not_days_without_outages(self):
+        """The failure this exists to stop: silence published as calm."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        outages, _, index = self.load()
+        s = model.county_month(
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
+        )
+        # Collection stopped on the 12th and NOW is the 20th: the 13th to the
+        # 19th are unwatched, and the 20th onward is still to come.
+        self.assertEqual(set(s["cells"][12:19]), {str(model.DAY_NO_DATA)})
+        self.assertEqual(set(s["cells"][19:]), {str(model.DAY_FUTURE)})
+
+    def test_the_measured_window_stops_at_the_horizon(self):
+        """Time the collector was down is not time this site watched."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        outages, _, index = self.load()
+        s = model.county_month(
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
+        )
+        self.assertAlmostEqual(s["observed_days"], 11.25, places=2)
+
+
+class TestOngoingOutages(SiteModelCase):
+    """An outage still out has no restoration to judge it on."""
+
+    def judged(self, outages, index):
+        return model.county_month(
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
+        )
+
+    def test_an_outage_still_listed_at_the_last_poll_is_not_judged(self):
+        # Out for 30 minutes and still going when collection stopped. Scoring
+        # that as a restoration inside 4 hours is how a live fault flatters the
+        # grade on every build.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc)
+        self.observe(detail("1", startTime="10/08/2026 10:00"), t)
+        self.poll(t, n_listed=1)
+        outages, _, index = self.load()
+        self.assertTrue(outages[0].ongoing)
+        s = self.judged(outages, index)
+        self.assertEqual(s["faults"], 1)
+        self.assertIsNone(s["within"])
+
+    def test_a_restored_outage_is_judged_however_recent(self):
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc)
+        self.observe(
+            detail("1", outageType="Restored", restoreTime="10/08/2026 10:20"), t
+        )
+        self.poll(t, n_listed=1)
+        outages, _, index = self.load()
+        self.assertFalse(outages[0].ongoing)
+        self.assertEqual(self.judged(outages, index)["within"], 100.0)
+
+    def test_one_stopped_being_listed_before_the_horizon_is_judged(self):
+        """Gone from the feed is an ending, even without a restore time."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=0)
+        outages, _, index = self.load()
+        self.assertFalse(outages[0].ongoing)
+        self.assertIsNotNone(self.judged(outages, index)["within"])
+
+    def test_a_long_live_outage_still_counts_against_compensation(self):
+        """Past 24 hours is true of an outage that has not ended yet."""
+        self.observe(
+            detail("1", startTime="09/08/2026 08:00"),
+            datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc),
+        )
+        self.poll(datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc), n_listed=1)
+        outages, _, index = self.load()
+        self.assertTrue(outages[0].ongoing)
+        self.assertEqual(self.judged(outages, index)["over_compensation"], 1)
+
+
+class TestShardMonths(SiteModelCase):
+    """The list under a month and the tiles above it count the same outages."""
+
+    def test_an_outage_crossing_midnight_on_the_last_is_listed_in_both(self):
+        # 00:00 Dublin on 1 August is 23:00 UTC on 31 July, so this one is
+        # counted in both months. Filed by its start month alone it went
+        # missing from August's list while August's fault tile still counted
+        # it, and a reader could count the rows and come up one short.
+        self.observe(
+            detail("1", startTime="01/08/2026 00:00"),
+            datetime(2026, 7, 31, 23, 30, tzinfo=timezone.utc),
+        )
+        self.observe(
+            detail(
+                "1",
+                startTime="01/08/2026 00:00",
+                outageType="Restored",
+                restoreTime="01/08/2026 12:00",
+            ),
+            datetime(2026, 8, 1, 11, 30, tzinfo=timezone.utc),
+        )
+        self.poll(datetime(2026, 8, 1, 11, 30, tzinfo=timezone.utc), n_listed=1)
+        outages, _, index = self.load()
+        months = ["2026-07", "2026-08"]
+
+        by_month = render.shard(outages, months, self.until)
+        self.assertEqual(len(by_month["2026-07"]), 1)
+        self.assertEqual(len(by_month["2026-08"]), 1)
+
+        for ym in months:
+            counted = model.county_month(
+                outages, "Dublin", index.customers["Dublin"], ym, NOW, self.until
+            )["faults"]
+            self.assertEqual(counted, len(by_month[ym]), ym)
+
+    def test_a_month_the_outage_never_touches_does_not_list_it(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 10, 9, tzinfo=timezone.utc), n_listed=1)
+        outages, _, _ = self.load()
+        by_month = render.shard(outages, ["2026-07", "2026-08"], self.until)
+        self.assertEqual(by_month["2026-07"], [])
+        self.assertEqual(len(by_month["2026-08"]), 1)
+
+
+class TestSegmentWindow(SiteModelCase):
+    """The peak is the highest count reported while the outage was live."""
+
+    def test_a_count_revised_after_the_restore_is_not_the_peak(self):
+        # Restored at 11:00 Dublin, then left sitting in the feed for another
+        # two polls with the count revised upward - which happens because ESB
+        # does not drop restored outages straight away. Those observations
+        # describe an outage that was already over.
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc))
+        for at, n in [
+            (datetime(2026, 8, 10, 10, 30, tzinfo=timezone.utc), 250),
+            (datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc), 300),
+        ]:
+            self.observe(
+                detail(
+                    "1",
+                    outageType="Restored",
+                    restoreTime="10/08/2026 11:00",
+                    numCustAffected=n,
+                ),
+                at,
+            )
+        outages, _, _ = self.load()
+        o = outages[0]
+        self.assertEqual(o.end, datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc))
+        # Every segment lies inside the outage, and none of them is inverted.
+        for seg_start, seg_end, _ in o.segments:
+            self.assertLess(seg_start, seg_end)
+            self.assertGreaterEqual(seg_start, o.start)
+            self.assertLessEqual(seg_end, o.end)
+        self.assertEqual(o.customers, 100)
+
+
+class TestPartialDays(SiteModelCase):
+    """A day watched for six hours is not a quiet day."""
+
+    def test_the_first_and_last_days_of_collection_are_short(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        self.load()
+        self.assertEqual(
+            model.partial_days(self.until),
+            [model.COLLECTION_START.date().isoformat(), "2026-08-12"],
+        )
+
+    def test_a_horizon_on_the_stroke_of_midnight_leaves_a_whole_day(self):
+        """[lo, hi) - a window ending at 00:00 covers the previous day fully."""
+        until = datetime(2026, 8, 13, 0, 0, tzinfo=timezone.utc)
+        self.assertEqual(model.partial_days(until)[-1], "2026-08-12")
+
+    def test_the_short_days_are_the_ones_the_page_qualifies(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        outages, _, index = self.load()
+        cells = model.county_month(
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
+        )["cells"]
+        html = render._day_cells(cells, "2026-08", model.partial_days(self.until))
+        self.assertIn(f"2026-08-12: no significant fault{render.PARTIAL_NOTE}", html)
+        # The full days beside it say nothing extra, and neither does a day
+        # with no data to qualify.
+        self.assertIn('title="2026-08-11: no significant fault"', html)
+        self.assertIn('title="2026-08-13: no data collected for this day"', html)

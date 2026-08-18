@@ -45,17 +45,24 @@ def main(argv=None) -> int:
     )
 
     sa_index = model.SmallAreaIndex.load()
-    outages, unplaced = model.load_outages(db_path, sa_index, now)
+    outages, unplaced, until = model.load_outages(db_path, sa_index, now)
     if not outages:
         print("no placeable outages in the database", file=sys.stderr)
         return 1
 
-    render.write(args.out, outages, sa_index, now)
+    render.write(args.out, outages, sa_index, now, until)
 
-    national = model.national_cml(outages, now)
+    national = model.national_cml(outages, until)
     print(f"built {args.out} from {len(outages)} outages across {len(sa_index.counties)} counties")
     if unplaced:
         print(f"  {unplaced} outage(s) had coordinates too far from any Small Area to place")
+    # The horizon, not the clock: everything measured stops here, and a gap
+    # between the two is a collector that has stopped rather than a quiet week.
+    lag = now - until
+    print(f"  data covers up to {until:%Y-%m-%d %H:%M}Z ({lag.total_seconds() / 3600:.1f}h behind)")
+    if lag > render.STALE_AFTER:
+        print("  WARNING: the collected data is stale; days past the horizon "
+              "are published as no-data", file=sys.stderr)
     print(
         f"  national unplanned rate {national:.1f} CML/yr"
         f"  (ESB published {model.ESB_NATIONAL_CML} for 2024)"

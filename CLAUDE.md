@@ -77,6 +77,10 @@ Every one of these has already cost someone an hour:
 | Repeat faults stay separate rows but are tagged as a chain | `notes/grading.md` § Repeat faults are not splits |
 | Poll interval stays at 30 min; 15 min was measured and is marginal | `notes/polling.md` |
 | `startTime` is immutable and back-dated, so durations measure the outage | `notes/grading.md` § Does startTime drift |
+| Every measured window ends at the collection horizon, not at the build clock | `notes/grading.md` § What the clock knows |
+| An outage still listed at the last poll is not judged on the charter | `notes/grading.md` § An outage still listed |
+| Peak customers means the most off while the outage was live | `notes/grading.md` § The peak is the highest count |
+| Part-observed days keep their colour and say so in the tooltip | `notes/grading.md` § Short days say so |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries

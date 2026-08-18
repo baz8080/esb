@@ -53,7 +53,7 @@
   .banner .dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
   .banner strong { font-weight: 650; }
   .banner .meta { color: var(--muted); font-size: 13px; margin-left: auto; }
-  .banner .meta .stale { color: var(--critical); font-weight: 600; }
+  .stale { color: var(--critical); font-weight: 600; }
 
   .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 16px 0; }
   .tile { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
@@ -332,6 +332,9 @@
 <script>
 "use strict";
 var D = window.ESB_DATA || null;
+// The first and last days of collection are hours long rather than 24, so their
+// bars are built from less time than the rest and read calmer than they were.
+var PARTIAL = (D && D.partial) || [];
 var HIST = window.ESB_CASES = window.ESB_CASES || {};
 var HSTATE = {};
 var curMonth = null, curCounty = null;
@@ -389,10 +392,11 @@ function dayCells(cells, ym) {
   for (var i = 0; i < cells.length; i++) {
     var b = +cells[i], date = ym + "-" + String(i + 1).padStart(2, "0"), cap;
     if (b === 9) cap = date + ": still to come";
-    else if (b === 8) cap = date + ": before this site started collecting";
+    else if (b === 8) cap = date + ": no data collected for this day";
     else if (b === 5) cap = date + ": planned works only";
     else if (b === 0) cap = date + ": no significant fault";
     else cap = date + ": " + BUCKET[b] + " fault disruption";
+    if (b < 8 && PARTIAL.indexOf(date) !== -1) cap += " — only part of this day was recorded";
     out += '<i class="b' + b + '" title="' + esc(cap) + '" data-cap="' + esc(cap) + '"></i>';
   }
   return out;
@@ -613,8 +617,14 @@ function render() {
    number of distinct names rather than with time, so it is fetched on the first
    keystroke instead of loading for every reader who never searches. */
 var SEARCH_STATE = null;
+var SEARCH_WAITING = [];
 function ensureSearch(then) {
-  if (SEARCH_STATE === "ok" || SEARCH_STATE === "loading") return then();
+  if (SEARCH_STATE === "ok") return then();
+  // Queue rather than call straight back: a second keystroke arriving while
+  // search.js is still in flight would otherwise run the callback against an
+  // index that has not landed and report the search as permanently broken.
+  SEARCH_WAITING.push(then);
+  if (SEARCH_STATE === "loading") return;
   SEARCH_STATE = "loading";
   var s = document.createElement("script");
   s.src = "search.js" + (location.protocol === "file:" ? "" : "?v=" + encodeURIComponent(D.generated));
@@ -622,7 +632,9 @@ function ensureSearch(then) {
   function finish() {
     clearTimeout(timer);
     SEARCH_STATE = window.ESB_SEARCH ? "ok" : "error";
-    then();
+    var waiting = SEARCH_WAITING;
+    SEARCH_WAITING = [];
+    waiting.forEach(function (fn) { fn(); });
   }
   s.onload = finish;
   s.onerror = finish;
@@ -630,38 +642,49 @@ function ensureSearch(then) {
 }
 
 function runSearch() {
+  var box = document.getElementById("results");
+  if (document.getElementById("q").value.trim().length < 2) { box.hidden = true; return; }
+  if (SEARCH_STATE !== "ok") {
+    box.hidden = false;
+    box.innerHTML = '<div class="none">Searching…</div>';
+  }
+  ensureSearch(showResults);
+}
+
+function showResults() {
+  // The query is re-read rather than captured: a callback queued behind the
+  // index load fires after the reader has typed more, and the newest query is
+  // the one they are waiting on.
   var q = document.getElementById("q").value.trim().toLowerCase();
   var box = document.getElementById("results");
   if (q.length < 2) { box.hidden = true; return; }
-  ensureSearch(function () {
-    var idx = window.ESB_SEARCH;
-    if (!idx) {
-      box.hidden = false;
-      box.innerHTML = '<div class="none">Search is unavailable — try reloading.</div>';
-      return;
-    }
-    var hits = [];
-    // Counties first, so typing a county name never buries it under the towns
-    // inside it.
-    D.counties.forEach(function (c) {
-      if (c.toLowerCase().indexOf(q) === 0) hits.push([c, c, 0]);
-    });
-    D.counties.forEach(function (c) {
-      (idx[c] || []).forEach(function (name) {
-        var at = name.toLowerCase().indexOf(q);
-        if (at !== -1) hits.push([name, c, at + 1]);
-      });
-    });
-    hits.sort(function (a, b) { return a[2] - b[2] || a[0].localeCompare(b[0]); });
-    hits = hits.slice(0, 40);
+  var idx = window.ESB_SEARCH;
+  if (!idx) {
     box.hidden = false;
-    box.innerHTML = hits.length
-      ? hits.map(function (e) {
-          return '<button onclick="pick(\'' + esc(e[1]).replace(/'/g, "\\'") + '\')">' + esc(e[0]) +
-            (e[0] === e[1] ? "" : ' <span class="rc">' + esc(e[1]) + "</span>") + "</button>";
-        }).join("")
-      : '<div class="none">Nothing matching “' + esc(q) + '”</div>';
+    box.innerHTML = '<div class="none">Search is unavailable — try reloading.</div>';
+    return;
+  }
+  var hits = [];
+  // Counties first, so typing a county name never buries it under the towns
+  // inside it.
+  D.counties.forEach(function (c) {
+    if (c.toLowerCase().indexOf(q) === 0) hits.push([c, c, 0]);
   });
+  D.counties.forEach(function (c) {
+    (idx[c] || []).forEach(function (name) {
+      var at = name.toLowerCase().indexOf(q);
+      if (at !== -1) hits.push([name, c, at + 1]);
+    });
+  });
+  hits.sort(function (a, b) { return a[2] - b[2] || a[0].localeCompare(b[0]); });
+  hits = hits.slice(0, 40);
+  box.hidden = false;
+  box.innerHTML = hits.length
+    ? hits.map(function (e) {
+        return '<button onclick="pick(\'' + esc(e[1]).replace(/'/g, "\\'") + '\')">' + esc(e[0]) +
+          (e[0] === e[1] ? "" : ' <span class="rc">' + esc(e[1]) + "</span>") + "</button>";
+      }).join("")
+    : '<div class="none">Nothing matching “' + esc(q) + '”</div>';
 }
 function pick(county) {
   document.getElementById("q").value = "";
@@ -691,7 +714,12 @@ function boot() {
     return;
   }
   curMonth = D.months[D.months.length - 1];
-  document.getElementById("stamp").textContent = "Rebuilt " + D.generated + ".";
+  // Two different facts: when this page was built, and how far the data behind
+  // it reaches. They are normally a few hours apart; when they are not, the
+  // grey cells at the end of every bar are the collector having stopped.
+  document.getElementById("stamp").innerHTML = "Rebuilt " + esc(D.generated) +
+    ", data to " + (D.stale ? '<span class="stale">' : "<span>") + esc(D.observed) +
+    (D.stale ? " — collection has stopped" : "") + "</span>.";
   document.getElementById("startdate").textContent = D.start;
   document.getElementById("src").textContent =
     "Unofficial, and not affiliated with ESB Networks or the CRU.";

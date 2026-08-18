@@ -13,7 +13,7 @@ from __future__ import annotations
 import html
 import json
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import model
@@ -31,6 +31,12 @@ TITLE, DESC, BODY = "<!--TITLE-->", "<!--DESC-->", "<!--BODY-->"
 # that a county has a real URL for a search engine and a reader arriving cold;
 # the full month lives in the shard the app loads.
 COUNTY_PAGE_CASES = 40
+
+# How far the data may lag the build before the page says so. The collector
+# pushes daily and the site rebuilds daily, so a gap under this is the normal
+# handover; past it, something has stopped and the reader should be told rather
+# than left reading the day bars as a quiet week.
+STALE_AFTER = timedelta(hours=24)
 
 # How an outage's end is described, per the source the end time came from. The
 # distinction matters to a reader: only the first is something ESB confirmed.
@@ -68,10 +74,13 @@ def _short(dt):
     return dt.strftime("%Y-%m-%dT%H:%M") if dt else None
 
 
-def build(outages, sa_index, now):
-    """Assemble every value the templates need, and nothing they do not."""
+def build(outages, sa_index, now, until):
+    """Assemble every value the templates need, and nothing they do not.
+
+    `now` fixes only what is still in the future; `until` is where the collected
+    data stops, and every measured window ends there.
+    """
     months = model.month_list(model.COLLECTION_START, now)
-    national_rate = model.national_cml(outages, now)
 
     by_county = defaultdict(list)
     for o in outages:
@@ -83,7 +92,7 @@ def build(outages, sa_index, now):
         per_month = {}
         for ym in months:
             s = model.county_month(
-                rows, county, sa_index.customers[county], ym, now, national_rate
+                rows, county, sa_index.customers[county], ym, now, until
             )
             per_month[ym] = [
                 s["cells"],
@@ -98,10 +107,12 @@ def build(outages, sa_index, now):
         stats[county] = per_month
 
     for ym in months:
-        lo, hi = model.observed_window(ym, now)
+        lo, hi = model.observed_window(ym, until)
         live = [o for o in outages if o.start and o.end and o.end > lo and o.start < hi]
         faults = [o for o in live if not o.planned]
-        judged = [o for o in faults if o.start >= lo and o.end <= hi]
+        # Same gate as county_month: an outage still out has no restoration to
+        # judge, and its elapsed time would score as a fast one.
+        judged = [o for o in faults if o.start >= lo and o.end <= hi and not o.ongoing]
         seen = sum(o.customers for o in judged)
         within = sum(
             o.customers
@@ -109,7 +120,7 @@ def build(outages, sa_index, now):
             if o.minutes / 60.0 <= model.CHARTER_TARGET_HOURS
         )
         national[ym] = [
-            round(model.national_cml(outages, now, ym), 1),
+            round(model.national_cml(outages, until, ym), 1),
             len(faults),
             len(live) - len(faults),
             sum(o.customers for o in faults),
@@ -131,6 +142,14 @@ def build(outages, sa_index, now):
 
     data = {
         "generated": _stamp(now),
+        # What the build knows, as distinct from when it ran. Without this the
+        # page dates itself by the clock and a reader cannot tell a quiet week
+        # from a collector that stopped.
+        "observed": _stamp(until),
+        "stale": now - until > STALE_AFTER,
+        # Two dates at most, and the same for every county, so they sit here
+        # rather than on every month of every county's row.
+        "partial": model.partial_days(until),
         "start": model.COLLECTION_START.strftime("%-d %B %Y"),
         "months": months,
         "esb": {
@@ -144,7 +163,7 @@ def build(outages, sa_index, now):
         "stats": stats,
         "national": national,
     }
-    return data, by_county, months, national_rate, search
+    return data, by_county, months, search
 
 
 def case_record(o):
@@ -168,13 +187,23 @@ def case_record(o):
     ]
 
 
-def shard(county, outages, months):
-    """Every outage in one county, grouped by the month it started in."""
+def shard(outages, months, until):
+    """Every outage in one county, grouped by month.
+
+    An outage is listed under every month it overlaps, which is exactly the set
+    of months `county_month` counts it in. Filing it by its start month instead
+    left one that ran past midnight on the 31st counted in the later month's
+    tiles and missing from that month's list, so a reader could count the rows
+    and come up one short of the headline.
+    """
+    windows = [(ym,) + model.observed_window(ym, until) for ym in months]
     by_month = defaultdict(list)
     for o in sorted(outages, key=lambda o: o.start, reverse=True):
-        ym = f"{o.start.year:04d}-{o.start.month:02d}"
-        if ym in months:
-            by_month[ym].append(case_record(o))
+        record = None
+        for ym, lo, hi in windows:
+            if o.end > lo and o.start < hi:
+                record = case_record(o) if record is None else record
+                by_month[ym].append(record)
     return by_month
 
 
@@ -279,6 +308,10 @@ def _hours(h):
     return f"{round(h / 24)} days"
 
 
+# Said on the two day cells built from part of a day. Plain words on purpose:
+# it is read by someone wondering why their county looks quiet.
+PARTIAL_NOTE = " — only part of this day was recorded"
+
 DAY_LABELS = {
     "0": "no significant fault",
     "1": "minor fault disruption",
@@ -286,16 +319,21 @@ DAY_LABELS = {
     "3": "major fault disruption",
     "4": "severe fault disruption",
     "5": "planned works only",
-    "8": "before this site started collecting",
+    "8": "no data collected for this day",
     "9": "still to come",
 }
 
 
-def _day_cells(cells, ym):
-    return "".join(
-        f'<i class="b{ch}" title="{ym}-{i + 1:02d}: {DAY_LABELS[ch]}"></i>'
-        for i, ch in enumerate(cells)
-    )
+def _day_cells(cells, ym, partial):
+    out = []
+    for i, ch in enumerate(cells):
+        day = f"{ym}-{i + 1:02d}"
+        cap = f"{day}: {DAY_LABELS[ch]}"
+        # Nothing to qualify on a day with no data or no colour yet.
+        if ch not in "89" and day in partial:
+            cap += PARTIAL_NOTE
+        out.append(f'<i class="b{ch}" title="{html.escape(cap)}"></i>')
+    return "".join(out)
 
 
 def county_page(county, data, cases, ym, all_counties):
@@ -319,8 +357,18 @@ def county_page(county, data, cases, ym, all_counties):
         f'<div class="chead"><span class="gradechip g-{grade or "none"}">{grade or "–"}</span>',
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">{label} · {data["customers"][county]:,} customers '
-        "(estimated from Census population)</div>",
-        f'<div class="card"><div class="bar">{_day_cells(m[0], ym)}</div><div class="tiles">',
+        "(estimated from Census population)<br>"
+        # This page is entered cold from a search result, so it has to carry the
+        # same caveat the app does: the day bar ends where the data does.
+        f'Data to {html.escape(data["observed"])}'
+        + (
+            ' · <span class="stale">collection has stopped</span>'
+            if data["stale"]
+            else ""
+        )
+        + "</div>",
+        f'<div class="card"><div class="bar">'
+        f'{_day_cells(m[0], ym, data["partial"])}</div><div class="tiles">',
         "".join(
             f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>'
             for v, k in tiles
@@ -372,12 +420,12 @@ def _sitemap(paths, lastmod):
     )
 
 
-def write(site_dir, outages, sa_index, now):
+def write(site_dir, outages, sa_index, now, until):
     site_dir = Path(site_dir)
     (site_dir / "c").mkdir(parents=True, exist_ok=True)
     (site_dir / "h").mkdir(parents=True, exist_ok=True)
 
-    data, by_county, months, national_rate, search = build(outages, sa_index, now)
+    data, by_county, months, search = build(outages, sa_index, now, until)
     latest = months[-1]
 
     (site_dir / "index.html").write_text(
@@ -392,7 +440,7 @@ def write(site_dir, outages, sa_index, now):
     )
 
     for county in sa_index.counties:
-        by_month = shard(county, by_county.get(county, []), months)
+        by_month = shard(by_county.get(county, []), months, until)
         # A shard is written for every county, including one with nothing in it,
         # so the loader never has to tell a 404 apart from a quiet county.
         (site_dir / "h" / f"{slug(county)}.js").write_text(
