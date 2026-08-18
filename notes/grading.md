@@ -141,6 +141,37 @@ across all 26 counties. The water site's radius-and-population footprint was
 deliberately not carried over: ESB publishes a point per outage, not a service
 area.
 
+## Does `startTime` drift?
+
+*Measured 2026-08-18. It does not, and it is back-dated to the fault, not the notice.*
+
+**It is effectively immutable.** Across 1,460 outages ESB revised `startTime`
+**8 times** (0.5%) — two of them by a single minute, the rest between −82 and
++363. For comparison, `statusMessage` changed 639 times and `outageType` 534.
+Nothing about the start drifts as an outage develops.
+
+**It is back-dated, not set to publication time.** Comparing the reported start
+against our first sighting of the record:
+
+| Lag, reported start → first sighting | Faults | Planned |
+|---|---:|---:|
+| p25 | 21 min | 12 min |
+| median | 32 min | 21 min |
+| p90 | 147 min | 34 min |
+| Negative (listed before its own start) | **0** | **0** |
+
+Our own 30-minute poll accounts for most of the median: for the 593 faults we
+caught live the median lag is 31 minutes, one poll interval, so ESB's own
+publication lag is close to zero at the median. Not one outage in the corpus
+appeared in the feed before its reported start, so the field is never
+forward-dated.
+
+This is the single most important thing about the data, and it is what the
+sibling water site could not claim. **Durations here measure the outage, not the
+notice.** The long tail (p90 of 147 minutes for faults) is real — some faults
+are published hours after they began — but it delays when we *learn* of an
+outage rather than corrupting how long it is recorded as lasting.
+
 ## Outages we only ever see restored
 
 *Investigated 2026-08-17, after the split-outage merge landed.*

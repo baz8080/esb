@@ -94,6 +94,15 @@
   footer p { margin-bottom: 7px; }
   footer a { color: var(--ink-2); }
   footer q { font-style: italic; }
+  footer details { margin: 6px 0; }
+  footer summary {
+    cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 3px 0;
+    list-style: none;
+  }
+  footer summary::-webkit-details-marker { display: none; }
+  footer summary::before { content: "▸ "; }
+  footer details[open] summary::before { content: "▾ "; }
+  footer details p { margin: 5px 0 8px; }
 </style>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
@@ -101,16 +110,17 @@
 <div class="wrap">
 <!--BODY-->
 <footer>
-  <p><b>How the grade works.</b> It is ESB Networks' own published service standard, from the
-  <a href="https://esbnetworksprdsastd01.blob.core.windows.net/media/docs/default-source/publications/customer-charter.pdf">Customer
-  Charter</a> the CRU approves: <q>our aim is to restore supply within less than 4 hours in 95% of
-  cases</q>. A county is scored on the share of fault-interrupted customers back inside that window
-  — A meets the 95% aim, then B 90%, C 80%, D 70%, F below. Planned works are excluded, as the
-  regulator's own incentive excludes them.</p>
-  <p>ESB excludes storm days from its published figures and the charter exempts storms from the
-  guarantee; nothing in the public feed identifies one, so this site excludes nothing and will read
-  worse than ESB's own numbers in winter. Full method and sources on the
+  <p><b>The grade is ESB Networks' own published aim:</b> supply restored in under 4 hours in 95%
+  of cases. A county is scored on the share of fault-interrupted customers back inside that window
+  — A meets the 95% aim, then B 90%, C 80%, D 70%, F below. Planned works are excluded.</p>
+  <details><summary>How to read this page</summary>
+  <p>Each outage shows when it <b>began</b> and when supply was <b>restored</b>, both as ESB reports
+  them; the rows between are the customer count falling as crews restore sections. Where ESB never
+  published a restore time the end is marked as an estimate or as the last sighting.</p>
+  <p>Storm days are not excluded here, though ESB excludes them from its own figures, so winter
+  months will read worse than ESB's. Full method and sources are on the
   <a href="../index.html">main page</a>.</p>
+  </details>
   <p>Unofficial, and not affiliated with ESB Networks or the CRU. Built from snapshots of ESB's
   public PowerCheck feed, which keeps no history of its own.</p>
 </footer>

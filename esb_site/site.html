@@ -179,6 +179,15 @@
   footer code { font-size: 12px; }
   footer a { color: var(--ink-2); }
   footer q { font-style: italic; }
+  footer details { margin: 6px 0; }
+  footer summary {
+    cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 3px 0;
+    list-style: none;
+  }
+  footer summary::-webkit-details-marker { display: none; }
+  footer summary::before { content: "▸ "; }
+  footer details[open] summary::before { content: "▾ "; }
+  footer details p { margin: 5px 0 8px; }
 
   @media (max-width: 640px) {
     .row { grid-template-columns: 1fr auto; grid-template-areas: "name stats" "bar bar"; gap: 10px 12px; padding: 12px 14px; }
@@ -241,52 +250,80 @@
     results. ESB publishes no historical archive and purges each outage from the feed a few hours
     after restoration, so nothing before <span id="startdate"></span> exists here, and days before
     it are shown as “no data” rather than as no outages.</p>
-    <h3>How the grade works</h3>
-    <p>The grade is ESB Networks' own published service standard, from the <a
+    <p><b>The grade is ESB's own published aim:</b> supply restored in under
+    <b>4 hours in 95% of cases</b>. Each county is scored on the share of its
+    fault-interrupted customers back inside that window — A meets the 95% aim,
+    then B 90%, C 80%, D 70%, F below. Planned works are excluded. Storm days are
+    <b>not</b> excluded here, though ESB excludes them from its own figures, so
+    winter months will read worse than ESB's.</p>
+
+    <details><summary>How the grade is worked out</summary>
+    <p>The standard comes from the <a
     href="https://esbnetworksprdsastd01.blob.core.windows.net/media/docs/default-source/publications/customer-charter.pdf">Customer
-    Charter</a> the CRU approves. Under its Restore Supply Guarantee, ESB Networks states: <q>our
-    aim is to restore supply within less than 4 hours in 95% of cases</q>. A county is scored on the
-    share of customers interrupted by a fault who had supply back inside that window.</p>
-    <p><b>A</b> meets the 95% aim; <b>B</b> is 90% or better, <b>C</b> 80%, <b>D</b> 70%, and
-    <b>F</b> is below that. A month with fewer than five faults is left ungraded, because one long
-    outage in a quiet county would swing the letter two bands.</p>
-    <p>The same charter guarantees a payment if you are <b>without power for 24 hours</b> after ESB
-    was made aware, and a further payment for each additional 12 hours. Outages passing that mark
-    are counted separately on each county's page.</p>
-    <p><b>Planned works are excluded</b>, exactly as the CRU's incentive excludes them. They are
-    notified in advance, and they never report a restore time — they simply stop being listed — so
-    their true duration is not something this data knows. They are shown on the bars in blue and
-    counted separately.</p>
+    Charter</a> the CRU approves, under the Restore Supply Guarantee: <q>our aim
+    is to restore supply within less than 4 hours in 95% of cases</q>. The same
+    guarantee pays compensation if you are without power for <b>24 hours</b>
+    after ESB was made aware, and again for each further 12 hours; outages past
+    that mark are counted separately on each county page.</p>
+    <p>A month with fewer than five faults is left ungraded, because one long
+    outage in a quiet county would swing the letter two bands. Planned works are
+    excluded exactly as the CRU's incentive excludes them: they are notified in
+    advance and never report a restore time — they simply stop being listed — so
+    their true duration is not something this data knows.</p>
+    </details>
 
-    <h3>The other figure: Customer Minutes Lost</h3>
-    <p><b>CML</b> is the minutes an average customer spends without supply over a year. It is the
-    unit the Commission for Regulation of Utilities regulates ESB Networks in, and money rides on
-    it: for 2024 the CRU target was <b>78.7</b> CML and ESB Networks reported <b>117.47</b>
-    (<a href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">Distribution
-    Annual Performance Report 2024</a>, p.35; the targets are set under the CRU's
-    <a href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
-    incentive framework</a>).</p>
-    <p>CML is reported here for comparison but does <b>not</b> set the grade, because this data
-    cannot reproduce it on ESB's scale. The durations match almost exactly — an implied 88 minutes
-    per interrupted customer against ESB's 85 — but the feed counts about a third more interrupted
-    customers, since it reports everyone on the affected section when a fault is logged while ESB
-    settles on a smaller number once crews have isolated it. A share of customers is immune to that;
-    a total of them is not.</p>
+    <details><summary>The other figure: Customer Minutes Lost</summary>
+    <p><b>CML</b> is the minutes an average customer spends without supply over a
+    year, and it is the unit the CRU regulates ESB Networks in. For 2024 the CRU
+    target was <b>78.7</b> and ESB Networks reported <b>117.47</b> (<a
+    href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">Distribution
+    Annual Performance Report 2024</a>; targets are set under the CRU's <a
+    href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
+    framework</a>).</p>
+    <p>It is shown here for comparison but does not set the grade, because this
+    data cannot reproduce it on ESB's scale. The durations match almost exactly —
+    an implied 88 minutes per interrupted customer against ESB's 85 — but the
+    feed counts about a third more interrupted customers, since it reports
+    everyone on the affected section when a fault is logged while ESB settles on
+    a smaller number once crews have isolated it. A <em>share</em> of customers is
+    immune to that; a <em>total</em> of them is not.</p>
+    </details>
 
-    <h3>What it cannot tell you</h3>
-    <p>ESB excludes storm days from its published figures, so that they compare with other
-    utilities: <q>To benchmark our outage performance against other utilities storm days (the
-    effects of severe weather) are removed for unplanned CI and CML reporting</q>
-    (<a href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">DAPR
-    2024</a>, p.34). The Customer Charter likewise exempts <q>exceptional cases such as storms</q>
-    from the restoration guarantee. Nothing in the public feed identifies a storm day, so this site
-    excludes nothing — which means winter months here will read worse than ESB's own figures, and
-    worse than the guarantee is meant to be judged on.</p>
-    <p>Counties come from the nearest Census Small Area to each outage's coordinates; the feed
-    carries no county field. Customers per county are apportioned from Census population, because
-    ESB publishes no per-county customer count. ESB opens a new outage record each time a fault's
-    scope changes, so records sharing a location and start time are folded back into one event
-    here — without that, one fault restored in five stages reads as five outages.</p>
+    <details><summary>How to read an outage</summary>
+    <p>Each outage shows when it <b>began</b> and when supply was <b>restored</b>,
+    both times as ESB reports them. The rows between are the customer count
+    falling as crews restore sections, which is the one thing no ESB field
+    records and has to come from watching the feed.</p>
+    <p>ESB back-dates the start to when the fault began rather than when it was
+    published: across 1,460 outages the field was revised 8 times, and not one
+    outage appeared in the feed before its own reported start. So the durations
+    here are the outage, not the notice.</p>
+    <p>This site polls every 30 minutes, so a short outage can begin and end
+    between two polls and be recorded only after it finished. That affects when
+    we <em>noticed</em> an outage, not the times shown, which are ESB's own.
+    Where ESB never published a restore time the end is marked as an estimate or
+    as the last sighting, and never presented as a measurement.</p>
+    <p>ESB opens a new record each time a fault's scope changes, so records
+    sharing a location and start time are folded into one outage here. A fault
+    that returns to the same spot within 15 minutes is a separate interruption
+    and stays a separate row, tagged as a repeat.</p>
+    </details>
+
+    <details><summary>What it cannot tell you</summary>
+    <p>ESB excludes storm days from its published figures so they compare with
+    other utilities: <q>To benchmark our outage performance against other
+    utilities storm days (the effects of severe weather) are removed for
+    unplanned CI and CML reporting</q> (<a
+    href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">DAPR
+    2024</a>). The Customer Charter likewise exempts <q>exceptional cases such as
+    storms</q> from the restoration guarantee. Nothing in the public feed
+    identifies a storm day, so this site excludes nothing.</p>
+    <p>Counties come from the nearest Census Small Area to each outage's
+    coordinates, because the feed carries no county field. Customers per county
+    are apportioned from Census population, because ESB publishes no per-county
+    customer count.</p>
+    </details>
+
     <p id="src"></p>
   </footer>
 </div>
@@ -491,29 +528,36 @@ function caseHtml(k) {
     updateList(ups) + "</div>";
 }
 
-function updateLine(u, key) {
-  // [at, kind, customers, estRestore, restore]
+var ROW_LABEL = {
+  began: "Outage began",
+  restored: "Supply restored",
+  estimated: "Due back, on ESB's estimate",
+  listed: "Last seen still out"
+};
+
+function updateLine(r, key) {
+  // [kind, when, customers]
   var bits = [];
-  if (u[1]) bits.push("<b>" + esc(u[1]) + "</b>");
-  if (u[2] != null) bits.push(num(u[2]) + " customers");
-  if (u[4]) bits.push("restored " + when(u[4]));
-  else if (u[3]) bits.push("estimated " + when(u[3]));
-  return '<li class="' + (key ? "key" : "") + '"><time>' + when(u[0]) + "</time>" + bits.join(" · ") + "</li>";
+  if (ROW_LABEL[r[0]]) bits.push("<b>" + ROW_LABEL[r[0]] + "</b>");
+  if (r[2] != null) bits.push(num(r[2]) + " customers" + (r[0] === "update" ? " still off" : ""));
+  return '<li class="' + (key ? "key" : "") + '"><time>' + when(r[1]) + "</time>" + bits.join(" · ") + "</li>";
 }
 
 function updateList(ups) {
-  if (!ups || !ups.length) return "";
-  var label = '<div class="tll">What ESB reported, and when we saw it</div>';
-  // Every update is shown inline unless there are more than three: on the first
-  // month of data 97.9% of outages had three or fewer, so the disclosure is a
-  // genuine exception rather than a default that hides the story.
+  // Two rows are the reported start and end, which the summary line already
+  // states; the timeline earns its place only when something happened between
+  // them. That is 7% of outages.
+  if (!ups || ups.length <= 2) return "";
+  // Every row is shown inline unless there are more than three: 98% of outages
+  // have three or fewer, so the disclosure is a genuine exception rather than a
+  // default that hides the story.
   if (ups.length <= 3) {
-    return label + '<ul class="tl">' + ups.map(function (u, i) {
+    return '<ul class="tl">' + ups.map(function (u, i) {
       return updateLine(u, i === 0 || i === ups.length - 1);
     }).join("") + "</ul>";
   }
   var mid = ups.slice(1, -1);
-  return label + '<ul class="tl">' + updateLine(ups[0], true) +
+  return '<ul class="tl">' + updateLine(ups[0], true) +
     '<li><details><summary>' + mid.length + " further update" + (mid.length === 1 ? "" : "s") +
     "</summary><ul>" + mid.map(function (u) { return updateLine(u, false); }).join("") +
     "</ul></details></li>" + updateLine(ups[ups.length - 1], true) + "</ul>";
@@ -649,8 +693,8 @@ function boot() {
   curMonth = D.months[D.months.length - 1];
   document.getElementById("stamp").textContent = "Rebuilt " + D.generated + ".";
   document.getElementById("startdate").textContent = D.start;
-  document.getElementById("src").innerHTML =
-    "Source data collected from ESB's public PowerCheck API every 30 minutes since " + D.start + ".";
+  document.getElementById("src").textContent =
+    "Unofficial, and not affiliated with ESB Networks or the CRU.";
   document.getElementById("q").addEventListener("input", runSearch);
   document.addEventListener("click", function (e) {
     if (!e.target.closest(".search")) document.getElementById("results").hidden = true;

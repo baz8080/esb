@@ -160,15 +160,12 @@ def case_record(o):
         o.reason.title() if o.reason else "",
         list(o.chain),
         [
-            [_short(u.at), u.kind, u.customers, _short_raw(u.est_restore), _short_raw(u.restore)]
-            for u in o.updates
+            [kind, _short(when), customers]
+            for kind, when, customers in model.timeline(
+                o.start, o.end, o.end_src, o.segments
+            )
         ],
     ]
-
-
-def _short_raw(value):
-    """Timeline values arrive from the change log as text, already UTC ISO."""
-    return value[:16] if value else None
 
 
 def shard(county, outages, months):
@@ -220,39 +217,49 @@ def _chain_html(chain):
     )
 
 
-def _update_line(u, key):
+ROW_LABEL = {
+    "began": "Outage began",
+    "restored": "Supply restored",
+    "estimated": "Due back, on ESB's estimate",
+    "listed": "Last seen still out",
+}
+
+
+def _update_line(row, key):
+    kind, when, customers = row
     bits = []
-    if u[1]:
-        bits.append(f"<b>{html.escape(u[1])}</b>")
-    if u[2] is not None:
-        bits.append(f"{u[2]:,} customers")
-    if u[4]:
-        bits.append(f"restored {_when(u[4])}")
-    elif u[3]:
-        bits.append(f"estimated {_when(u[3])}")
-    cls = ' class="key"' if key else ""
-    return f"<li{cls}><time>{_when(u[0])}</time>{' · '.join(bits)}</li>"
-
-
-def _updates_html(ups):
-    if not ups:
-        return ""
-    label = '<div class="tll">What ESB reported, and when we saw it</div>'
-    if len(ups) <= model.INLINE_UPDATES:
-        rows = "".join(
-            _update_line(u, i in (0, len(ups) - 1)) for i, u in enumerate(ups)
+    if kind in ROW_LABEL:
+        bits.append(f"<b>{ROW_LABEL[kind]}</b>")
+    if customers is not None:
+        bits.append(
+            f"{customers:,} customers"
+            + (" still off" if kind == "update" else "")
         )
-        return f'{label}<ul class="tl">{rows}</ul>'
-    mid = ups[1:-1]
-    inner = "".join(_update_line(u, False) for u in mid)
+    cls = ' class="key"' if key else ""
+    return f"<li{cls}><time>{_when(when)}</time>{' · '.join(bits)}</li>"
+
+
+def _updates_html(rows):
+    # Two rows are the reported start and end, which the summary line above
+    # already states; repeating them as a timeline is noise on the 93% of
+    # outages whose customer count never changed. The timeline earns its place
+    # only when there is something between the anchors.
+    if len(rows) <= 2:
+        return ""
+    if len(rows) <= model.INLINE_UPDATES:
+        body = "".join(
+            _update_line(r, i in (0, len(rows) - 1)) for i, r in enumerate(rows)
+        )
+        return f'<ul class="tl">{body}</ul>'
+    mid = rows[1:-1]
+    inner = "".join(_update_line(r, False) for r in mid)
     return (
-        label
-        + '<ul class="tl">'
-        + _update_line(ups[0], True)
+        '<ul class="tl">'
+        + _update_line(rows[0], True)
         + f"<li><details><summary>{len(mid)} further update"
         + ("" if len(mid) == 1 else "s")
         + f"</summary><ul>{inner}</ul></details></li>"
-        + _update_line(ups[-1], True)
+        + _update_line(rows[-1], True)
         + "</ul>"
     )
 

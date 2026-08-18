@@ -274,6 +274,35 @@ class Update(NamedTuple):
     location: str | None
 
 
+def timeline(start, end, end_src, segments):
+    """The outage's own story, anchored on the times ESB reports.
+
+    The observation log this is built from is our polling chronology, not the
+    outage's: an outage that began at 15:15 and was restored at 18:17 can first
+    be seen at 21:02, and rendering that log directly made a three-hour outage
+    read as a single event at nine at night. ESB's own `startTime` and
+    `restoreTime` are exact and always present, so they anchor the timeline and
+    the observations only fill in what happened between them - the customer
+    count falling as crews work, which is the one thing no ESB field records.
+
+    The middle rows come from the customer-count segments rather than the raw
+    observations, because for an outage assembled from several ESB records the
+    segment boundaries are ESB's own restore times and the observations are only
+    when we happened to look.
+
+    Returns (kind, when, customers) rows, where kind is "began", "update", or
+    one of the end sources.
+    """
+    rows = [("began", start, segments[0][2] if segments else None)]
+    seen = rows[0][2]
+    for seg_start, _, customers in segments[1:]:
+        if start < seg_start < end and customers != seen:
+            rows.append(("update", seg_start, customers))
+            seen = customers
+    rows.append((end_src, end, None))
+    return rows
+
+
 def label_repeats(events):
     """Mark faults that struck the same spot again shortly after being restored.
 

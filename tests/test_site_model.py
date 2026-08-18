@@ -364,9 +364,12 @@ class TestEventMerging(SiteModelCase):
         """Not one line per restored section, which says nothing to a reader."""
         self.split_fault()
         outages, _, _ = self.load()
-        ups = outages[0].updates
-        self.assertEqual([u.customers for u in ups], [900, 400, None])
-        self.assertEqual(ups[-1].kind, "Restored")
+        o = outages[0]
+        rows = model.timeline(o.start, o.end, o.end_src, o.segments)
+        self.assertEqual(
+            [(k, n) for k, _, n in rows],
+            [("began", 900), ("update", 400), ("restored", None)],
+        )
 
 
     def test_a_repeat_fault_is_not_a_split(self):
@@ -486,6 +489,53 @@ class TestRepeatChains(SiteModelCase):
                    restoreTime="10/08/2026 11:20"), t)
         outages, _, _ = self.load()
         self.assertTrue(all(o.chain == () for o in outages))
+
+
+class TestTimeline(SiteModelCase):
+    """The story of the outage, anchored on the times ESB reports."""
+
+    def test_an_outage_seen_only_after_it_ended_still_reads_correctly(self):
+        """The bug this fixes: a 3-hour outage rendered as one late event.
+
+        Roosky began 15:15 and was restored 18:17, but was first seen at 21:02.
+        Rendering the observation log directly showed a single 21:02 row.
+        """
+        self.observe(
+            detail(
+                "1", numCustAffected=31, outageType="Restored",
+                startTime="10/08/2026 15:15", restoreTime="10/08/2026 18:17",
+            ),
+            datetime(2026, 8, 10, 20, 2, tzinfo=timezone.utc),  # 21:02 Dublin
+        )
+        outages, _, _ = self.load()
+        o = outages[0]
+        rows = model.timeline(o.start, o.end, o.end_src, o.segments)
+        kinds = [r[0] for r in rows]
+        self.assertEqual(kinds, ["began", "restored"])
+        # 15:15 and 18:17 Dublin are 14:15 and 17:17 UTC.
+        self.assertEqual(rows[0][1], datetime(2026, 8, 10, 14, 15, tzinfo=timezone.utc))
+        self.assertEqual(rows[-1][1], datetime(2026, 8, 10, 17, 17, tzinfo=timezone.utc))
+        self.assertEqual(rows[0][2], 31)
+
+    def test_the_first_and_last_rows_are_always_the_reported_anchors(self):
+        t = datetime(2026, 8, 10, 9, tzinfo=timezone.utc)
+        self.observe(detail("1"), t)
+        outages, _, _ = self.load()
+        o = outages[0]
+        rows = model.timeline(o.start, o.end, o.end_src, o.segments)
+        self.assertEqual(rows[0][0], "began")
+        self.assertEqual(rows[0][1], o.start)
+        self.assertEqual(rows[-1][0], o.end_src)
+        self.assertEqual(rows[-1][1], o.end)
+
+    def test_an_unchanged_count_adds_no_rows(self):
+        """Polling the same figure eight times is not eight updates."""
+        t = datetime(2026, 8, 10, 9, tzinfo=timezone.utc)
+        for i in range(8):
+            self.observe(detail("1"), t + timedelta(minutes=30 * i))
+        outages, _, _ = self.load()
+        o = outages[0]
+        self.assertEqual(len(model.timeline(o.start, o.end, o.end_src, o.segments)), 2)
 
 
 class TestCountyMonth(SiteModelCase):
