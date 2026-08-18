@@ -1,0 +1,558 @@
+"""Turning the outage database into per-county, per-month statistics.
+
+The unit of measurement here is the one Irish electricity is actually regulated
+in: **Customer Minutes Lost** (CML), the minutes an average customer spends
+without supply. ESB Networks reports it annually, the CRU sets an incentivised
+target for it, and money changes hands over the gap. That gives this site
+something the sibling water site never had - a scale it did not have to invent.
+
+See notes/grading.md for the published figures the grade bands sit on, and
+notes/site-methodology.md for what these numbers can and cannot mean.
+"""
+
+from __future__ import annotations
+
+import csv
+import math
+import sqlite3
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+from typing import NamedTuple
+
+DATA_DIR = Path(__file__).parent / "data"
+SA_POP_PATH = DATA_DIR / "sa_pop.csv"
+SA_TOWNS_PATH = DATA_DIR / "sa_towns.csv"
+
+# The first poll landed at 2026-07-31T21:02:11Z. ESB's API only ever shows
+# current outages and purges them a few hours after restoration, so nothing
+# before this instant exists anywhere and no amount of later work can recover
+# it. Days before it are rendered as "no data", never as "no outages".
+COLLECTION_START = datetime(2026, 7, 31, 21, 2, 11, tzinfo=timezone.utc)
+
+# ESB Networks' Retail Market Services "serves all 2.5 million electricity
+# customers"; the Key Statistics page of the same report says the network powers
+# "almost 2.4 million domestic, commercial and industrial customers". The lower
+# figure is the connected-customer count and the right denominator for CML.
+NATIONAL_CUSTOMERS = 2_400_000
+
+MINUTES_PER_YEAR = 365.0 * 24 * 60
+
+# --- Grade bands ------------------------------------------------------------
+# Published reference points, ESB Networks 2024, unplanned and excluding storm
+# days: the CRU incentive target was 78.7 CML and ESB actually delivered 117.47.
+ESB_CRU_TARGET_CML = 78.7
+ESB_NATIONAL_CML = 117.47
+ESB_NATIONAL_CI = 1.38  # interruptions per customer per year (137.86 per 100)
+
+# Counties are graded against the national average measured by *this* pipeline,
+# with the CRU target carried across as its published ratio to what ESB actually
+# delivered (78.7 / 117.47 = 0.67).
+#
+# Grading on the ratio rather than on ESB's absolute minutes is the load-bearing
+# decision here, and it is forced by a measurement. This dataset reproduces
+# ESB's duration per interrupted customer almost exactly - an implied CAIDI of
+# 88 minutes against ESB's 85 - but reports 2.31 interruptions per customer per
+# year against ESB's 1.38. The gap is not in the clock, it is in the count:
+# PowerCheck's numCustAffected is the customers on the affected section when the
+# fault is logged, and ESB settles on a smaller number once crews have isolated
+# it. That bias multiplies every county equally, so it cancels in a ratio and
+# would otherwise hand all 26 counties a letter they had not earned.
+# See notes/grading.md.
+GRADE_RATIOS = (
+    ("A", ESB_CRU_TARGET_CML / ESB_NATIONAL_CML),
+    ("B", 1.0),
+    ("C", 1.5),
+    ("D", 3.0),
+)
+
+# A month needs this many observed days before its grade means anything.
+# Annualising a two-day window multiplies its noise by 180.
+MIN_GRADED_DAYS = 5
+
+# --- Day cells --------------------------------------------------------------
+# Fault minutes lost per customer, for one county on one day. Bucketing by
+# magnitude rather than by presence is deliberate: 66% of county-days in the
+# first month carried at least one fault, so a bar coloured for "an outage
+# happened" would be a near-solid wall that told a reader nothing. These cuts
+# are absolute and fixed, unlike the grade, so that a day's colour never changes
+# under it once published. Over the first month they split the county-days
+# 44/22/19/9/6, which is the shape a status bar wants: mostly calm, with real
+# variation left visible.
+DAY_BUCKETS = ((0.05, 0), (0.3, 1), (1.0, 2), (3.0, 3))
+DAY_SEVERE = 4
+DAY_PLANNED = 5  # planned works, and no fault worth colouring
+DAY_NO_DATA = 8  # before collection started
+DAY_FUTURE = 9
+
+# Fields whose changes a reader would recognise as an update to their outage.
+# `status_message` is excluded on purpose: it has only five distinct values in
+# the whole corpus and its whitespace is unstable, which makes it the single
+# most-"changed" field while carrying no news. `point` is excluded for the same
+# kind of reason - coordinates get refined as crews narrow a fault down, which
+# is real work but not an update anyone is waiting for.
+READER_FIELDS = (
+    "outage_type",
+    "num_cust_affected",
+    "start_time_utc",
+    "est_restore_time_utc",
+    "restore_time_utc",
+    "location",
+)
+
+# At or below this many distinct reader-visible states, every update is shown
+# inline. 97.9% of outages in the first month sat here, so the disclosure below
+# is a genuine exception rather than a default that hides the story.
+INLINE_UPDATES = 3
+
+# Changes closer together than this came from the same 30-minute poll cycle.
+COALESCE_WINDOW = timedelta(minutes=15)
+
+
+def parse_utc(value):
+    if not value:
+        return None
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+
+
+def month_bounds(ym):
+    year, month = int(ym[:4]), int(ym[5:7])
+    lo = datetime(year, month, 1, tzinfo=timezone.utc)
+    hi = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=timezone.utc)
+    return lo, hi
+
+
+def month_list(start, end):
+    months, cur = [], start.replace(day=1)
+    while cur <= end:
+        months.append(f"{cur.year:04d}-{cur.month:02d}")
+        cur = (cur + timedelta(days=32)).replace(day=1)
+    return months
+
+
+def merge(intervals):
+    """Union overlapping [start, end) pairs. Lifted from the uisce generator."""
+    merged = []
+    for start, end in sorted(intervals):
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return merged
+
+
+def grade(cml, national):
+    """A-F from a county's annualised unplanned CML against the national figure.
+
+    Graded off the raw figures, never the rounded ones the page prints: a county
+    sitting a thousandth under a cut should keep the letter its arithmetic
+    earned rather than lose it to two decimal places of display.
+    """
+    if national <= 0:
+        return None
+    ratio = cml / national
+    for letter, ceiling in GRADE_RATIOS:
+        if ratio <= ceiling:
+            return letter
+    return "F"
+
+
+def day_bucket(fault_minutes_per_customer, has_planned):
+    if fault_minutes_per_customer > 0:
+        for ceiling, code in DAY_BUCKETS:
+            if fault_minutes_per_customer < ceiling:
+                # A day whose faults were too small to colour still shows its
+                # planned works rather than reading as untouched.
+                return DAY_PLANNED if code == 0 and has_planned else code
+        return DAY_SEVERE
+    return DAY_PLANNED if has_planned else 0
+
+
+class SmallAreaIndex:
+    """Census Small Area centroids, grid-hashed, for point -> county lookups.
+
+    Ported from the uisce site generator, with the radius-and-footprint logic
+    dropped. ESB publishes a point per outage rather than a service area, so the
+    nearest centroid is the honest answer and the extra machinery would only
+    spread one pin over neighbours it was never claimed to affect. In the first
+    month this placed 1,457 of 1,457 outages across all 26 counties.
+    """
+
+    BIN = 0.01  # degrees, about 1.1 km of latitude
+
+    def __init__(self, rows):
+        self._bins = defaultdict(list)
+        self._cache = {}
+        self.county_pop = defaultdict(int)
+        for lat, lon, county, town, pop in rows:
+            self._bins[(int(lat / self.BIN), int(lon / self.BIN))].append(
+                (lat, lon, county, town)
+            )
+            self.county_pop[county] += pop
+        self.counties = sorted(self.county_pop)
+        national = sum(self.county_pop.values())
+        # ESB publishes no per-county customer count, so customers are
+        # apportioned by Census population share. It is the one real
+        # approximation in the chain, and it is a good one: the national CML it
+        # produces lands within 1.3% of ESB's own published figure.
+        self.customers = {
+            c: NATIONAL_CUSTOMERS * p / national for c, p in self.county_pop.items()
+        }
+
+    @classmethod
+    def load(cls, pop_path=SA_POP_PATH, towns_path=SA_TOWNS_PATH):
+        places = {}
+        with open(towns_path, encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                places[r["guid"]] = (r["town_county"], r["town_name"])
+        rows = []
+        with open(pop_path, encoding="utf-8") as fh:
+            for r in csv.DictReader(fh):
+                place = places.get(r["guid"])
+                if place:
+                    rows.append(
+                        (float(r["lat"]), float(r["lon"]), place[0], place[1], int(r["pop"]))
+                    )
+        return cls(rows)
+
+    def place(self, lat, lon):
+        """Nearest Small Area's (county, town), or None if implausibly far."""
+        key = (round(lat, 4), round(lon, 4))
+        if key in self._cache:
+            return self._cache[key]
+        by, bx = math.floor(lat / self.BIN), math.floor(lon / self.BIN)
+        km_per_bin = self.BIN * 111.0 * math.cos(math.radians(lat))
+        best, best_d = None, float("inf")
+        for ring in range(0, 40):
+            for dy in range(-ring, ring + 1):
+                for dx in range(-ring, ring + 1):
+                    if max(abs(dy), abs(dx)) != ring:
+                        continue  # only the cells this ring adds
+                    for slat, slon, county, town in self._bins.get((by + dy, bx + dx), ()):
+                        d = math.hypot(
+                            (slat - lat) * 111.0,
+                            (slon - lon) * 111.0 * math.cos(math.radians(lat)),
+                        )
+                        if d < best_d:
+                            best, best_d = (county, town), d
+            # Every bin within `ring` of the target has now been read, so any
+            # centroid still unseen is at least that many bins away. Once the
+            # best hit is closer than that floor, no further ring can beat it -
+            # stopping at the first hit instead would sometimes pick a centroid
+            # in the wrong county.
+            if best is not None and best_d <= ring * km_per_bin:
+                break
+        # Anything this far from an inhabited Small Area is off the island -
+        # a coordinate typo, or Northern Ireland, which ESB Networks does not
+        # serve and this site does not cover.
+        result = best if best_d <= 25.0 else None
+        self._cache[key] = result
+        return result
+
+
+class Update(NamedTuple):
+    at: datetime
+    kind: str  # "Fault" | "Planned" | "Restored"
+    customers: int | None
+    start: str | None
+    est_restore: str | None
+    restore: str | None
+    location: str | None
+
+
+class Outage(NamedTuple):
+    id: str
+    county: str
+    town: str
+    location: str
+    planned: bool
+    customers: int  # peak reported, which is what an interruption count wants
+    start: datetime | None
+    end: datetime | None
+    # Where the end time came from, because the three are not equally trustworthy:
+    # "restored" is ESB's own restoreTime, "estimated" its published restore
+    # estimate, "listed" the last time the outage was still in the feed.
+    end_src: str
+    restored: bool
+    reason: str
+    updates: list
+    segments: list  # (start, end, customers), the count as it changed over time
+
+    @property
+    def end_known(self):
+        return self.end_src == "restored"
+
+    @property
+    def minutes(self):
+        if not self.start or not self.end or self.end <= self.start:
+            return 0.0
+        return (self.end - self.start).total_seconds() / 60.0
+
+    def customer_minutes(self, lo, hi):
+        """Customer-minutes accrued inside [lo, hi).
+
+        Integrated over the reported customer count rather than multiplying one
+        count by the whole duration, because the count is not constant: crews
+        restore an outage in sections and ESB revises the figure down as they
+        go, so a single outage can start at 83 customers and finish at 19.
+        """
+        total = 0.0
+        for seg_start, seg_end, customers in self.segments:
+            start, end = max(seg_start, lo), min(seg_end, hi)
+            if end > start:
+                total += customers * (end - start).total_seconds() / 60.0
+        return total
+
+
+def _int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _timelines(conn):
+    """Reconstruct each outage's reader-visible states from the change log.
+
+    The `outage` table holds only the latest state, so the history is recovered
+    by rolling each tracked field back through `outage_change.old_value` to get
+    the state at first sighting, then replaying the changes forward. The change
+    log stores everything as text; that is fine, because these values are only
+    ever rendered.
+    """
+    changes = defaultdict(list)
+    for row in conn.execute(
+        "SELECT outage_id, observed_at_utc, field, old_value, new_value"
+        " FROM outage_change WHERE field IN ({})"
+        " ORDER BY outage_id, observed_at_utc, id".format(
+            ",".join("?" * len(READER_FIELDS))
+        ),
+        READER_FIELDS,
+    ):
+        changes[row["outage_id"]].append(row)
+    return changes
+
+
+def _build_updates(row, rows_changes):
+    initial = {f: None if row[f] is None else str(row[f]) for f in READER_FIELDS}
+    # Walk backwards so the earliest change for each field wins the rollback.
+    for ch in reversed(rows_changes):
+        initial[ch["field"]] = ch["old_value"]
+
+    def snapshot(at, state):
+        return Update(
+            at=at,
+            kind=state["outage_type"] or "",
+            customers=_int(state["num_cust_affected"]),
+            start=state["start_time_utc"],
+            est_restore=state["est_restore_time_utc"],
+            restore=state["restore_time_utc"],
+            location=state["location"],
+        )
+
+    state = dict(initial)
+    updates = [snapshot(parse_utc(row["first_seen_utc"]), state)]
+    for ch in rows_changes:
+        state[ch["field"]] = ch["new_value"]
+        at = parse_utc(ch["observed_at_utc"])
+        # One poll cycle is one update. The list response and the detail fetch
+        # inside a single run land seconds apart and record their changes
+        # separately, so a plain Fault -> Restored transition would otherwise
+        # read as two updates a few seconds apart. Polls are 30 minutes apart,
+        # so anything closer together than COALESCE_MINUTES came from one run.
+        if updates and (at - updates[-1].at) <= COALESCE_WINDOW:
+            updates[-1] = snapshot(max(at, updates[-1].at), state)
+        else:
+            updates.append(snapshot(at, state))
+    # Collapse any consecutive states the rollback left identical (a field can
+    # change and change back within one observation).
+    deduped = [updates[0]]
+    for u in updates[1:]:
+        if u[1:] != deduped[-1][1:]:
+            deduped.append(u)
+    return deduped
+
+
+def load_outages(db_path, sa_index, now):
+    """Read every outage that can be placed and timed, newest state first."""
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
+    conn.row_factory = sqlite3.Row
+    try:
+        changes = _timelines(conn)
+        outages, unplaced = [], 0
+        for row in conn.execute(
+            "SELECT * FROM outage WHERE has_detail = 1 AND lat IS NOT NULL"
+            " AND start_time_utc IS NOT NULL ORDER BY start_time_utc"
+        ):
+            place = sa_index.place(row["lat"], row["lon"])
+            if place is None:
+                unplaced += 1
+                continue
+            county, town = place
+            updates = _build_updates(row, changes.get(row["outage_id"], []))
+
+            # `Restored` overwrites whatever the outage was, so the earliest
+            # non-Restored type is the only record of what it started as.
+            # Planned -> Restored never occurs in the data; planned works simply
+            # stop being listed.
+            kinds = [u.kind for u in updates if u.kind and u.kind != "Restored"]
+            planned = (kinds[0] if kinds else row["outage_type"]) == "Planned"
+
+            start = parse_utc(row["start_time_utc"])
+            restore = parse_utc(row["restore_time_utc"])
+            est = parse_utc(row["est_restore_time_utc"])
+            last_seen = parse_utc(row["last_seen_utc"]) or now
+            if restore:
+                end, end_src = restore, "restored"
+            elif est and start < est <= last_seen:
+                # No restore time, so the outage either vanished from the feed
+                # or is still running. ESB's own estimated restore time is by
+                # far the best stand-in: measured against the 648 outages whose
+                # true restore time we do know, it lands a median 0.7h late and
+                # overstates total time by 18%, where falling back to the last
+                # time the row was listed overstates it by 126% - ESB leaves
+                # restored outages sitting in the feed for hours.
+                end, end_src = est, "estimated"
+            else:
+                # No usable estimate: either there is none, or it lands before
+                # the outage started (which makes it nonsense rather than an
+                # estimate), or the outage stopped being listed before reaching
+                # it, which makes leaving the feed the tighter of the two bounds.
+                end, end_src = max(start, last_seen), "listed"
+            end = min(end, now)
+
+            # The reported customer count as it changed over the outage's life,
+            # so customer-minutes can be integrated rather than approximated.
+            counts = [(u.at, u.customers) for u in updates if u.customers is not None]
+            segments = []
+            if counts:
+                # Before the first observation we only have the first count.
+                segments.append((start, counts[0][0], counts[0][1]))
+                for i, (at, n) in enumerate(counts):
+                    segments.append((at, counts[i + 1][0] if i + 1 < len(counts) else end, n))
+            else:
+                segments.append((start, end, row["num_cust_affected"] or 0))
+            segments = [(max(s, start), min(e, end), n) for s, e, n in segments if e > s]
+
+            outages.append(
+                Outage(
+                    id=row["outage_id"],
+                    county=county,
+                    town=town,
+                    location=row["location"] or town,
+                    planned=planned,
+                    customers=max([n for _, _, n in segments] or [0]),
+                    start=start,
+                    end=end,
+                    end_src=end_src,
+                    restored=bool(row["is_final"]),
+                    reason=row["planned_outage_reason"] or "",
+                    updates=updates,
+                    segments=segments,
+                )
+            )
+        return outages, unplaced
+    finally:
+        conn.close()
+
+
+def observed_window(ym, now):
+    """The part of month `ym` this site actually watched."""
+    lo, hi = month_bounds(ym)
+    return max(lo, COLLECTION_START), min(hi, now)
+
+
+def county_month(outages, county, customers, ym, now, national):
+    """Statistics for one county in one month.
+
+    `outages` is the county's full list; filtering here rather than at the call
+    site keeps the arithmetic and the selection in one place.
+    """
+    lo, hi = observed_window(ym, now)
+    observed_minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
+    observed_days = observed_minutes / 1440.0
+    month_lo, month_hi = month_bounds(ym)
+
+    fault_cm = planned_cm = 0.0
+    faults = planned = 0
+    customers_hit = 0
+    per_day_fault = defaultdict(float)
+    per_day_planned = set()
+
+    for o in outages:
+        if o.county != county or not o.start or not o.end:
+            continue
+        if o.end <= lo or o.start >= hi:
+            continue
+        cm = o.customer_minutes(lo, hi)
+        if o.planned:
+            planned += 1
+            planned_cm += cm
+        else:
+            faults += 1
+            fault_cm += cm
+            customers_hit += o.customers
+
+        # Split the outage across the days it spans, so a fault running past
+        # midnight colours both days in proportion to the time it took from each.
+        for seg_start, seg_end, seg_customers in o.segments:
+            cur, stop = max(seg_start, lo), min(seg_end, hi)
+            while cur < stop:
+                nxt = (cur + timedelta(days=1)).replace(
+                    hour=0, minute=0, second=0, microsecond=0
+                )
+                seg = min(stop, nxt)
+                if o.planned:
+                    per_day_planned.add(cur.date())
+                else:
+                    per_day_fault[cur.date()] += (
+                        seg_customers * (seg - cur).total_seconds() / 60.0
+                    )
+                cur = seg
+
+    cml = fault_cm / customers
+    annualised = cml * MINUTES_PER_YEAR / observed_minutes
+    days_in_month = (month_hi - month_lo).days
+    cells = []
+    for d in range(1, days_in_month + 1):
+        day = date(month_lo.year, month_lo.month, d)
+        day_lo = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+        if day_lo >= now:
+            cells.append(DAY_FUTURE)
+        elif day_lo + timedelta(days=1) <= COLLECTION_START:
+            cells.append(DAY_NO_DATA)
+        else:
+            cells.append(
+                day_bucket(per_day_fault.get(day, 0.0) / customers, day in per_day_planned)
+            )
+
+    return {
+        "cells": "".join(str(c) for c in cells),
+        "cml": annualised,
+        "cml_month": cml,
+        "grade": (
+            grade(annualised, national) if observed_days >= MIN_GRADED_DAYS else None
+        ),
+        "faults": faults,
+        "planned": planned,
+        "customers_hit": customers_hit,
+        "fault_hours": fault_cm / 60.0,
+        "planned_hours": planned_cm / 60.0,
+        "observed_days": observed_days,
+    }
+
+
+def national_cml(outages, now, ym=None):
+    """Annualised unplanned CML across the whole network.
+
+    This is the number that anchors the site's credibility: it is directly
+    comparable to the figure ESB Networks publishes each year, and the test
+    suite holds it to that comparison.
+    """
+    if ym:
+        lo, hi = observed_window(ym, now)
+    else:
+        lo, hi = COLLECTION_START, now
+    minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
+    total = sum(o.customer_minutes(lo, hi) for o in outages if not o.planned)
+    return total / NATIONAL_CUSTOMERS * MINUTES_PER_YEAR / minutes
