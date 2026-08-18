@@ -368,7 +368,29 @@ replays it from the raw logs, and asserts the result is identical. If that ever
 fails, the raw log has stopped being a sufficient source of truth.
 
 
+## The site
+
+`esb_site` builds a static status page from the collected data and publishes it
+to <https://baz8080.github.io/esb> — outage days per county, drilling into
+individual outages and the updates ESB issued for each.
+
+```bash
+python -m esb_site --data-dir /var/lib/esb-outages     # writes out/site/
+```
+
+It reads `esb.db`, so run `rebuild` first if the database is stale. Counties are
+derived from Census Small Area centroids (the feed has no county field), and
+each county-month is graded A–F on **Customer Minutes Lost**, the unit the CRU
+regulates ESB Networks in.
+
+The grade is a ratio to the national figure rather than to ESB's published
+minutes, because this data reproduces ESB's *durations* almost exactly while
+counting about 1.6× as many affected customers. `notes/grading.md` has the
+derivation, the published figures it rests on, and the measurements behind every
+choice; `tests/test_site_national.py` holds the pipeline to them.
+
 ## Not included
 
-No analysis, dashboards, or mapping. The dataset needs months of accumulation
-before any of that is worth building.
+No mapping, and no per-town breakdown. Outages are placed to a county and named
+by ESB's own location string, which is as far as a single coordinate honestly
+goes.
