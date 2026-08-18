@@ -354,3 +354,58 @@ catastrophe.
 Kept: the colour is what was actually seen, and the day's tooltip says "only
 part of this day was recorded". Two dates for the whole site, so they sit at the
 top of the payload rather than on every county's row.
+
+## The customer denominator, and which ESB figures to compare with (2026-08-18)
+
+CML and CI are both *per customer*, so the denominator sets the scale of every
+national figure this site prints.
+
+It was 2.4 million, cited to a "almost 2.4 million domestic, commercial and
+industrial customers" said to be on the Key Statistics page of DAPR 2024. That
+string is not in DAPR 2024. The only customer count in the report is in the
+Distribution System Statistics — **"c. 2.5 million customer meters"** — and the
+company page agrees: *"roughly 2.5 million customers connected"*
+([about-us/company](https://www.esbnetworks.ie/about-us/company)). So the lower
+figure was carrying a citation it did not have, and it is now 2.5 million.
+
+It moves everything down by 4.2%:
+
+| | Before | After | ESB 2024 | Ratio now |
+|---|---:|---:|---:|---:|
+| CML | 176.1 | **169.0** | 117.47 | 1.44× |
+| CI | 1.91 | **1.83** | 1.38 | 1.33× |
+| CAIDI | 92.2 | 92.2 | 85.1 | 1.08× |
+
+CAIDI does not move, and cannot: the customer count divides out of it. That is
+worth keeping in view — it is the one index that says whether the *timing* is
+right, and no choice of denominator can flatter it.
+
+This is a meter count, not a headcount, and ESB does not publish the denominator
+it divides by, so the match cannot be exact. It is the closest figure ESB
+states, which is the whole standard being applied: anything compared against
+ESB's own numbers has to be built the way ESB builds it.
+
+### The 1.75 trap
+
+DAPR 2024's summary bullets say the average customer had *"an outage or Customer
+Interruption exceeding three minutes approximately 1.75 times"* and was without
+power *"for 219 minutes"*. Neither belongs beside the constants in `model.py`.
+Those are the all-in figures — planned and unplanned together, storm days
+included. The unplanned, storm-excluded pair this site compares against is in
+the performance section, quoted exactly:
+
+> In 2024, these targets were set at 78.7 CML and 112.7 CI. Our performance
+> against these unplanned outage targets stood at 117.47 CML and 137.86 CI for
+> 2024.
+
+CI there is per 100 customers, hence 1.3786. 1.75 against a CML of 117.47 would
+be comparing two different populations, and it would silently drag the measured
+bias down by a fifth.
+
+### When to refresh
+
+DAPR 2024 was issued **September 2025** and is the newest published as of August
+2026. DAPR 2025 is due around September 2026: when it lands, update
+`ESB_CRU_TARGET_CML`, `ESB_NATIONAL_CML` and `ESB_NATIONAL_CI` together, take
+them from the unplanned-target paragraph rather than the summary bullets, and
+re-check the customer count in the same edition.

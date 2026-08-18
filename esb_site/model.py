@@ -30,19 +30,38 @@ SA_TOWNS_PATH = DATA_DIR / "sa_towns.csv"
 # it. Days before it are rendered as "no data", never as "no outages".
 COLLECTION_START = datetime(2026, 7, 31, 21, 2, 11, tzinfo=timezone.utc)
 
-# ESB Networks' Retail Market Services "serves all 2.5 million electricity
-# customers"; the Key Statistics page of the same report says the network powers
-# "almost 2.4 million domestic, commercial and industrial customers". The lower
-# figure is the connected-customer count and the right denominator for CML.
-NATIONAL_CUSTOMERS = 2_400_000
+# The denominator for CML and CI. Both figures ESB publishes point at the same
+# number: the Distribution System Statistics in DAPR 2024 give "c. 2.5 million
+# customer meters", and the company page says "roughly 2.5 million customers
+# connected" (https://www.esbnetworks.ie/about-us/company).
+#
+# This was 2.4 million, on a "almost 2.4 million domestic, commercial and
+# industrial customers" attributed to the same report. That string does not
+# appear anywhere in DAPR 2024 - the only customer count in it is the 2.5
+# million above - so the lower figure was carrying a citation it did not have.
+#
+# It is a meter count rather than a headcount, and ESB does not publish the
+# denominator it divides by, so this cannot be exact. It is the closest thing
+# ESB states, which makes it the most defensible choice: every figure here that
+# is compared against ESB's own has to be built the way ESB builds it.
+NATIONAL_CUSTOMERS = 2_500_000
 
 MINUTES_PER_YEAR = 365.0 * 24 * 60
 
 # --- Published reference points ---------------------------------------------
-# ESB Networks 2024, unplanned and excluding storm days: the CRU incentive
-# target was 78.7 CML and ESB actually delivered 117.47, against 1.38
-# interruptions per customer (137.86 per 100). Reported on the page for
-# comparison; see notes/grading.md for why they do not set the grade.
+# ESB Networks 2024, unplanned and excluding storm days, quoted verbatim from
+# DAPR 2024: "these targets were set at 78.7 CML and 112.7 CI. Our performance
+# against these unplanned outage targets stood at 117.47 CML and 137.86 CI for
+# 2024" - CI per 100 customers, so 1.3786 per customer.
+#
+# Do not "correct" these against the 1.75 and 219 that appear in the same
+# report's summary bullets. Those are the all-in figures - planned and unplanned
+# together, storm days included - and pairing one of them with an unplanned
+# number here would compare two different populations.
+#
+# DAPR 2024 was issued September 2025 and is the newest published; DAPR 2025 is
+# due around September 2026. Reported on the page for comparison; see
+# notes/grading.md for why they do not set the grade.
 ESB_CRU_TARGET_CML = 78.7
 ESB_NATIONAL_CML = 117.47
 ESB_NATIONAL_CI = 1.38

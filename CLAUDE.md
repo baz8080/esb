@@ -81,6 +81,7 @@ Every one of these has already cost someone an hour:
 | An outage still listed at the last poll is not judged on the charter | `notes/grading.md` § An outage still listed |
 | Peak customers means the most off while the outage was live | `notes/grading.md` § The peak is the highest count |
 | Part-observed days keep their colour and say so in the tooltip | `notes/grading.md` § Short days say so |
+| 2.5M customer denominator, and which DAPR figures are comparable | `notes/grading.md` § The customer denominator |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries
