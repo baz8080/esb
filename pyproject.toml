@@ -1,0 +1,29 @@
+# The collector and the site generator both run on the standard library alone -
+# `dependencies` is empty and stays empty, because the collector is installed by
+# copying it onto a Raspberry Pi with nothing but Python and tzdata available.
+# This file exists for the development tooling and the lint configuration only;
+# nothing at runtime reads it.
+[project]
+name = "esb"
+version = "1.0.0"
+description = "Long-term collector and status site for ESB Networks outage data"
+requires-python = ">=3.9"
+dependencies = []
+
+[dependency-groups]
+dev = ["ruff>=0.15"]
+
+# Not a distributable package: both entry points are run as modules from the
+# source tree, and the Pi install is a file copy. Without this uv would try to
+# build a wheel on every `uv run`.
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# Pycodestyle errors, pyflakes, import order, bugbear, and comprehension and
+# pyupgrade rules. ruff takes its target version from requires-python above, so
+# the pyupgrade rules cannot suggest syntax the Raspberry Pi floor will not run.
+select = ["E", "F", "I", "B", "C4", "UP"]

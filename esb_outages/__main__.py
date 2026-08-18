@@ -40,10 +40,15 @@ def cmd_stats(args) -> int:
     fetched, skipped = s["total_fetched"], s["total_skipped"]
     if fetched or skipped:
         pct = skipped / (fetched + skipped) * 100
-        print(f"\ndetail fetches  : {fetched} made, {skipped} skipped ({pct:.0f}% avoided)")
+        print(
+            f"\ndetail fetches  : {fetched} made, {skipped} skipped ({pct:.0f}% avoided)"
+        )
     if s["recent_runs"]:
         print("\nrecent runs:")
-        print(f"  {'started':<21}{'status':<9}{'listed':>7}{'fetched':>9}{'cached':>8}{'errors':>8}")
+        print(
+            f"  {'started':<21}{'status':<9}{'listed':>7}"
+            f"{'fetched':>9}{'cached':>8}{'errors':>8}"
+        )
         for r in s["recent_runs"]:
             print(
                 f"  {r['started_at_utc']:<21}{r['status'] or '':<9}"

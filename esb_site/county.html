@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title><!--TITLE--></title>
+<meta name="description" content="<!--DESC-->">
+<link rel="canonical" href="<!--CANONICAL-->">
+<style>
+  /* Standalone, like the SPA and for the same reason: this page is entered
+     directly from a search result, and a shared stylesheet would cost every one
+     of those readers a second request. Keep the :root block in step with
+     site.html by hand — the two are the only duplication. */
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb;
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --border: rgba(11,11,11,0.10);
+    --good: #0ca30c; --warning: #fab219; --serious: #ec835a;
+    --critical: #d03b3b; --severe: #8f1d1d; --maint: #2a78d6;
+    --cell-empty: #e8e7e1;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19;
+      --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --border: rgba(255,255,255,0.10);
+      --maint: #3987e5; --severe: #b32626;
+      --cell-empty: #2c2c2a;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--page); color: var(--ink);
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+    padding: 24px 16px 64px;
+  }
+  .wrap { max-width: 880px; margin: 0 auto; }
+  a { color: inherit; }
+  .back { display: inline-block; margin-bottom: 14px; font-size: 13.5px; color: var(--ink-2); text-decoration: none; }
+  .chead { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .chead h1 { font-size: 22px; font-weight: 650; }
+  .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
+  .stale { color: var(--critical); font-weight: 600; }
+  .gradechip { width: 32px; height: 32px; border-radius: 6px; flex: none; display: grid; place-items: center; color: #fff; font-weight: 700; font-size: 17px; }
+  .g-A { background: var(--good); } .g-B { background: color-mix(in srgb, var(--good) 60%, var(--warning)); }
+  .g-C { background: var(--warning); color: #1a1a19 !important; }
+  .g-D { background: var(--serious); } .g-F { background: var(--critical); }
+  .g-none { background: var(--cell-empty); color: var(--muted) !important; font-size: 15px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
+  .card h2 { font-size: 15px; font-weight: 650; margin-bottom: 10px; }
+  .bar { display: flex; gap: 2px; height: 40px; margin-bottom: 12px; }
+  .bar i { flex: 1; border-radius: 2px; background: var(--good); min-width: 3px; }
+  .bar i.b1 { background: var(--warning); }
+  .bar i.b2 { background: var(--serious); }
+  .bar i.b3 { background: var(--critical); }
+  .bar i.b4 { background: var(--severe); }
+  .bar i.b5 { background: var(--maint); }
+  .bar i.b8, .bar i.b9 { background: var(--cell-empty); }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .tile { background: var(--page); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; }
+  .tile .v { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .tile .k { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+  .case { border-top: 1px solid var(--border); padding: 13px 0; }
+  .case:first-of-type { border-top: 0; }
+  .case .top { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .case .where { font-weight: 620; font-size: 14.5px; }
+  .case .tag { font-size: 11.5px; font-weight: 600; padding: 2px 7px; border-radius: 99px; }
+  .tag-f { background: color-mix(in srgb, var(--critical) 16%, transparent); color: var(--critical); }
+  .tag-p { background: color-mix(in srgb, var(--maint) 16%, transparent); color: var(--maint); }
+  .case .when { color: var(--muted); font-size: 12.5px; margin-left: auto; font-variant-numeric: tabular-nums; }
+  .case .sum { color: var(--ink-2); font-size: 13px; margin-top: 3px; }
+  .repeat {
+    display: inline-block; margin-top: 5px; font-size: 12px; font-weight: 600;
+    color: var(--serious); background: color-mix(in srgb, var(--serious) 14%, transparent);
+    border-radius: 4px; padding: 2px 8px;
+  }
+  .tll { font-size: 11.5px; color: var(--muted); margin-top: 9px; }
+  .tl { list-style: none; margin: 3px 0 0; padding: 0 0 0 15px; border-left: 2px solid var(--grid); }
+  .tl li { position: relative; font-size: 13px; color: var(--ink-2); padding: 3px 0; }
+  .tl li::before { content: ""; position: absolute; left: -21px; top: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--grid); }
+  .tl li.key::before { background: var(--ink-2); }
+  .tl li b { color: var(--ink); font-weight: 620; }
+  .tl time { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 7px; }
+  .tl details summary { cursor: pointer; color: var(--muted); font-size: 12.5px; list-style: none; }
+  .tl details summary::-webkit-details-marker { display: none; }
+  .tl details summary::before { content: "▸ "; }
+  .tl details[open] summary::before { content: "▾ "; }
+  .tl details ul { list-style: none; margin: 4px 0 0; padding: 0; }
+  .nav { font-size: 13px; color: var(--ink-2); line-height: 1.9; }
+  .nav a { margin-right: 10px; }
+  .empty { color: var(--muted); font-size: 13.5px; }
+  footer { margin-top: 34px; padding-top: 18px; border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
+  footer p { margin-bottom: 7px; }
+  footer a { color: var(--ink-2); }
+  footer q { font-style: italic; }
+  footer details { margin: 6px 0; }
+  footer summary {
+    cursor: pointer; color: var(--ink-2); font-weight: 600; padding: 3px 0;
+    list-style: none;
+  }
+  footer summary::-webkit-details-marker { display: none; }
+  footer summary::before { content: "▸ "; }
+  footer details[open] summary::before { content: "▾ "; }
+  footer details p { margin: 5px 0 8px; }
+</style>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
+</head>
+<body>
+<div class="wrap">
+<!--BODY-->
+<footer>
+  <p><b>The grade is ESB Networks' own published aim:</b> supply restored in under 4 hours in 95%
+  of cases. A county is scored on the share of fault-interrupted customers back inside that window
+  — A meets the 95% aim, then B 90%, C 80%, D 70%, F below. Planned works are excluded.</p>
+  <details><summary>How to read this page</summary>
+  <p>Each outage shows when it <b>began</b> and when supply was <b>restored</b>, both as ESB reports
+  them; the rows between are the customer count falling as crews restore sections. Where ESB never
+  published a restore time the end is marked as an estimate or as the last sighting.</p>
+  <p>Storm days are not excluded here, though ESB excludes them from its own figures, so winter
+  months will read worse than ESB's. Full method and sources are on the
+  <a href="../index.html">main page</a>.</p>
+  </details>
+  <p>Unofficial, and not affiliated with ESB Networks or the CRU. Built from snapshots of ESB's
+  public PowerCheck feed, which keeps no history of its own.</p>
+</footer>
+</div>
+</body>
+</html>

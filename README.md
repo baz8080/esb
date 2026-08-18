@@ -275,100 +275,27 @@ This needs no special support because of the property the whole design rests on:
 the raw JSONL is the source of truth and the database is derived. Any pile of raw
 logs, from any number of machines, rebuilds into one complete database.
 
-### Back up the data directory
+## The site
 
-On a NAS this was somebody else's problem. On a Pi it is yours, and an SD card
-failure would destroy a dataset that cannot be re-collected at any price.
-
-Only `raw/` needs backing up. It is append-only, compresses well, and `esb.db`
-rebuilds from it, so the raw logs alone are a complete backup.
-
-`scripts/backup-to-git.sh` commits and pushes them to a git remote daily. It
-needs **write** access, so this is the one part of the setup that requires
-credentials.
-
-Create a repository for the data, **separate from this code repo**. Public or
-private is your call — it is ESB's own public map data — but keep it separate:
-
-- The data grows by roughly 100MB a year, forever. In the code repo, every
-  future clone of the collector drags that whole history along with it.
-- The deploy key needs write access to wherever it pushes. Pointed at the code
-  repo, a key sitting on the collector could rewrite the collector's own source.
-
-An orphan branch in the same repo does not avoid the size problem, since
-`git clone` fetches all branches by default.
-
-Generate a deploy key on the collector host. A deploy key is scoped to a single
-repository, unlike an account-wide token:
+`esb_site` builds a static status page from the collected data and publishes it
+to <https://baz8080.github.io/esb> — outage days per county, drilling into
+individual outages and the updates ESB issued for each.
 
 ```bash
-sudo ssh-keygen -t ed25519 -N "" -f /etc/esb-outages-deploy-key -C "esb-collector"
+python -m esb_site --data-dir /var/lib/esb-outages     # writes out/site/
 ```
 
-Add the **public** half (`/etc/esb-outages-deploy-key.pub`) to that repository on
-GitHub under Settings → Deploy keys, with **Allow write access** ticked. Then let
-the service user read the private half, and point the repo at the remote:
+It reads `esb.db`, so run `rebuild` first if the database is stale. Counties are
+derived from Census Small Area centroids, because the feed has no county field.
 
-```bash
-sudo chown esb:esb /etc/esb-outages-deploy-key && sudo chmod 600 /etc/esb-outages-deploy-key
-```
+Each county-month is graded A–F on ESB Networks' own published service standard,
+from the CRU-approved Customer Charter: *"our aim is to restore supply within
+less than 4 hours in 95% of cases"*. A county scores on the share of its
+fault-interrupted customers back inside that window. Customer Minutes Lost, the
+unit the CRU's incentive uses, is reported alongside but does not set the grade —
+this data reproduces ESB's durations almost exactly while counting about a third
+more affected customers, which a share cancels and a total does not.
 
-```bash
-cd /var/lib/esb-outages && sudo -u esb git init -b main && sudo -u esb git remote add origin git@github.com:<you>/esb-data.git
-```
-
-Verify the credential works before trusting the schedule:
-
-```bash
-sudo systemctl start esb-backup.service && journalctl -u esb-backup.service -n 20 --no-pager
-```
-
-Then enable it:
-
-```bash
-sudo cp scripts/backup-to-git.sh /usr/local/bin/esb-backup-to-git.sh && sudo chmod +x /usr/local/bin/esb-backup-to-git.sh && sudo cp scripts/systemd/esb-backup.* /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now esb-backup.timer
-```
-
-It runs **daily**, at midnight local plus up to 30 minutes of jitter, so
-worst-case exposure is about a day of collection. To tighten that, `sudo
-systemctl edit esb-backup.timer` and set `OnCalendar=*:0/360` for every 6 hours —
-a push is a few KB, so frequency costs nothing but commit count.
-
-A failed push alerts through the same `ESB_ALERT_WEBHOOK`, and keeps failing
-until the data is genuinely offsite: the script pushes on every run even when
-there is nothing new to commit, because commits left behind by an earlier failed
-push would otherwise sit on local disk forever while the backup reported success.
-
-Two caveats:
-
-- **Do not run `compact` if you back up via git.** Git already compresses blobs
-  and deltas append-only text well; replacing a `.jsonl` with a `.jsonl.gz`
-  destroys that and churns the history for no gain.
-- `esb.db` is excluded deliberately. It is a binary rewritten wholesale every
-  run, so git cannot delta it, and it is derived data anyway.
-
-Git alone is a single point of failure in the same way the SD card is. Pairing it
-with a second copy on different hardware — the `rsync` below, run from the NAS —
-is what makes the dataset genuinely safe:
-
-```bash
-rsync -av --delete pi@raspberrypi:/var/lib/esb-outages/raw/ /path/on/the/other/machine/
-```
-
-## Development
-
-```bash
-python -m unittest discover -s tests -t .
-```
-
-Tests use the standard library only and run against real API responses captured
-in `tests/fixtures/`. The most important one is the rebuild round-trip in
-`tests/test_rebuild.py`: it polls a synthetic history, snapshots the database,
-replays it from the raw logs, and asserts the result is identical. If that ever
-fails, the raw log has stopped being a sufficient source of truth.
-
-
-## Not included
-
-No analysis, dashboards, or mapping. The dataset needs months of accumulation
-before any of that is worth building.
+`notes/grading.md` has the derivation, the published figures it rests on, and the
+measurements behind every choice; `tests/test_site_national.py` holds the
+pipeline to them.

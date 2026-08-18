@@ -1,0 +1,60 @@
+name: Build site
+
+on:
+  schedule:
+    # The collector pushes to esb-data on a daily timer with up to 30 minutes of
+    # jitter, so this runs well clear of it. Nothing is lost by being late: the
+    # database is rebuilt from the raw logs every time, so a missed run simply
+    # publishes more data the next day.
+    - cron: '40 5 * * *'
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Queue rather than cancel: two deploys racing would publish whichever finished
+# second, which is not necessarily the newer data.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check out the collected data
+        uses: actions/checkout@v7
+        with:
+          repository: baz8080/esb-data
+          path: esb-data
+
+      - uses: astral-sh/setup-uv@v10.0.1
+
+      # Unlike the sibling water site, there is no database to carry between
+      # runs: the raw JSONL is the source of truth and replaying it is the
+      # tested code path, so the index is rebuilt from scratch every time.
+      - name: Rebuild the database from the raw logs
+        run: uv run python -m esb_outages --data-dir esb-data rebuild
+
+      - name: Build the site
+        run: uv run python -m esb_site --data-dir esb-data --out out/site
+
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: out/site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v5

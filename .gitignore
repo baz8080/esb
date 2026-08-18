@@ -217,5 +217,9 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Collected outage data (bind-mounted on the NAS; never committed)
-data/
+# Collected outage data, if a data dir is used in the repo root. Anchored, so it
+# does not also swallow esb_site/data/, which is committed Census reference data.
+/data/
+
+# Built site
+out/

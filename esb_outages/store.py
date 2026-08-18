@@ -160,7 +160,7 @@ class Store:
 
     # ---- lifecycle -------------------------------------------------------
 
-    def open(self) -> "Store":
+    def open(self) -> Store:
         self.raw_dir.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.db_path)
         self._conn.row_factory = sqlite3.Row
@@ -181,7 +181,7 @@ class Store:
             self._conn.close()
             self._conn = None
 
-    def __enter__(self) -> "Store":
+    def __enter__(self) -> Store:
         return self.open()
 
     def __exit__(self, *exc) -> None:
