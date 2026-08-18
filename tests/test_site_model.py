@@ -369,6 +369,65 @@ class TestEventMerging(SiteModelCase):
         self.assertEqual(ups[-1].kind, "Restored")
 
 
+    def test_a_repeat_fault_is_not_a_split(self):
+        """Supply restored, then lost again at the same spot minutes later.
+
+        These share a location and sit a minute apart, exactly like the split
+        records, but they are separate interruptions - the same customers lost
+        supply twice - and ESB's own CI index counts each. Only overlap tells
+        the two patterns apart, which is why the merge key is the start time
+        rather than a tolerance around it. See notes/grading.md.
+        """
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        self.observe(
+            detail(
+                "1", numCustAffected=150, startTime="10/08/2026 10:00",
+                outageType="Restored", restoreTime="10/08/2026 11:00",
+            ),
+            t + timedelta(hours=2),
+        )
+        self.observe(
+            detail(
+                "2", numCustAffected=150, startTime="10/08/2026 11:01",
+                outageType="Restored", restoreTime="10/08/2026 11:30",
+            ),
+            t + timedelta(hours=3),
+        )
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 2)
+        self.assertEqual([o.minutes for o in outages], [60.0, 29.0])
+
+    def test_sections_in_different_counties_stay_apart(self):
+        """One fault straddling a county boundary is one row per county.
+
+        Merging would hand one county's customers to its neighbour, and each
+        county's page has to carry the customers actually in it.
+        """
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        common = dict(location="Little Bray", startTime="10/08/2026 10:00")
+        self.observe(detail("1", point={"c": "53.20873,-6.12507"}, **common), t)
+        self.observe(detail("2", point={"c": "53.22514,-6.13477"}, **common), t)
+        outages, _, _ = self.load()
+        self.assertEqual({o.county for o in outages}, {"Wicklow", "Dublin"})
+        self.assertEqual(len(outages), 2)
+
+    def test_an_outage_seen_only_after_it_ended(self):
+        """6.4% of events are first seen already Restored: a short outage that
+        began and ended between two polls. It still has a real duration."""
+        self.observe(
+            detail(
+                "1", outageType="Restored", startTime="10/08/2026 10:00",
+                restoreTime="10/08/2026 10:30",
+            ),
+            datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc),
+        )
+        outages, _, _ = self.load()
+        o = outages[0]
+        self.assertEqual(o.updates[0].kind, "Restored")
+        self.assertEqual(o.minutes, 30.0)
+        self.assertFalse(o.planned)
+
+
 class TestCountyMonth(SiteModelCase):
     def test_planned_works_are_kept_out_of_the_grade(self):
         t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)

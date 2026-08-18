@@ -92,7 +92,7 @@ Their counts sum to 5,623 for an event that peaked at 5,623 — but only because
 one record already carried the whole figure; adding them counts the same
 customers repeatedly. Records are merged on an identical location *and* start
 time, folding **1,457 IDs into 1,333 events**, which cut national CI from 1.60×
-ESB's figure to 1.32× and CML from 195 to 172.
+ESB's figure to 1.35× and CML from 195 to 172.
 
 Requiring the coordinates to be close as well was tried and merged two extra
 pairs in the whole month, so the simpler rule stands. Merged events report
@@ -140,6 +140,73 @@ county field, no Eircode — only `point.c`. This placed 1,457 of 1,457 outages
 across all 26 counties. The water site's radius-and-population footprint was
 deliberately not carried over: ESB publishes a point per outage, not a service
 area.
+
+## Outages we only ever see restored
+
+*Investigated 2026-08-17, after the split-outage merge landed.*
+
+85 of 1,333 events (6.4%) have `Restored` as their first observed state: we never
+saw them live. All 85 are faults — planned works never restore — and they are
+short, a median of 30 minutes against 2.2 hours overall. We first see them a
+median of 32 minutes after they were restored, which is one poll interval. They
+are the outages that begin and end inside a 30-minute gap between polls, which is
+a property of the collection rate and not of the data.
+
+Classified by whether they have a neighbouring event at the same location within
+2 km and six hours:
+
+| | Count |
+|---|---:|
+| No neighbour — a short outage caught only on its way out | 61 |
+| Neighbour is **sequential**: a repeat fault | 11 |
+| Neighbour **overlaps**: possibly a split we are missing | 13 |
+| Present at the very first poll (collection-start backlog) | 5 |
+
+### Repeat faults are not splits, and must not be merged
+
+The neighbours are mostly the same fault happening *again*, not the same fault
+recorded twice. The second outage starts nought to one minute after the first was
+restored, at identical coordinates, often with an identical customer count:
+
+```
+Tycor (Waterford), 11 Aug   09:31-10:28 (369c) -> 10:29-10:39 (253c)
+                            -> 10:40-10:49 (295c) -> 10:50-11:03 (369c)
+Boghall Road (Wicklow)      02:17-04:01 (150c) -> 04:02-04:12 (150c) -> 04:13-04:26 (150c)
+Creagh (Galway)             03:46-04:27 (1027c) -> 04:28-... (1027c)
+```
+
+15 such chains cover 32 events; 5 of them hit an identical customer count on
+every leg. These are genuinely separate interruptions — the same customers lost
+supply two, three, four times — and ESB's own CI index counts each one. Merging
+them would understate how often supply failed.
+
+### The merge rule was not relaxed
+
+Because both patterns share a location and sit minutes apart, a start-time
+tolerance alone cannot tell them apart; only *overlap* can. Merging same-location
+records that overlap in time and start within a tolerance was measured:
+
+| Rule | Events | CI vs ESB | CML |
+|---|---:|---:|---:|
+| Exact (location, start) — **current** | 1,333 | 1.35× | 171.6 |
+| + overlapping, starts within 5 min | 1,281 | 1.33× | 169.1 |
+| + overlapping, starts within 15 min | 1,239 | 1.32× | 164.2 |
+| + overlapping, starts within 60 min | 1,164 | 1.30× | 162.4 |
+
+The remaining bias barely moves — three points of a gap that is documented and
+understood — while each step folds together more events that may be distinct.
+Rejected: the exact rule already captures the split pattern it was built for
+(1.60× to 1.35×), and the rest is not worth the false merges.
+
+### Splits across a county boundary are deliberate
+
+Nine events share a location name and start time but sit 1–10 km apart in
+different counties — one fault whose sections straddle a boundary, such as
+"Little Bray" appearing in both Wicklow and Dublin. County is part of the merge
+key, so these stay separate. That is intended: each county's page should carry
+the customers actually in that county, and merging would attribute one county's
+outage to its neighbour. The cost is that a handful of physical incidents are
+counted once per county at national level.
 
 ## Day cells
 
