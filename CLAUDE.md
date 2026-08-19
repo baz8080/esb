@@ -27,6 +27,15 @@ checked out at `../esb-data`. Set `ESB_DATA_DIR` to it, or pass `--data-dir`.
 The site tests in `tests/test_site_national.py` skip without it, so run them
 with it set before shipping anything that touches the numbers.
 
+## The UI is shared — change it upstream
+
+`esb_site/ui/` is a **vendored copy** of [`../statusui`](https://github.com/baz8080/statusui)
+(`ui/UPSTREAM` names the commit): the tokens, base CSS, row/bar/card components and the JS
+helpers that uisce, esb and lifts all use, inlined into every page at build. Edit it there,
+then `scripts/sync-ui.sh` here — `tests/test_ui_vendored.py` fails if the copy is edited in
+place. This site's own rules are `esb_site/site.css`; the shared/per-site rule is in statusui's
+CLAUDE.md. The vendoring keeps `dependencies` empty and a clone building.
+
 ## The invariant
 
 **The raw JSONL logs are the source of truth. The database is disposable.**
