@@ -51,9 +51,7 @@
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 14px; }
   .card h2 { font-size: 15px; font-weight: 650; margin-bottom: 10px; }
   .bar { display: flex; gap: 2px; height: 40px; }
-  /* The bar's meaning must not live in title attributes alone — a phone never
-     shows them, and these are the pages a search result opens. Fixed height so
-     filling it does not reflow the card. Kept in step with site.html. */
+  /* fixed height so filling it does not reflow the card; in step with site.html */
   .daycap { margin: 8px 0 12px; font-size: 12px; color: var(--ink-2); min-height: 1.45em; }
   .bar i { flex: 1; border-radius: 2px; background: var(--good); min-width: 3px; }
   .bar i.b1 { background: var(--warning); }
@@ -132,8 +130,7 @@
 </div>
 <script>
 "use strict";
-// The same day-cell caption the app has, for the same reason: on a touch
-// screen a title attribute says nothing. One delegated listener, no data.
+// the app's day-cell readout: one delegated listener, no data
 (function () {
   var show = function (e) {
     var cell = e.target.closest(".bar i[data-cap]");
