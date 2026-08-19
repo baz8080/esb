@@ -121,9 +121,15 @@
   /* The bar's whole meaning used to live in title attributes, which a phone
      never shows. Fixed height so filling it does not reflow the card. */
   .daycap { margin-top: 8px; font-size: 12.5px; color: var(--ink-2); min-height: 1.45em; }
-  /* On the county list the caption sits under a row that is already 50px tall,
-     so it gets a tighter box than the one on the county page's own bar. */
-  .county .daycap { margin: -6px 0 0; padding: 0 16px 10px; font-size: 12px; }
+  /* On the county list the caption is a third grid row *inside* .row, so the
+     row's hover band, click target and focus ring already cover it. It used to
+     sit beside the row, and the hover grey stopped above the text. */
+  .row .daycap { grid-column: 1 / -1; margin: -4px 0 0; font-size: 12px; }
+  /* The list caption is a hover affordance: on touch a tap on a cell bubbles to
+     the row and navigates, so there is nothing for it to show — and at ~8px a
+     cell is far under any usable touch target. Don't reserve the strip. The
+     county page's own bar keeps its readout: nothing navigates there. */
+  @media (hover: none) { .row .daycap { display: none; } }
 
   .stats { display: grid; grid-template-columns: 92px auto; justify-content: end; align-items: center; column-gap: 10px;
            text-align: right; font-size: 13px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -398,7 +404,9 @@ function dayCells(cells, ym) {
     else if (b === 0) cap = date + ": no significant fault";
     else cap = date + ": " + BUCKET[b] + " fault disruption";
     if (b < 8 && PARTIAL.indexOf(date) !== -1) cap += " — only part of this day was recorded";
-    out += '<i class="b' + b + '" title="' + esc(cap) + '" data-cap="' + esc(cap) + '"></i>';
+    // No title: it would say the same thing as the .daycap readout a second
+    // time, after a delay, and never at all on a phone.
+    out += '<i class="b' + b + '" data-cap="' + esc(cap) + '"></i>';
   }
   return out;
 }
@@ -435,8 +443,8 @@ function renderOverview() {
         "<b>" + (m ? m[5] : 0) + "</b><span>planned</span></div>" +
         '<div class="cml"><b>' + (m && m[2] != null ? m[2] + "%" : "–") +
           "</b><br>back in 4h</div>" +
-      '</div><span class="chev">›</span></div>' +
-      '<div class="daycap"></div></div>';
+      '</div><span class="chev">›</span>' +
+      '<div class="daycap"></div></div></div>';
   }).join("");
 
   var n = D.national[curMonth] || [0, 0, 0, 0, 0, null];
@@ -700,7 +708,9 @@ function bindDayCaption() {
   var show = function (e) {
     var cell = e.target.closest(".bar i[data-cap]");
     if (!cell) return;
-    var host = cell.closest(".county, .card");
+    // a list cell's readout is inside its own .row; the county page's big bar
+    // sits directly in a .card
+    var host = cell.closest(".row, .card");
     var cap = host && host.querySelector(".daycap");
     if (cap) cap.textContent = cell.dataset.cap;
   };
