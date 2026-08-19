@@ -67,7 +67,8 @@ $(cat /tmp/esb-backup-fetch.err)"
 fi
 
 if git rev-parse --verify -q "origin/$branch" >/dev/null &&
-    ! git merge -q --no-edit "origin/$branch" 2>/tmp/esb-backup-merge.err; then
+    ! git -c user.name="esb-collector" -c user.email="esb-collector@localhost" \
+        merge -q --no-edit "origin/$branch" 2>/tmp/esb-backup-merge.err; then
     git merge --abort 2>/dev/null || true
     notify "ESB backup: origin has commits that conflict with $DATA_DIR.
 Resolve manually, then re-run this script.
