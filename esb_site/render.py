@@ -11,21 +11,20 @@ only way to hold that line is to never put a per-outage record in `data.js`.
 from __future__ import annotations
 
 import html
-import json
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from . import model
+from .ui import statusui
 
 BASE_URL = "https://baz8080.github.io/esb"
+BUDGET_BYTES = 500 * 1024
 
 TEMPLATES = Path(__file__).parent
 SITE_HTML = TEMPLATES / "site.html"
 COUNTY_HTML = TEMPLATES / "county.html"
-
-CANONICAL = "<!--CANONICAL-->"
-TITLE, DESC, BODY = "<!--TITLE-->", "<!--DESC-->", "<!--BODY-->"
+SITE_CSS = TEMPLATES / "site.css"
 
 # How many outages a server-rendered county page carries. The page exists so
 # that a county has a real URL for a search engine and a reader arriving cold;
@@ -46,27 +45,12 @@ END_LABEL = {
     "listed": "last seen out at {when}",
 }
 
-MONTH_NAMES = (
-    "January", "February", "March", "April", "May", "June",
-    "July", "August", "September", "October", "November", "December",
-)
-
-
-def slug(county):
-    return "".join(c if c.isalnum() else "-" for c in county.lower()).strip("-")
-
-
-def month_label(ym):
-    return f"{MONTH_NAMES[int(ym[5:7]) - 1]} {ym[:4]}"
-
-
-def _dumps(obj):
-    # Default separators spend a byte on every comma and colon in the payload.
-    return json.dumps(obj, separators=(",", ":"), ensure_ascii=False)
-
-
-def _stamp(dt):
-    return dt.strftime("%Y-%m-%d %H:%M UTC")
+slug = statusui.slug
+month_label = statusui.month_label
+_dumps = statusui.dumps
+_stamp = statusui.stamp
+_when = statusui.when
+_hours = statusui.hours
 
 
 def _short(dt):
@@ -303,25 +287,6 @@ def _updates_html(rows):
     )
 
 
-def _when(ts):
-    if not ts:
-        return ""
-    dt = datetime.fromisoformat(ts)
-    return f"{dt.day} {MONTH_NAMES[dt.month - 1][:3]}, {dt:%H:%M}"
-
-
-def _hours(h):
-    if h < 1:
-        return f"{round(h * 60)} min"
-    if h < 48:
-        return f"{h:.1f} h" if h < 10 else f"{round(h)} h"
-    return f"{round(h / 24)} days"
-
-
-# Said on the two day cells built from part of a day. Plain words on purpose:
-# it is read by someone wondering why their county looks quiet.
-PARTIAL_NOTE = " — only part of this day was recorded"
-
 DAY_LABELS = {
     "0": "no significant fault",
     "1": "minor fault disruption",
@@ -335,16 +300,8 @@ DAY_LABELS = {
 
 
 def _day_cells(cells, ym, partial):
-    out = []
-    for i, ch in enumerate(cells):
-        day = f"{ym}-{i + 1:02d}"
-        cap = f"{day}: {DAY_LABELS[ch]}"
-        # Nothing to qualify on a day with no data or no colour yet.
-        if ch not in "89" and day in partial:
-            cap += PARTIAL_NOTE
-        # data-cap feeds county.html's .daycap readout; a title would repeat it
-        out.append(f'<i class="b{ch}" data-cap="{html.escape(cap)}"></i>')
-    return "".join(out)
+    # nothing to qualify on a day with no data or no colour yet
+    return statusui.day_cells(cells, ym, partial, DAY_LABELS, qualify=lambda ch: ch not in "89")
 
 
 def county_page(county, data, cases, ym, all_counties):
@@ -378,7 +335,7 @@ def county_page(county, data, cases, ym, all_counties):
             else ""
         )
         + "</div>",
-        f'<div class="card"><div class="bar">'
+        f'<div class="card"><div class="bar tall">'
         f'{_day_cells(m[0], ym, data["partial"])}</div>'
         '<div class="daycap"></div><div class="tiles">',
         "".join(
@@ -412,24 +369,21 @@ def county_page(county, data, cases, ym, all_counties):
     )
     body.append("</p></div>")
 
-    page = COUNTY_HTML.read_text(encoding="utf-8")
-    return (
-        page.replace(TITLE, html.escape(title))
-        .replace(DESC, html.escape(desc))
-        .replace(CANONICAL, f"{BASE_URL}/c/{slug(county)}.html")
-        .replace(BODY, "".join(body))
+    return _page(
+        COUNTY_HTML,
+        {
+            "TITLE": html.escape(title),
+            "DESC": html.escape(desc),
+            "CANONICAL": f"{BASE_URL}/c/{slug(county)}.html",
+            "BODY": "".join(body),
+        },
     )
 
 
-def _sitemap(paths, lastmod):
-    urls = "".join(
-        f"<url><loc>{BASE_URL}/{p}</loc><lastmod>{lastmod}</lastmod></url>" for p in paths
-    )
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>'
-        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
-        f"{urls}</urlset>"
-    )
+def _page(template, markers):
+    """A template with the shared UI and this site's stylesheet inlined, then its markers."""
+    markers = dict(markers, **{"SITE-CSS": SITE_CSS.read_text(encoding="utf-8")})
+    return statusui.assemble(template.read_text(encoding="utf-8"), markers)
 
 
 def write(site_dir, outages, sa_index, now, until):
@@ -441,8 +395,7 @@ def write(site_dir, outages, sa_index, now, until):
     latest = months[-1]
 
     (site_dir / "index.html").write_text(
-        SITE_HTML.read_text(encoding="utf-8").replace(CANONICAL, f"{BASE_URL}/"),
-        encoding="utf-8",
+        _page(SITE_HTML, {"CANONICAL": f"{BASE_URL}/"}), encoding="utf-8"
     )
     (site_dir / "data.js").write_text(
         "window.ESB_DATA = " + _dumps(data) + ";\n", encoding="utf-8"
@@ -468,35 +421,15 @@ def write(site_dir, outages, sa_index, now, until):
 
     lastmod = now.strftime("%Y-%m-%d")
     paths = [""] + [f"c/{slug(c)}.html" for c in sa_index.counties]
-    (site_dir / "sitemap.xml").write_text(_sitemap(paths, lastmod), encoding="utf-8")
-    (site_dir / "robots.txt").write_text(
-        f"User-agent: *\nAllow: /\nSitemap: {BASE_URL}/sitemap.xml\n", encoding="utf-8"
+    (site_dir / "sitemap.xml").write_text(
+        statusui.sitemap(BASE_URL, paths, lastmod), encoding="utf-8"
     )
+    (site_dir / "robots.txt").write_text(statusui.robots(BASE_URL), encoding="utf-8")
     return data
 
 
 def size_report(site_dir):
-    """What a reader downloads before they touch anything.
-
-    Printed on every build: the payload is the constraint this site keeps having
-    to defend, and a regression belongs in the build log rather than in the
-    field.
-    """
-    site_dir = Path(site_dir)
-    initial = {p: (site_dir / p).stat().st_size for p in ("index.html", "data.js")}
-    shards = sorted((site_dir / "h").glob("*.js"), key=lambda p: -p.stat().st_size)
-    pages = list((site_dir / "c").glob("*.html"))
-    lines = [
-        f"  {'index.html':<16}{initial['index.html'] / 1024:8.1f} KB",
-        f"  {'data.js':<16}{initial['data.js'] / 1024:8.1f} KB",
-        f"  {'initial load':<16}{sum(initial.values()) / 1024:8.1f} KB"
-        f"   (budget 500.0 KB)",
-        f"  {'search.js':<16}{(site_dir / 'search.js').stat().st_size / 1024:8.1f} KB"
-        f"   (on first keystroke)",
-        f"  {'county pages':<16}{sum(p.stat().st_size for p in pages) / 1024:8.1f} KB"
-        f"   ({len(pages)} files)",
-        f"  {'shards':<16}{sum(p.stat().st_size for p in shards) / 1024:8.1f} KB"
-        f"   ({len(shards)} files, largest {shards[0].name} at"
-        f" {shards[0].stat().st_size / 1024:.1f} KB)",
-    ]
-    return sum(initial.values()), "\n".join(lines)
+    """What a reader downloads before they touch anything; printed on every build."""
+    return statusui.size_report(
+        site_dir, BUDGET_BYTES, "c", "county pages", extra=[("search.js", "on first keystroke")]
+    )

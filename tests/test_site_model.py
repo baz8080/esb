@@ -16,6 +16,7 @@ from pathlib import Path
 from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
 from esb_site import model, render
+from esb_site.ui import statusui
 
 NOW = datetime(2026, 8, 20, 0, 0, 0, tzinfo=timezone.utc)
 
@@ -830,7 +831,7 @@ class TestPartialDays(SiteModelCase):
             outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
         )["cells"]
         html = render._day_cells(cells, "2026-08", model.partial_days(self.until))
-        self.assertIn(f"2026-08-12: no significant fault{render.PARTIAL_NOTE}", html)
+        self.assertIn(f"2026-08-12: no significant fault{statusui.PARTIAL_NOTE}", html)
         # The full days beside it say nothing extra, and neither does a day
         # with no data to qualify.
         self.assertIn('data-cap="2026-08-11: no significant fault"', html)

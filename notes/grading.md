@@ -409,3 +409,19 @@ DAPR 2024 was issued **September 2025** and is the newest published as of August
 `ESB_CRU_TARGET_CML`, `ESB_NATIONAL_CML` and `ESB_NATIONAL_CI` together, take
 them from the unplanned-target paragraph rather than the summary bullets, and
 re-check the customer count in the same edition.
+
+## The design layer is shared with uisce and lifts — 2026-08-19
+
+The three status sites are deliberately look-alike, and every UI fix had been ported three
+times by hand, not always successfully: uisce's contrast pass of 2026-08-18 (darker `--good`
+and `--muted`, dark lettering on the B and D grade chips) never reached this site. The tokens,
+base rules, row/bar/card components and the browser helpers now live in `../statusui`
+(`baz8080/statusui`), vendored under `esb_site/ui/` and inlined into `index.html` and the
+county pages at build by `statusui.assemble()`. `esb_site/site.css` is what is this site's
+own: the bar colour buckets, the two layout widths, the repeat-fault tag.
+
+Vendored rather than installed, so `dependencies` stays empty and a clone still builds; drift
+is guarded by `tests/test_ui_vendored.py`, which compares the copy to `../statusui/ui` when
+that checkout exists and skips otherwise. **To change the shared UI:** edit in `statusui`,
+commit, `scripts/sync-ui.sh`, run the tests, commit. The full list of what is shared and what
+is per-site is in statusui's README.

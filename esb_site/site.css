@@ -1,0 +1,22 @@
+/* This site's own rules, inlined after the shared base.css (esb_site/ui) in
+   both index.html and the county pages. */
+:root { --row-cols: 150px 1fr 190px 10px; --stats-cols: 92px auto; }
+
+/* day-cell buckets: 0 normal, 1–4 fault severity, 5 planned, 8 no data, 9 to come */
+.bar i.b1 { background: var(--warning); }
+.bar i.b2 { background: var(--serious); }
+.bar i.b3 { background: var(--critical); }
+.bar i.b4 { background: var(--severe); }
+.bar i.b5 { background: var(--maint); }
+.bar i.b8, .bar i.b9 { background: var(--cell-empty); }
+
+.stats .cml { font-size: 14.5px; }
+
+.repeat {
+  display: inline-block; margin-top: 5px; font-size: 12px; font-weight: 600;
+  color: var(--serious-text); background: color-mix(in srgb, var(--serious) 14%, transparent);
+  border-radius: 4px; padding: 2px 8px;
+}
+
+/* county page: the line under the heading */
+.chead + .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
