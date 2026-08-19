@@ -342,7 +342,8 @@ def _day_cells(cells, ym, partial):
         # Nothing to qualify on a day with no data or no colour yet.
         if ch not in "89" and day in partial:
             cap += PARTIAL_NOTE
-        out.append(f'<i class="b{ch}" title="{html.escape(cap)}"></i>')
+        # data-cap feeds county.html's .daycap readout; a title would repeat it
+        out.append(f'<i class="b{ch}" data-cap="{html.escape(cap)}"></i>')
     return "".join(out)
 
 
@@ -378,7 +379,8 @@ def county_page(county, data, cases, ym, all_counties):
         )
         + "</div>",
         f'<div class="card"><div class="bar">'
-        f'{_day_cells(m[0], ym, data["partial"])}</div><div class="tiles">',
+        f'{_day_cells(m[0], ym, data["partial"])}</div>'
+        '<div class="daycap"></div><div class="tiles">',
         "".join(
             f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>'
             for v, k in tiles
