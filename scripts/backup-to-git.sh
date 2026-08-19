@@ -55,6 +55,27 @@ else
         commit -q -m "Outage data through $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 fi
 
+# Pull in anything pushed to origin from elsewhere first, so a rejected
+# non-fast-forward push doesn't strand local commits until someone notices.
+branch="$(git rev-parse --abbrev-ref HEAD)"
+if ! git fetch -q origin 2>/tmp/esb-backup-fetch.err; then
+    notify "ESB backup: git fetch failed, so it's unknown whether origin has
+commits this checkout lacks. Data is committed locally but not pushed.
+
+$(cat /tmp/esb-backup-fetch.err)"
+    exit 1
+fi
+
+if git rev-parse --verify -q "origin/$branch" >/dev/null &&
+    ! git merge -q --no-edit "origin/$branch" 2>/tmp/esb-backup-merge.err; then
+    git merge --abort 2>/dev/null || true
+    notify "ESB backup: origin has commits that conflict with $DATA_DIR.
+Resolve manually, then re-run this script.
+
+$(cat /tmp/esb-backup-merge.err)"
+    exit 1
+fi
+
 # Push unconditionally, even when there was nothing new to commit. A previous
 # push may have failed and left commits sitting only on this disk; treating
 # "nothing to commit" as "nothing to do" would report success forever while the
