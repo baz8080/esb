@@ -69,7 +69,7 @@ def main(argv=None) -> int:
     )
     total, report = render.size_report(args.out)
     print(report)
-    if total > 500 * 1024:
+    if total > render.BUDGET_BYTES:
         print("  WARNING: initial load is over the 500 KB budget", file=sys.stderr)
     return 0
 
