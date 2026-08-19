@@ -82,6 +82,7 @@ Every one of these has already cost someone an hour:
 | Peak customers means the most off while the outage was live | `notes/grading.md` § The peak is the highest count |
 | Part-observed days keep their colour and say so in the tooltip | `notes/grading.md` § Short days say so |
 | 2.5M customer denominator, and which DAPR figures are comparable | `notes/grading.md` § The customer denominator |
+| The design layer is shared with uisce and lifts via `../statusui`, vendored under `esb_site/ui/` — edit upstream, then `scripts/sync-ui.sh`; never edit the copy. `esb_site/site.css` is this site's own | `notes/grading.md` § The design layer is shared; statusui's README |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries
