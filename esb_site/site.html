@@ -128,8 +128,16 @@
   /* The list caption is a hover affordance: on touch a tap on a cell bubbles to
      the row and navigates, so there is nothing for it to show — and at ~8px a
      cell is far under any usable touch target. Don't reserve the strip. The
-     county page's own bar keeps its readout: nothing navigates there. */
-  @media (hover: none) { .row .daycap { display: none; } }
+     county page's own bar keeps its readout: nothing navigates there.
+     Hidden only while *empty*: iPadOS reports hover:none (and pointer:coarse,
+     any-hover:none) even with a trackpad attached, yet hovers still fire, so a
+     strip that hides outright would take the caption away from exactly the
+     pointer that can use it. Once filled it shows, at the cost of a one-time
+     17px growth of that row on those devices. */
+  @media (hover: none) { .row .daycap:empty { display: none; } }
+  /* the one-line cue that the bars respond, above the list; nothing to cue on
+     touch, where a tap navigates */
+  @media (hover: none) { .hoverhint { display: none; } }
 
   .stats { display: grid; grid-template-columns: 92px auto; justify-content: end; align-items: center; column-gap: 10px;
            text-align: right; font-size: 13px; color: var(--ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -463,7 +471,10 @@ function renderOverview() {
   document.getElementById("basis").innerHTML =
     "Counties are graded on ESB Networks' own published aim — <b>supply restored in under " +
     D.esb.hours + " hours in " + D.esb.share + "% of cases</b> — measured across the customers each " +
-    "fault interrupted." + (within == null ? "" : " Nationally this month: <b>" + within + "%</b>.");
+    "fault interrupted." + (within == null ? "" : " Nationally this month: <b>" + within + "%</b>.") +
+    // the bars answer to a hover now that their tooltips are gone; one
+    // sentence here says so, rather than a placeholder in every strip below
+    ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
 
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "back inside 4 hours"],

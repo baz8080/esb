@@ -833,5 +833,7 @@ class TestPartialDays(SiteModelCase):
         self.assertIn(f"2026-08-12: no significant fault{render.PARTIAL_NOTE}", html)
         # The full days beside it say nothing extra, and neither does a day
         # with no data to qualify.
-        self.assertIn('title="2026-08-11: no significant fault"', html)
-        self.assertIn('title="2026-08-13: no data collected for this day"', html)
+        self.assertIn('data-cap="2026-08-11: no significant fault"', html)
+        self.assertIn('data-cap="2026-08-13: no data collected for this day"', html)
+        # The caption is shown by the page's readout, not a tooltip.
+        self.assertNotIn("title=", html)
