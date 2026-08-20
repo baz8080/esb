@@ -371,6 +371,7 @@ function render() {
   document.getElementById("overview").hidden = county;
   document.getElementById("countyview").hidden = !county;
   if (county) renderCounty(); else renderOverview();
+  revealMonthTab(document.getElementById(county ? "countyview" : "overview").querySelector(".months"));
 }
 
 /* --- search -------------------------------------------------------------- */
