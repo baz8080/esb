@@ -12,6 +12,10 @@ jobs:
       - uses: actions/checkout@v7
 
       - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          # recommended for GitHub-hosted runners: keep source-built wheels,
+          # drop pre-built ones before the cache is saved
+          prune-cache: true
 
       - name: Install dev tooling
         run: uv sync --group dev
@@ -34,6 +38,10 @@ jobs:
           path: esb-data
 
       - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          # recommended for GitHub-hosted runners: keep source-built wheels,
+          # drop pre-built ones before the cache is saved
+          prune-cache: true
 
       - name: Rebuild the database from the raw logs
         run: uv run python -m esb_outages --data-dir esb-data rebuild
