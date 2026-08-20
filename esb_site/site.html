@@ -477,6 +477,7 @@ function boot() {
     if (!e.target.closest(".search")) document.getElementById("results").hidden = true;
   });
   bindDayCaption();
+  bindMonthReveal();
   addEventListener("hashchange", route);
   route();
 }
