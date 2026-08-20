@@ -425,3 +425,19 @@ is guarded by `tests/test_ui_vendored.py`, which compares the copy to `../status
 that checkout exists and skips otherwise. **To change the shared UI:** edit in `statusui`,
 commit, `scripts/sync-ui.sh`, run the tests, commit. The full list of what is shared and what
 is per-site is in statusui's README.
+
+## The vendored copy became a pinned dependency — 2026-08-20
+
+One day was enough to show the vendored mechanism's cost: a shared fix meant a sync, test,
+commit and PR in each of three repos, and the sites still drifted — this site and lifts were
+synced to statusui `f248ac3` while uisce sat five UI commits behind, with nothing failing to
+say so (the byte-compare only fires against the checkout you happen to have). `statusui` is
+now a real package, declared in the `site` dependency group with a `[tool.uv.sources]` git
+source and pinned to a commit in `uv.lock` — `dependencies` stays literally empty, so the Pi
+collector's stdlib-only file-copy install is untouched, and `default-groups` keeps a plain
+`uv run` building. The vendored tree, `scripts/sync-ui.sh` and the byte-compare went; the
+no-redeclared-globals guard stayed as `tests/test_ui_globals.py`, reading `ui.js` from the
+installed package. **To change the shared UI now:** edit in `../statusui`, test there, push,
+then `../statusui/rollout.sh` bumps the pin in all three sites, runs each site's tests and
+opens the PRs. An unpushed statusui change can be tried here with
+`uv run --with-editable ../statusui python -m esb_site ...`.

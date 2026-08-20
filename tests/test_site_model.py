@@ -13,10 +13,11 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import statusui
+
 from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
 from esb_site import model, render
-from esb_site.ui import statusui
 
 NOW = datetime(2026, 8, 20, 0, 0, 0, tzinfo=timezone.utc)
 
