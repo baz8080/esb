@@ -35,6 +35,10 @@ jobs:
           path: esb-data
 
       - uses: astral-sh/setup-uv@v10.0.1
+        with:
+          # recommended for GitHub-hosted runners: keep source-built wheels,
+          # drop pre-built ones before the cache is saved
+          prune-cache: true
 
       # Unlike the sibling water site, there is no database to carry between
       # runs: the raw JSONL is the source of truth and replaying it is the
