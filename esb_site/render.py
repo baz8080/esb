@@ -15,8 +15,9 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 
+import statusui
+
 from . import model
-from .ui import statusui
 
 BASE_URL = "https://baz8080.github.io/esb"
 BUDGET_BYTES = 500 * 1024

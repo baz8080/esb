@@ -29,12 +29,13 @@ with it set before shipping anything that touches the numbers.
 
 ## The UI is shared — change it upstream
 
-`esb_site/ui/` is a **vendored copy** of [`../statusui`](https://github.com/baz8080/statusui)
-(`ui/UPSTREAM` names the commit): the tokens, base CSS, row/bar/card components and the JS
-helpers that uisce, esb and lifts all use, inlined into every page at build. Edit it there,
-then `scripts/sync-ui.sh` here — `tests/test_ui_vendored.py` fails if the copy is edited in
-place. This site's own rules are `esb_site/site.css`; the shared/per-site rule is in statusui's
-CLAUDE.md. The vendoring keeps `dependencies` empty and a clone building.
+The tokens, base CSS, row/bar/card components and the JS helpers that uisce, esb and lifts
+all use come from [`../statusui`](https://github.com/baz8080/statusui), a **uv git dependency
+pinned in `uv.lock`** (the `site` dependency group — `dependencies` stays empty for the Pi
+collector) and inlined into every page at build by `statusui.assemble()`. Edit it there,
+push, then `../statusui/rollout.sh` bumps the pin in all three sites and opens the PRs. This
+site's own rules are `esb_site/site.css`; the shared/per-site rule is in statusui's
+CLAUDE.md.
 
 ## The invariant
 
@@ -91,7 +92,7 @@ Every one of these has already cost someone an hour:
 | Peak customers means the most off while the outage was live | `notes/grading.md` § The peak is the highest count |
 | Part-observed days keep their colour and say so in the tooltip | `notes/grading.md` § Short days say so |
 | 2.5M customer denominator, and which DAPR figures are comparable | `notes/grading.md` § The customer denominator |
-| The design layer is shared with uisce and lifts via `../statusui`, vendored under `esb_site/ui/` — edit upstream, then `scripts/sync-ui.sh`; never edit the copy. `esb_site/site.css` is this site's own | `notes/grading.md` § The design layer is shared; statusui's README |
+| The design layer is shared with uisce and lifts via `../statusui`, a uv git dependency pinned in `uv.lock` — edit upstream, then `../statusui/rollout.sh` bumps all three sites. Vendored copies were tried first and drifted within a day. `esb_site/site.css` is this site's own | `notes/grading.md` § The vendored copy became a pinned dependency; statusui's README |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries
