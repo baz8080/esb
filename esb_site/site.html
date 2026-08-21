@@ -26,7 +26,6 @@
   <main>
     <section id="overview">
       <div class="banner">
-        <span class="dot" id="natdot"></span>
         <strong id="natline">Loading…</strong>
         <span class="meta" id="natmeta"></span>
       </div>
@@ -215,11 +214,6 @@ function renderOverview() {
 
   var n = D.national[curMonth] || [0, 0, 0, 0, 0, null];
   var within = n[5];
-  document.getElementById("natdot").style.background =
-    // Amber for "short of the aim", red only for a genuinely poor month: being
-    // a few points under a 95% target is a miss, not an emergency.
-    "var(--" + (within == null ? "cell-empty"
-      : within >= D.esb.share ? "good" : within >= 80 ? "warning" : "critical") + ")";
   document.getElementById("natline").textContent =
     plural(n[1], "fault") + " and " + plural(n[2], "planned outage") +
     " in " + monthLabel(curMonth);
