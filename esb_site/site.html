@@ -3,10 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Irish Electricity Outages — unofficial</title>
-<meta name="description" content="Power cuts on the ESB Networks distribution system, county by county — faults, planned works and how long they lasted. Independent, rebuilt daily.">
+<title>Irish Electricity Outages - unofficial</title>
+<meta name="description" content="Power cuts on the ESB Networks distribution system, county by county: faults, planned works and how long they lasted. Independent, rebuilt daily.">
 <meta property="og:title" content="Irish Electricity Outages">
-<meta property="og:description" content="Power cuts on the ESB Networks distribution system, county by county — faults, planned works and how long they lasted.">
+<meta property="og:description" content="Power cuts on the ESB Networks distribution system, county by county: faults, planned works and how long they lasted.">
 <meta property="og:type" content="website">
 <link rel="canonical" href="<!--CANONICAL-->">
 <style>
@@ -47,17 +47,19 @@
   </main>
 
   <footer>
-    <h3>What this measures</h3>
-    <p>This site snapshots ESB Networks' public PowerCheck feed every 30 minutes and keeps the
-    results. ESB publishes no historical archive and purges each outage from the feed a few hours
-    after restoration, so nothing before <span id="startdate"></span> exists here, and days before
-    it are shown as “no data” rather than as no outages.</p>
-    <p><b>The grade is ESB's own published aim:</b> supply restored in under
+    <p>This site snapshots ESB Networks' public PowerCheck feed and keeps the results. ESB
+    publishes no historical archive and purges each outage from the feed a few hours after
+    restoration, so nothing before <span id="startdate"></span> exists here, and days before
+    it are shown as “no data” rather than as no outages. Storm days are <b>not</b> excluded
+    here, though ESB excludes them from its own published figures, so winter months will
+    read worse than ESB's.</p>
+
+    <details><summary>What this measures</summary>
+    <p><b>The grade is ESB's own published aim:</b> supply restored within
     <b>4 hours in 95% of cases</b>. Each county is scored on the share of its
-    fault-interrupted customers back inside that window — A meets the 95% aim,
-    then B 90%, C 80%, D 70%, F below. Planned works are excluded. Storm days are
-    <b>not</b> excluded here, though ESB excludes them from its own figures, so
-    winter months will read worse than ESB's.</p>
+    fault-interrupted customers restored within that window - A meets the 95% aim,
+    then B 90%, C 80%, D 70%, F below. Planned works are excluded.</p>
+    </details>
 
     <details><summary>How the grade is worked out</summary>
     <p>The standard comes from the <a
@@ -70,7 +72,7 @@
     <p>A month with fewer than five faults is left ungraded, because one long
     outage in a quiet county would swing the letter two bands. Planned works are
     excluded exactly as the CRU's incentive excludes them: they are notified in
-    advance and never report a restore time — they simply stop being listed — so
+    advance and never report a restore time (they simply stop being listed), so
     their true duration is not something this data knows.</p>
     </details>
 
@@ -83,9 +85,9 @@
     href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
     framework</a>).</p>
     <p>It is shown here for comparison but does not set the grade, because this
-    data cannot reproduce it on ESB's scale. The durations match almost exactly —
+    data cannot reproduce it on ESB's scale. The durations match almost exactly,
     an implied <b id="cmp-caidi">–</b> minutes per interrupted customer against
-    ESB's <b id="cmp-esb-caidi">–</b> — but the feed counts about
+    ESB's <b id="cmp-esb-caidi">–</b>, but the feed counts about
     <b id="cmp-bias">–</b> more interrupted customers, since it reports everyone
     on the affected section when a fault is logged while ESB settles on a smaller
     number once crews have isolated it. A <em>share</em> of customers is immune
@@ -122,12 +124,14 @@
     storms</q> from the restoration guarantee. Nothing in the public feed
     identifies a storm day, so this site excludes nothing.</p>
     <p>Counties come from the nearest Census Small Area to each outage's
-    coordinates, because the feed carries no county field. Customers per county
-    are apportioned from Census population, because ESB publishes no per-county
-    customer count.</p>
+    coordinates, because the feed carries no county field. A "customer" in ESB's
+    figures is a meter (a home, farm or business), and ESB publishes no
+    per-county count, so the county figures here are its roughly 2.5 million
+    meters split by each county's share of the Census 2022 population.</p>
     </details>
 
-    <p id="src"></p>
+    <p id="src">Built from snapshots of ESB Networks' public PowerCheck feed, which keeps no
+    history of its own.</p>
   </footer>
 </div>
 
@@ -146,40 +150,98 @@ var HSTATE = {};
 var curMonth = null, curCounty = null;
 
 var BUCKET = ["normal", "minor", "moderate", "major", "severe", "planned works"];
-/* Only the first of these is an end ESB confirmed; the wording has to keep
-   that distinction visible. */
-var END_LABEL = {
-  restored: "restored {when}",
-  estimated: "due back {when}",
-  listed: "last seen out at {when}"
-};
 var GRADES = {
-  A: "meets ESB's aim of 95% back inside 4 hours",
-  B: "90% or more back inside 4 hours",
-  C: "80% or more back inside 4 hours",
-  D: "70% or more back inside 4 hours",
-  F: "fewer than 70% back inside 4 hours"
+  A: "meets ESB's aim of 95% restored within 4 hours",
+  B: "90% or more restored within 4 hours",
+  C: "80% or more restored within 4 hours",
+  D: "70% or more restored within 4 hours",
+  F: "fewer than 70% restored within 4 hours"
 };
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
+// The national total is customer-time, and "17215 days" reads as nonsense
+// against a 31-day month; once it passes a year, years are the honest unit.
+function customerTime(h) {
+  var years = h / 24 / 365.25;
+  if (years >= 1) return (years >= 10 ? Math.round(years) : years.toFixed(1)) + " years";
+  return fmtHours(h);
+}
+
+// a timestamp against the outage's start day: the clock time alone when it
+// falls on the same day, the full day otherwise. Mirrored in render.py.
+function whenAt(ts, ref) {
+  if (ts.slice(0, 10) === ref.slice(0, 10)) return ts.slice(11, 16);
+  return fmtDay(ts) + ", " + ts.slice(11, 16);
+}
+
+/* How the outage ended, per the source of the end time. Only a "restored" end
+   is something ESB confirmed; the wording keeps that visible, and the estimate
+   is shown beside the actual rather than silently replaced by it. */
+function endBits(k) {
+  if (k[6] === "restored") {
+    var bits = ["restored " + whenAt(k[5], k[4])];
+    // Dated against the end, not the start: the reader has just been handed
+    // the restore's day, so that is the day a bare clock time reads as.
+    if (k[10]) bits.push("ESB's estimate was " + whenAt(k[10], k[5]));
+    return bits;
+  }
+  if (k[6] === "estimated") {
+    // Planned works never report a restore, so "not confirmed" would tag
+    // every one of them; the estimate is simply the scheduled end.
+    if (k[2]) return ["scheduled until " + whenAt(k[5], k[4])];
+    return ["ESB estimated restore by " + whenAt(k[5], k[4]) + ", not confirmed"];
+  }
+  // Most planned works leave the feed without reaching their estimate;
+  // "seen out" would put fault vocabulary on scheduled work.
+  if (k[2]) return ["last listed at " + whenAt(k[5], k[4])];
+  return ["last seen out at " + whenAt(k[5], k[4])];
+}
+
+// a duration in hours and minutes, never a decimal a reader has to work out;
+// `about` rounds to the nearest half hour and owns its hedging words - a
+// short unconfirmed span is a lower bound, so it reads "under 30 min" rather
+// than being rounded up. Mirrored in render.py (_span_hm).
+function spanHM(h, about) {
+  var m = Math.round(h * 60), prefix = "";
+  if (about) {
+    m = Math.round(m / 30) * 30;
+    if (!m) return "under 30 min";
+    prefix = "about ";
+  }
+  if (m < 60) return prefix + m + " min";
+  if (h >= 48) return prefix + fmtHours(h);
+  var whole = Math.floor(m / 60), rest = m % 60;
+  return prefix + whole + " h" + (rest ? " " + rest + " min" : "");
+}
+
 /* --- day bars ------------------------------------------------------------ */
 // one cell for the shared dayCells: [class, caption, may carry the part-day note]
 function describeCell(ch, date) {
-  var b = +ch, cap;
-  if (b === 9) cap = date + ": still to come";
-  else if (b === 8) cap = date + ": no data collected for this day";
-  else if (b === 5) cap = date + ": planned works only";
-  else if (b === 0) cap = date + ": no significant fault";
-  else cap = date + ": " + BUCKET[b] + " fault disruption";
+  var b = +ch, day = fmtDay(date), cap;
+  if (b === 9) cap = day + ": still to come";
+  else if (b === 8) cap = day + ": no data collected for this day";
+  else if (b === 5) cap = day + ": planned works only";
+  else if (b === 0) cap = day + ": no significant fault";
+  else cap = day + ": " + BUCKET[b] + " fault disruption";
   return ["b" + b, cap, b < 8];
 }
 function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 
 function gradeChip(g, big) {
   return '<span class="gradechip g-' + (g || "none") + '" title="' +
-    esc(g ? "Grade " + g + " — " + GRADES[g] : "Too few faults this month to grade fairly") + '">' +
+    esc(g ? "Grade " + g + ": " + GRADES[g] : "Too few faults this month to grade fairly") + '">' +
     (g || "–") + "</span>";
+}
+
+// What each day-cell colour means; the swatches take their colours from the
+// same site.css rules that colour the cells. Mirrored in render.py.
+function legendHtml() {
+  return [["b0", "no significant fault"], ["b1", "minor"], ["b2", "moderate"],
+          ["b3", "major"], ["b4", "severe"], ["b5", "planned works"], ["b8", "no data"]]
+    .map(function (l) {
+      return '<span><i class="' + l[0] + '"></i>' + l[1] + "</span>";
+    }).join("");
 }
 
 /* --- overview ------------------------------------------------------------ */
@@ -207,7 +269,7 @@ function renderOverview() {
         "<b>" + (m ? m[4] : 0) + "</b><span>faults</span>" +
         "<b>" + (m ? m[5] : 0) + "</b><span>planned</span></div>" +
         '<div class="cml"><b>' + (m && m[2] != null ? m[2] + "%" : "–") +
-          "</b><br>back in 4h</div>" +
+          "</b><br>restored in 4h</div>" +
       '</div><span class="chev">›</span>' +
       '<div class="daycap"></div></div></div>';
   }).join("");
@@ -218,32 +280,25 @@ function renderOverview() {
     plural(n[1], "fault") + " and " + plural(n[2], "planned outage") +
     " in " + monthLabel(curMonth);
   document.getElementById("natmeta").innerHTML = within == null ? ""
-    : "<b>" + within + "%</b> back inside " + D.esb.hours + " hours";
+    : "<b>" + within + "%</b> restored within " + D.esb.hours + " hours";
 
   document.getElementById("basis").innerHTML =
-    "Counties are graded on ESB Networks' own published aim — <b>supply restored in under " +
-    D.esb.hours + " hours in " + D.esb.share + "% of cases</b> — measured across the customers each " +
+    "Counties are graded on ESB Networks' own published aim: <b>supply restored within " +
+    D.esb.hours + " hours in " + D.esb.share + "% of cases</b>, measured across the customers each " +
     "fault interrupted." + (within == null ? "" : " Nationally this month: <b>" + within + "%</b>.") +
     // one hover cue above the list, not a placeholder in every strip
     ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
 
   document.getElementById("tiles").innerHTML = [
-    [within == null ? "–" : within + "%", "back inside 4 hours"],
+    [within == null ? "–" : within + "%", "restored within 4 hours"],
     [num(n[3]), "customers hit by faults"],
-    [fmtHours(n[4]), "total time off supply"],
+    [customerTime(n[4]), "of customer time off supply"],
     [fmtCml(n[0]) + " CML", "annualised, unplanned"]
   ].map(function (t) {
     return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
   }).join("");
 
-  document.getElementById("legend").innerHTML =
-    [[0, "no significant fault"], [1, "minor"], [2, "moderate"], [3, "major"], [4, "severe"],
-     [5, "planned works"], [8, "no data"]]
-    .map(function (l) {
-      return '<span><i class="b' + l[0] + '" style="background:var(' +
-        ["--good","--warning","--serious","--critical","--severe","--maint","","","--cell-empty"][l[0]] +
-        ')"></i>' + esc(l[1]) + "</span>";
-    }).join("");
+  document.getElementById("legend").innerHTML = legendHtml();
 }
 
 /* --- county -------------------------------------------------------------- */
@@ -255,22 +310,23 @@ function renderCounty() {
 
   var head =
     '<a class="back" href="#" onclick="event.preventDefault();go(null)">← All counties</a>' +
-    '<div class="chead">' + gradeChip(m ? m[1] : null, true) + "<h2>" + esc(c) + "</h2></div>" +
-    '<div class="sub2" style="color:var(--muted);font-size:12.5px;margin-bottom:14px">' +
-      num(D.customers[c]) + " customers (estimated from Census population)</div>" +
+    '<div class="chead">' + gradeChip(m ? m[1] : null, true) + "<h2>" + esc(c) + "</h2>" +
+      '<span class="pop">About ' + num(D.customers[c]) +
+      " homes and businesses · estimated from Census 2022</span></div>" +
     '<div class="controls"><div class="months">' + monthTabs(D.months, curMonth, "setMonth") + "</div></div>";
 
   var summary = '<div class="card">' +
     '<div class="bar tall">' + bar(m ? m[0] : "", curMonth) + "</div>" +
     '<div class="daycap"></div>' +
     '<div class="tiles" style="margin-bottom:0">' + [
-      [m && m[2] != null ? m[2] + "%" : "–", "back inside 4 hours"],
+      [m && m[2] != null ? m[2] + "%" : "–", "restored within 4 hours"],
       [m ? m[4] : 0, "faults"],
       [m ? m[5] : 0, "planned outages"],
       [m ? num(m[6]) : 0, "customers hit by faults"]
     ].map(function (t) {
       return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
-    }).join("") + "</div></div>";
+    }).join("") + "</div>" +
+    '<div class="legend">' + legendHtml() + "</div></div>";
 
   var body;
   if (loading) body = '<div class="card"><div class="empty">Loading outages…</div></div>';
@@ -284,41 +340,52 @@ function renderCounty() {
 }
 
 function caseHtml(k) {
-  // [id, location, planned, customers, start, end, endSrc, reason, chain, updates]
+  // [id, location, planned, customers, start, end, endSrc, reason, chain, updates, est]
   var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
-  var bits = [plural(k[3], "customer"), "began " + when(k[4])];
-  if (k[5]) bits.push(END_LABEL[k[6]].replace("{when}", when(k[5])));
+  var bits = [plural(k[3], "customer")];
+  if (k[4]) bits.push("began " + fmtDay(k[4]) + ", " + k[4].slice(11, 16));
+  if (k[4] && k[5]) bits = bits.concat(endBits(k));
   if (planned && k[7]) bits.push(esc(k[7].toLowerCase()));
+  // A planned record's span is its schedule when it has one and unknown when
+  // it left the feed early; "off" would claim an observed outage duration.
+  var span = "";
+  if (dur != null) {
+    if (planned) { if (k[6] === "estimated") span = "scheduled " + spanHM(dur); }
+    else span = "off " + spanHM(dur, k[6] !== "restored");
+  }
   return '<div class="case"><div class="top">' +
     '<span class="where">' + esc(k[1]) + "</span>" +
     '<span class="tag ' + (planned ? "tag-p" : "tag-f") + '">' + (planned ? "Planned" : "Fault") + "</span>" +
-    '<span class="when">' +
-      (dur == null ? "" : fmtHours(dur) + (k[6] === "restored" ? "" : " est.")) + "</span></div>" +
+    '<span class="when">' + span + "</span></div>" +
     '<div class="sum">' + bits.join(" · ") + "</div>" +
     (chain && chain.length
-      ? '<div class="repeat">Repeat fault — outage ' + chain[0] + " of " + chain[1] +
+      ? '<div class="repeat">Repeat fault - outage ' + chain[0] + " of " + chain[1] +
         " at this location in quick succession</div>"
       : "") +
-    updateList(ups) + "</div>";
+    updateList(ups, planned) + "</div>";
 }
 
 var ROW_LABEL = {
   began: "Outage began",
   restored: "Supply restored",
-  estimated: "Due back, on ESB's estimate",
+  estimated: "Estimated restore, from ESB",
   listed: "Last seen still out"
 };
+// Planned works get their own end-row words, matching the summary line: their
+// "estimate" is a schedule, and their listing is not an observed outage.
+var PLANNED_ROW_LABEL = { estimated: "Scheduled end", listed: "Last listed" };
 
-function updateLine(r, key) {
+function updateLine(r, key, planned) {
   // [kind, when, customers]
   var bits = [];
-  if (ROW_LABEL[r[0]]) bits.push("<b>" + ROW_LABEL[r[0]] + "</b>");
+  var label = (planned && PLANNED_ROW_LABEL[r[0]]) || ROW_LABEL[r[0]];
+  if (label) bits.push("<b>" + label + "</b>");
   if (r[2] != null) bits.push(num(r[2]) + " customers" + (r[0] === "update" ? " still off" : ""));
   return '<li class="' + (key ? "key" : "") + '"><time>' + when(r[1]) + "</time>" + bits.join(" · ") + "</li>";
 }
 
-function updateList(ups) {
+function updateList(ups, planned) {
   // Two rows are the reported start and end, which the summary line already
   // states; the timeline earns its place only when something happened between
   // them. That is 7% of outages.
@@ -328,14 +395,14 @@ function updateList(ups) {
   // default that hides the story.
   if (ups.length <= 3) {
     return '<ul class="tl">' + ups.map(function (u, i) {
-      return updateLine(u, i === 0 || i === ups.length - 1);
+      return updateLine(u, i === 0 || i === ups.length - 1, planned);
     }).join("") + "</ul>";
   }
   var mid = ups.slice(1, -1);
-  return '<ul class="tl">' + updateLine(ups[0], true) +
+  return '<ul class="tl">' + updateLine(ups[0], true, planned) +
     '<li><details><summary>' + mid.length + " further update" + (mid.length === 1 ? "" : "s") +
-    "</summary><ul>" + mid.map(function (u) { return updateLine(u, false); }).join("") +
-    "</ul></details></li>" + updateLine(ups[ups.length - 1], true) + "</ul>";
+    "</summary><ul>" + mid.map(function (u) { return updateLine(u, false, planned); }).join("") +
+    "</ul></details></li>" + updateLine(ups[ups.length - 1], true, planned) + "</ul>";
 }
 
 /* --- county shard loading ------------------------------------------------ */
@@ -417,7 +484,7 @@ function showResults() {
   var idx = window.ESB_SEARCH;
   if (!idx) {
     box.hidden = false;
-    box.innerHTML = '<div class="none">Search is unavailable — try reloading.</div>';
+    box.innerHTML = '<div class="none">Search is unavailable - try reloading.</div>';
     return;
   }
   var hits = [];
@@ -464,8 +531,6 @@ function boot() {
   document.getElementById("cmp-caidi").textContent = D.compare.caidi;
   document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
   document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
-  document.getElementById("src").textContent =
-    "Unofficial, and not affiliated with ESB Networks or the CRU.";
   document.getElementById("q").addEventListener("input", runSearch);
   document.addEventListener("click", function (e) {
     if (!e.target.closest(".search")) document.getElementById("results").hidden = true;

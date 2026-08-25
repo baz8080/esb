@@ -38,25 +38,55 @@ COUNTY_PAGE_CASES = 40
 # than left reading the day bars as a quiet week.
 STALE_AFTER = timedelta(hours=24)
 
-# How an outage's end is described, per the source the end time came from. The
-# distinction matters to a reader: only the first is something ESB confirmed.
-END_LABEL = {
-    "restored": "restored {when}",
-    "estimated": "due back {when}",
-    "listed": "last seen out at {when}",
-}
-
 slug = statusui.slug
 month_label = statusui.month_label
 _dumps = statusui.dumps
 _stamp = statusui.stamp
 _when = statusui.when
 _hours = statusui.hours
+_fmt_day = statusui.fmt_day
 
 
 def _short(dt):
     """Timestamps are rendered, never computed on, so minutes are enough."""
     return dt.strftime("%Y-%m-%dT%H:%M") if dt else None
+
+
+def _when_at(ts, ref):
+    """A timestamp against the outage's start day: the clock time alone when it
+    falls on the same day, the full day otherwise. Mirrored in site.html."""
+    if ts[:10] == ref[:10]:
+        return ts[11:16]
+    return f"{_fmt_day(ts)}, {ts[11:16]}"
+
+
+def _span_hm(hours, about=False):
+    """A duration in hours and minutes, never a decimal a reader has to work
+    out. `about` rounds to the nearest half hour - an unconfirmed end does not
+    support minute precision - and owns its hedging words, so a caller cannot
+    pair them wrongly. Mirrored in site.html (spanHM)."""
+    minutes = statusui.half_up(hours * 60)
+    if about:
+        minutes = statusui.half_up(minutes / 30.0) * 30
+        if not minutes:
+            # An unconfirmed span this short is a lower bound; rounding it up
+            # to 30 min would contradict the card's own timestamps.
+            return "under 30 min"
+    prefix = "about " if about else ""
+    if minutes < 60:
+        return f"{prefix}{minutes} min"
+    if hours >= 48:
+        return prefix + _hours(hours)
+    h, m = divmod(minutes, 60)
+    return prefix + f"{h} h" + (f" {m} min" if m else "")
+
+
+def _approx(n):
+    """Nearest 1,000 (nearest 100 under 10,000). The county figure is ESB's
+    ~2.5m national meter count split by Census population share, which carries
+    no more precision than this."""
+    step = 1000 if n >= 10000 else 100
+    return int(statusui.half_up(n / step)) * step
 
 
 def build(outages, sa_index, now, until):
@@ -129,8 +159,12 @@ def build(outages, sa_index, now, until):
         "generated": _stamp(now),
         # What the build knows, as distinct from when it ran. Without this the
         # page dates itself by the clock and a reader cannot tell a quiet week
-        # from a collector that stopped.
-        "observed": _stamp(until),
+        # from a collector that stopped. Formatted for display here - it is
+        # only ever shown, and the header says "Data to {observed}".
+        "observed": (
+            f"{statusui.fmt_date(until.date().isoformat(), now.date())},"
+            f" {until:%H:%M} UTC"
+        ),
         "stale": now - until > STALE_AFTER,
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
@@ -154,7 +188,7 @@ def build(outages, sa_index, now, until):
             "share": model.CHARTER_TARGET_SHARE,
         },
         "counties": sa_index.counties,
-        "customers": {c: round(sa_index.customers[c]) for c in sa_index.counties},
+        "customers": {c: _approx(sa_index.customers[c]) for c in sa_index.counties},
         "stats": stats,
         "national": national,
     }
@@ -179,6 +213,9 @@ def case_record(o):
                 o.start, o.end, o.end_src, o.segments
             )
         ],
+        # Only a confirmed restore renders the estimate, and only when the two
+        # differ; anything else is payload the page can never show.
+        _short(o.est) if o.end_src == "restored" and o.est != o.end else None,
     ]
 
 
@@ -202,17 +239,51 @@ def shard(outages, months, until):
     return by_month
 
 
+def _end_bits(k):
+    """How the outage ended, per the source of the end time. Only a "restored"
+    end is something ESB confirmed; the wording keeps that visible, and the
+    estimate is shown beside the actual rather than silently replaced by it."""
+    if k[6] == "restored":
+        bits = [f"restored {_when_at(k[5], k[4])}"]
+        if k[10]:
+            # Dated against the end, not the start: the reader has just been
+            # handed the restore's day, so that is the day a bare clock time
+            # reads as.
+            bits.append(f"ESB's estimate was {_when_at(k[10], k[5])}")
+        return bits
+    if k[6] == "estimated":
+        # Planned works never report a restore, so "not confirmed" would tag
+        # every one of them; the estimate is simply the scheduled end.
+        if k[2]:
+            return [f"scheduled until {_when_at(k[5], k[4])}"]
+        return [f"ESB estimated restore by {_when_at(k[5], k[4])}, not confirmed"]
+    if k[2]:
+        # Most planned works leave the feed without reaching their estimate;
+        # "seen out" would put fault vocabulary on scheduled work.
+        return [f"last listed at {_when_at(k[5], k[4])}"]
+    return [f"last seen out at {_when_at(k[5], k[4])}"]
+
+
 def _case_html(k):
     planned = k[2]
     chain = k[8]
-    bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s"), f"began {_when(k[4])}"]
+    bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s")]
+    if k[4]:
+        bits.append(f"began {_fmt_day(k[4])}, {k[4][11:16]}")
     span = ""
     if k[4] and k[5]:
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
-        span = _hours(hours) + ("" if k[6] == "restored" else " est.")
-        bits.append(END_LABEL[k[6]].format(when=_when(k[5])))
+        # A planned record's span is its schedule when it has one and unknown
+        # when it left the feed early; "off" would claim an observed outage
+        # duration the footer says this data cannot know.
+        if planned:
+            if k[6] == "estimated":
+                span = f"scheduled {_span_hm(hours)}"
+        else:
+            span = "off " + _span_hm(hours, about=k[6] != "restored")
+        bits.extend(_end_bits(k))
     if planned and k[7]:
         bits.append(html.escape(k[7].lower()))
     return "".join(
@@ -225,7 +296,7 @@ def _case_html(k):
             f'<span class="when">{span}</span></div>',
             f'<div class="sum">{" · ".join(bits)}</div>',
             _chain_html(chain),
-            _updates_html(k[9]),
+            _updates_html(k[9], planned),
             "</div>",
         ]
     )
@@ -236,7 +307,7 @@ def _chain_html(chain):
     if not chain:
         return ""
     return (
-        f'<div class="repeat">Repeat fault — outage {chain[0]} of {chain[1]} '
+        f'<div class="repeat">Repeat fault - outage {chain[0]} of {chain[1]} '
         f"at this location in quick succession</div>"
     )
 
@@ -244,16 +315,21 @@ def _chain_html(chain):
 ROW_LABEL = {
     "began": "Outage began",
     "restored": "Supply restored",
-    "estimated": "Due back, on ESB's estimate",
+    "estimated": "Estimated restore, from ESB",
     "listed": "Last seen still out",
 }
 
+# Planned works get their own end-row words, matching the summary line: their
+# "estimate" is a schedule, and their listing is not an observed outage.
+PLANNED_ROW_LABEL = {"estimated": "Scheduled end", "listed": "Last listed"}
 
-def _update_line(row, key):
+
+def _update_line(row, key, planned=False):
     kind, when, customers = row
     bits = []
-    if kind in ROW_LABEL:
-        bits.append(f"<b>{ROW_LABEL[kind]}</b>")
+    label = (PLANNED_ROW_LABEL.get(kind) if planned else None) or ROW_LABEL.get(kind)
+    if label:
+        bits.append(f"<b>{label}</b>")
     if customers is not None:
         bits.append(
             f"{customers:,} customers"
@@ -263,7 +339,7 @@ def _update_line(row, key):
     return f"<li{cls}><time>{_when(when)}</time>{' · '.join(bits)}</li>"
 
 
-def _updates_html(rows):
+def _updates_html(rows, planned=False):
     # Two rows are the reported start and end, which the summary line above
     # already states; repeating them as a timeline is noise on the 93% of
     # outages whose customer count never changed. The timeline earns its place
@@ -272,18 +348,19 @@ def _updates_html(rows):
         return ""
     if len(rows) <= model.INLINE_UPDATES:
         body = "".join(
-            _update_line(r, i in (0, len(rows) - 1)) for i, r in enumerate(rows)
+            _update_line(r, i in (0, len(rows) - 1), planned)
+            for i, r in enumerate(rows)
         )
         return f'<ul class="tl">{body}</ul>'
     mid = rows[1:-1]
-    inner = "".join(_update_line(r, False) for r in mid)
+    inner = "".join(_update_line(r, False, planned) for r in mid)
     return (
         '<ul class="tl">'
-        + _update_line(rows[0], True)
+        + _update_line(rows[0], True, planned)
         + f"<li><details><summary>{len(mid)} further update"
         + ("" if len(mid) == 1 else "s")
         + f"</summary><ul>{inner}</ul></details></li>"
-        + _update_line(rows[-1], True)
+        + _update_line(rows[-1], True, planned)
         + "</ul>"
     )
 
@@ -299,6 +376,26 @@ DAY_LABELS = {
     "9": "still to come",
 }
 
+# What each day-cell colour means. The swatches take their colours from the
+# same site.css rules that colour the cells, so the two cannot drift.
+# Mirrored in site.html (legendHtml).
+LEGEND_ITEMS = (
+    ("b0", "no significant fault"),
+    ("b1", "minor"),
+    ("b2", "moderate"),
+    ("b3", "major"),
+    ("b4", "severe"),
+    ("b5", "planned works"),
+    ("b8", "no data"),
+)
+
+
+def _legend_html():
+    spans = "".join(
+        f'<span><i class="{cls}"></i>{label}</span>' for cls, label in LEGEND_ITEMS
+    )
+    return f'<div class="legend">{spans}</div>'
+
 
 def _day_cells(cells, ym, partial):
     # nothing to qualify on a day with no data or no colour yet
@@ -309,13 +406,13 @@ def county_page(county, data, cases, ym, all_counties):
     m = data["stats"][county][ym]
     grade = m[1]
     label = month_label(ym)
-    title = f"Power outages in County {county} — {label}"
+    title = f"Power outages in County {county} - {label}"
     desc = (
         f"{m[4]} faults and {m[5]} planned power outages recorded in County {county} "
         f"during {label}, from ESB Networks' PowerCheck feed."
     )
     tiles = [
-        ("–" if m[2] is None else f"{m[2]:g}%", "back within 4 hours"),
+        ("–" if m[2] is None else f"{m[2]:g}%", "restored within 4 hours"),
         (m[4], "faults"),
         (m[5], "planned outages"),
         (f"{m[6]:,}", "customers hit by faults"),
@@ -325,8 +422,8 @@ def county_page(county, data, cases, ym, all_counties):
         '<a class="back" href="../index.html">← All counties</a>',
         f'<div class="chead"><span class="gradechip g-{grade or "none"}">{grade or "–"}</span>',
         f"<h1>County {html.escape(county)}</h1></div>",
-        f'<div class="sub">{label} · {data["customers"][county]:,} customers '
-        "(estimated from Census population)<br>"
+        f'<div class="sub">{label} · About {data["customers"][county]:,} homes '
+        "and businesses · estimated from Census 2022<br>"
         # This page is entered cold from a search result, so it has to carry the
         # same caveat the app does: the day bar ends where the data does.
         f'Data to {html.escape(data["observed"])}'
@@ -343,7 +440,9 @@ def county_page(county, data, cases, ym, all_counties):
             f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>'
             for v, k in tiles
         ),
-        "</div></div>",
+        "</div>",
+        _legend_html(),
+        "</div>",
     ]
     if shown:
         body.append(f'<div class="card"><h2>Outages in {label}</h2>')
@@ -351,7 +450,7 @@ def county_page(county, data, cases, ym, all_counties):
         if len(cases) > len(shown):
             body.append(
                 f'<p class="empty" style="padding-top:12px">'
-                f"{len(cases) - len(shown)} more not shown here — "
+                f"{len(cases) - len(shown)} more not shown here - "
                 f'<a href="../index.html#county/{county}">open the full month</a>.</p>'
             )
         body.append("</div>")

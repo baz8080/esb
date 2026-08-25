@@ -2,13 +2,16 @@
    both index.html and the county pages. */
 :root { --row-cols: 150px 1fr 190px 10px; --stats-cols: 92px auto; }
 
-/* day-cell buckets: 0 normal, 1–4 fault severity, 5 planned, 8 no data, 9 to come */
-.bar i.b1 { background: var(--warning); }
-.bar i.b2 { background: var(--serious); }
-.bar i.b3 { background: var(--critical); }
-.bar i.b4 { background: var(--severe); }
-.bar i.b5 { background: var(--maint); }
-.bar i.b8, .bar i.b9 { background: var(--cell-empty); }
+/* day-cell buckets: 0 normal, 1–4 fault severity, 5 planned, 8 no data, 9 to come.
+   The legend swatches share these rules so the key can never drift from the bars;
+   b0 needs its own line because only .bar i defaults to --good in base.css. */
+.bar i.b1, .legend i.b1 { background: var(--warning); }
+.bar i.b2, .legend i.b2 { background: var(--serious); }
+.bar i.b3, .legend i.b3 { background: var(--critical); }
+.bar i.b4, .legend i.b4 { background: var(--severe); }
+.bar i.b5, .legend i.b5 { background: var(--maint); }
+.bar i.b8, .bar i.b9, .legend i.b8 { background: var(--cell-empty); }
+.legend i.b0 { background: var(--good); }
 
 .stats .cml { font-size: 14.5px; }
 
@@ -18,5 +21,7 @@
   border-radius: 4px; padding: 2px 8px;
 }
 
-/* county page: the line under the heading */
+/* county page: the line under the heading, and the customer figure that sits
+   on the heading line itself */
 .chead + .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
+.chead .pop { color: var(--muted); font-size: 12.5px; }
