@@ -857,14 +857,24 @@ class TestEstimatePlumbing(SiteModelCase):
         self.assertEqual(o.est, datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc))
         self.assertEqual(render.case_record(o)[10], "2026-08-10T12:00")
 
-    def test_a_merged_event_keeps_the_latest_estimate(self):
-        at = datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc)
-        self.observe(detail("1", restoreTime="10/08/2026 11:00"), at)
+    def test_a_merged_event_keeps_the_estimate_of_the_record_that_ended_it(self):
+        # A sibling that closed early still carries ESB's old 18:00 estimate;
+        # the record that ended the event had it revised down to 12:00. max()
+        # over the group would resurrect the stale 18:00.
+        at = datetime(2026, 8, 10, 11, 45, tzinfo=timezone.utc)
+        self.observe(
+            detail(
+                "1",
+                restoreTime="10/08/2026 11:00",
+                estRestoreTime="10/08/2026 18:00",
+            ),
+            at,
+        )
         self.observe(
             detail(
                 "2",
-                restoreTime="10/08/2026 11:00",
-                estRestoreTime="10/08/2026 14:00",
+                restoreTime="10/08/2026 11:30",
+                estRestoreTime="10/08/2026 12:00",
             ),
             at,
         )
@@ -872,8 +882,29 @@ class TestEstimatePlumbing(SiteModelCase):
         outages, _, _ = self.load()
         self.assertEqual(len(outages), 1)
         self.assertEqual(
-            outages[0].est, datetime(2026, 8, 10, 13, 0, tzinfo=timezone.utc)
+            outages[0].end, datetime(2026, 8, 10, 10, 30, tzinfo=timezone.utc)
         )
+        self.assertEqual(
+            outages[0].est, datetime(2026, 8, 10, 11, 0, tzinfo=timezone.utc)
+        )
+
+    def test_an_estimate_the_page_cannot_show_is_not_serialized(self):
+        # Matching the restore exactly would render "restored 12:00 · ESB's
+        # estimate was 12:00"; an unconfirmed end never renders the estimate
+        # at all. Neither belongs in the shard.
+        self.observe(
+            detail("1", restoreTime="10/08/2026 13:00"),
+            datetime(2026, 8, 10, 12, 30, tzinfo=timezone.utc),
+        )
+        self.observe(detail("2", location="Marino"),
+                     datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        outages, _, _ = self.load()
+        by_loc = {o.location: o for o in outages}
+        self.assertEqual(by_loc["Glasnevin"].est, by_loc["Glasnevin"].end)
+        self.assertIsNone(render.case_record(by_loc["Glasnevin"])[10])
+        self.assertNotEqual(by_loc["Marino"].end_src, "restored")
+        self.assertIsNone(render.case_record(by_loc["Marino"])[10])
 
 
 class TestCaseCopy(unittest.TestCase):
@@ -912,6 +943,18 @@ class TestCaseCopy(unittest.TestCase):
         html = render._case_html(self.record(end="2026-08-25T01:10", est=None))
         self.assertIn("restored Tue 25 Aug, 01:10", html)
 
+    def test_a_cross_day_restore_dates_the_estimate(self):
+        # The estimate is dated against the end, not the start: after
+        # "restored Tue 25 Aug" a bare "20:15" would read as the 25th and
+        # place the estimate after the restore.
+        html = render._case_html(
+            self.record(end="2026-08-25T01:10", est="2026-08-24T20:15")
+        )
+        self.assertIn(
+            "restored Tue 25 Aug, 01:10 · ESB's estimate was Mon 24 Aug, 20:15",
+            html,
+        )
+
     def test_an_unconfirmed_end_says_so_and_rounds_the_duration(self):
         html = render._case_html(
             self.record(end="2026-08-24T15:00", end_src="estimated", est=None)
@@ -926,12 +969,31 @@ class TestCaseCopy(unittest.TestCase):
         )
         self.assertIn("last seen out at 14:32", html)
 
+    def test_a_very_short_unconfirmed_span_reads_as_a_bound(self):
+        # A listed end 5 minutes after the start is a lower bound; "about
+        # 30 min" would contradict the timestamps on the same card.
+        html = render._case_html(
+            self.record(end="2026-08-24T10:51", end_src="listed", est=None)
+        )
+        self.assertIn('<span class="when">off under 30 min</span>', html)
+
     def test_a_planned_outage_carries_its_reason(self):
         html = render._case_html(
             self.record(planned=1, end_src="listed", est=None,
                         reason="Connect New Customers")
         )
         self.assertIn("· connect new customers", html)
+
+    def test_planned_works_delisted_early_are_not_seen_out(self):
+        # 757 of 1,040 planned records end as "listed"; the fault vocabulary
+        # ("seen out", "off about") does not belong on scheduled work, and
+        # the observed listing span is not a duration this data knows.
+        html = render._case_html(
+            self.record(planned=1, end_src="listed", est=None)
+        )
+        self.assertIn("last listed at 14:32", html)
+        self.assertNotIn("seen out", html)
+        self.assertIn('<span class="when"></span>', html)
 
     def test_planned_works_read_as_a_schedule_not_a_failed_promise(self):
         html = render._case_html(
@@ -940,13 +1002,30 @@ class TestCaseCopy(unittest.TestCase):
         )
         self.assertIn("scheduled until 15:00", html)
         self.assertNotIn("not confirmed", html)
+        # The span is the schedule, exact, and never claims time off supply.
+        self.assertIn('<span class="when">scheduled 4 h 14 min</span>', html)
+
+    def test_planned_timeline_rows_match_the_schedule_wording(self):
+        rows = [
+            ["began", "2026-08-24T10:46", 40],
+            ["update", "2026-08-24T12:00", 12],
+            ["estimated", "2026-08-24T15:00", None],
+        ]
+        html = render._updates_html(rows, planned=True)
+        self.assertIn("<b>Scheduled end</b>", html)
+        self.assertNotIn("Estimated restore", html)
+        rows[-1][0] = "listed"
+        self.assertIn("<b>Last listed</b>", render._updates_html(rows, planned=True))
+        # Fault timelines keep the fault wording.
+        self.assertIn("<b>Last seen still out</b>", render._updates_html(rows))
 
     def test_span_hm_never_shows_a_decimal(self):
         self.assertEqual(render._span_hm(0.5), "30 min")
         self.assertEqual(render._span_hm(3 + 46 / 60), "3 h 46 min")
         self.assertEqual(render._span_hm(4.0), "4 h")
-        self.assertEqual(render._span_hm(4.24, about=True), "4 h")
-        self.assertEqual(render._span_hm(0.1, about=True), "30 min")
+        self.assertEqual(render._span_hm(4.24, about=True), "about 4 h")
+        self.assertEqual(render._span_hm(0.1, about=True), "under 30 min")
+        self.assertEqual(render._span_hm(0.4, about=True), "about 30 min")
         self.assertEqual(render._span_hm(72), "3 days")
 
     def test_the_legend_swatches_use_the_cell_classes(self):

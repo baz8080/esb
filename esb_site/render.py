@@ -62,17 +62,23 @@ def _when_at(ts, ref):
 
 def _span_hm(hours, about=False):
     """A duration in hours and minutes, never a decimal a reader has to work
-    out. `about` rounds to the nearest half hour: an unconfirmed end does not
-    support minute precision. Mirrored in site.html (spanHM)."""
+    out. `about` rounds to the nearest half hour - an unconfirmed end does not
+    support minute precision - and owns its hedging words, so a caller cannot
+    pair them wrongly. Mirrored in site.html (spanHM)."""
     minutes = statusui.half_up(hours * 60)
     if about:
-        minutes = max(30, statusui.half_up(minutes / 30.0) * 30)
+        minutes = statusui.half_up(minutes / 30.0) * 30
+        if not minutes:
+            # An unconfirmed span this short is a lower bound; rounding it up
+            # to 30 min would contradict the card's own timestamps.
+            return "under 30 min"
+    prefix = "about " if about else ""
     if minutes < 60:
-        return f"{minutes} min"
+        return f"{prefix}{minutes} min"
     if hours >= 48:
-        return _hours(hours)
+        return prefix + _hours(hours)
     h, m = divmod(minutes, 60)
-    return f"{h} h" + (f" {m} min" if m else "")
+    return prefix + f"{h} h" + (f" {m} min" if m else "")
 
 
 def _approx(n):
@@ -207,7 +213,9 @@ def case_record(o):
                 o.start, o.end, o.end_src, o.segments
             )
         ],
-        _short(o.est),
+        # Only a confirmed restore renders the estimate, and only when the two
+        # differ; anything else is payload the page can never show.
+        _short(o.est) if o.end_src == "restored" and o.est != o.end else None,
     ]
 
 
@@ -238,7 +246,10 @@ def _end_bits(k):
     if k[6] == "restored":
         bits = [f"restored {_when_at(k[5], k[4])}"]
         if k[10]:
-            bits.append(f"ESB's estimate was {_when_at(k[10], k[4])}")
+            # Dated against the end, not the start: the reader has just been
+            # handed the restore's day, so that is the day a bare clock time
+            # reads as.
+            bits.append(f"ESB's estimate was {_when_at(k[10], k[5])}")
         return bits
     if k[6] == "estimated":
         # Planned works never report a restore, so "not confirmed" would tag
@@ -246,6 +257,10 @@ def _end_bits(k):
         if k[2]:
             return [f"scheduled until {_when_at(k[5], k[4])}"]
         return [f"ESB estimated restore by {_when_at(k[5], k[4])}, not confirmed"]
+    if k[2]:
+        # Most planned works leave the feed without reaching their estimate;
+        # "seen out" would put fault vocabulary on scheduled work.
+        return [f"last listed at {_when_at(k[5], k[4])}"]
     return [f"last seen out at {_when_at(k[5], k[4])}"]
 
 
@@ -260,10 +275,14 @@ def _case_html(k):
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
-        confirmed = k[6] == "restored"
-        span = ("off " if confirmed else "off about ") + _span_hm(
-            hours, about=not confirmed
-        )
+        # A planned record's span is its schedule when it has one and unknown
+        # when it left the feed early; "off" would claim an observed outage
+        # duration the footer says this data cannot know.
+        if planned:
+            if k[6] == "estimated":
+                span = f"scheduled {_span_hm(hours)}"
+        else:
+            span = "off " + _span_hm(hours, about=k[6] != "restored")
         bits.extend(_end_bits(k))
     if planned and k[7]:
         bits.append(html.escape(k[7].lower()))
@@ -277,7 +296,7 @@ def _case_html(k):
             f'<span class="when">{span}</span></div>',
             f'<div class="sum">{" · ".join(bits)}</div>',
             _chain_html(chain),
-            _updates_html(k[9]),
+            _updates_html(k[9], planned),
             "</div>",
         ]
     )
@@ -300,12 +319,17 @@ ROW_LABEL = {
     "listed": "Last seen still out",
 }
 
+# Planned works get their own end-row words, matching the summary line: their
+# "estimate" is a schedule, and their listing is not an observed outage.
+PLANNED_ROW_LABEL = {"estimated": "Scheduled end", "listed": "Last listed"}
 
-def _update_line(row, key):
+
+def _update_line(row, key, planned=False):
     kind, when, customers = row
     bits = []
-    if kind in ROW_LABEL:
-        bits.append(f"<b>{ROW_LABEL[kind]}</b>")
+    label = (PLANNED_ROW_LABEL.get(kind) if planned else None) or ROW_LABEL.get(kind)
+    if label:
+        bits.append(f"<b>{label}</b>")
     if customers is not None:
         bits.append(
             f"{customers:,} customers"
@@ -315,7 +339,7 @@ def _update_line(row, key):
     return f"<li{cls}><time>{_when(when)}</time>{' · '.join(bits)}</li>"
 
 
-def _updates_html(rows):
+def _updates_html(rows, planned=False):
     # Two rows are the reported start and end, which the summary line above
     # already states; repeating them as a timeline is noise on the 93% of
     # outages whose customer count never changed. The timeline earns its place
@@ -324,18 +348,19 @@ def _updates_html(rows):
         return ""
     if len(rows) <= model.INLINE_UPDATES:
         body = "".join(
-            _update_line(r, i in (0, len(rows) - 1)) for i, r in enumerate(rows)
+            _update_line(r, i in (0, len(rows) - 1), planned)
+            for i, r in enumerate(rows)
         )
         return f'<ul class="tl">{body}</ul>'
     mid = rows[1:-1]
-    inner = "".join(_update_line(r, False) for r in mid)
+    inner = "".join(_update_line(r, False, planned) for r in mid)
     return (
         '<ul class="tl">'
-        + _update_line(rows[0], True)
+        + _update_line(rows[0], True, planned)
         + f"<li><details><summary>{len(mid)} further update"
         + ("" if len(mid) == 1 else "s")
         + f"</summary><ul>{inner}</ul></details></li>"
-        + _update_line(rows[-1], True)
+        + _update_line(rows[-1], True, planned)
         + "</ul>"
     )
 

@@ -50,15 +50,15 @@
     <p>This site snapshots ESB Networks' public PowerCheck feed and keeps the results. ESB
     publishes no historical archive and purges each outage from the feed a few hours after
     restoration, so nothing before <span id="startdate"></span> exists here, and days before
-    it are shown as “no data” rather than as no outages.</p>
+    it are shown as “no data” rather than as no outages. Storm days are <b>not</b> excluded
+    here, though ESB excludes them from its own published figures, so winter months will
+    read worse than ESB's.</p>
 
     <details><summary>What this measures</summary>
     <p><b>The grade is ESB's own published aim:</b> supply restored within
     <b>4 hours in 95% of cases</b>. Each county is scored on the share of its
     fault-interrupted customers restored within that window - A meets the 95% aim,
-    then B 90%, C 80%, D 70%, F below. Planned works are excluded. Storm days are
-    <b>not</b> excluded here, so winter months will read worse than ESB's own
-    figures; the last section says why.</p>
+    then B 90%, C 80%, D 70%, F below. Planned works are excluded.</p>
     </details>
 
     <details><summary>How the grade is worked out</summary>
@@ -181,7 +181,9 @@ function whenAt(ts, ref) {
 function endBits(k) {
   if (k[6] === "restored") {
     var bits = ["restored " + whenAt(k[5], k[4])];
-    if (k[10]) bits.push("ESB's estimate was " + whenAt(k[10], k[4]));
+    // Dated against the end, not the start: the reader has just been handed
+    // the restore's day, so that is the day a bare clock time reads as.
+    if (k[10]) bits.push("ESB's estimate was " + whenAt(k[10], k[5]));
     return bits;
   }
   if (k[6] === "estimated") {
@@ -190,18 +192,27 @@ function endBits(k) {
     if (k[2]) return ["scheduled until " + whenAt(k[5], k[4])];
     return ["ESB estimated restore by " + whenAt(k[5], k[4]) + ", not confirmed"];
   }
+  // Most planned works leave the feed without reaching their estimate;
+  // "seen out" would put fault vocabulary on scheduled work.
+  if (k[2]) return ["last listed at " + whenAt(k[5], k[4])];
   return ["last seen out at " + whenAt(k[5], k[4])];
 }
 
 // a duration in hours and minutes, never a decimal a reader has to work out;
-// `about` rounds to the nearest half hour. Mirrored in render.py (_span_hm).
+// `about` rounds to the nearest half hour and owns its hedging words - a
+// short unconfirmed span is a lower bound, so it reads "under 30 min" rather
+// than being rounded up. Mirrored in render.py (_span_hm).
 function spanHM(h, about) {
-  var m = Math.round(h * 60);
-  if (about) m = Math.max(30, Math.round(m / 30) * 30);
-  if (m < 60) return m + " min";
-  if (h >= 48) return fmtHours(h);
+  var m = Math.round(h * 60), prefix = "";
+  if (about) {
+    m = Math.round(m / 30) * 30;
+    if (!m) return "under 30 min";
+    prefix = "about ";
+  }
+  if (m < 60) return prefix + m + " min";
+  if (h >= 48) return prefix + fmtHours(h);
   var whole = Math.floor(m / 60), rest = m % 60;
-  return whole + " h" + (rest ? " " + rest + " min" : "");
+  return prefix + whole + " h" + (rest ? " " + rest + " min" : "");
 }
 
 /* --- day bars ------------------------------------------------------------ */
@@ -332,23 +343,27 @@ function caseHtml(k) {
   // [id, location, planned, customers, start, end, endSrc, reason, chain, updates, est]
   var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
-  var confirmed = k[6] === "restored";
   var bits = [plural(k[3], "customer")];
   if (k[4]) bits.push("began " + fmtDay(k[4]) + ", " + k[4].slice(11, 16));
   if (k[4] && k[5]) bits = bits.concat(endBits(k));
   if (planned && k[7]) bits.push(esc(k[7].toLowerCase()));
+  // A planned record's span is its schedule when it has one and unknown when
+  // it left the feed early; "off" would claim an observed outage duration.
+  var span = "";
+  if (dur != null) {
+    if (planned) { if (k[6] === "estimated") span = "scheduled " + spanHM(dur); }
+    else span = "off " + spanHM(dur, k[6] !== "restored");
+  }
   return '<div class="case"><div class="top">' +
     '<span class="where">' + esc(k[1]) + "</span>" +
     '<span class="tag ' + (planned ? "tag-p" : "tag-f") + '">' + (planned ? "Planned" : "Fault") + "</span>" +
-    '<span class="when">' +
-      (dur == null ? "" : (confirmed ? "off " : "off about ") + spanHM(dur, !confirmed)) +
-    "</span></div>" +
+    '<span class="when">' + span + "</span></div>" +
     '<div class="sum">' + bits.join(" · ") + "</div>" +
     (chain && chain.length
       ? '<div class="repeat">Repeat fault - outage ' + chain[0] + " of " + chain[1] +
         " at this location in quick succession</div>"
       : "") +
-    updateList(ups) + "</div>";
+    updateList(ups, planned) + "</div>";
 }
 
 var ROW_LABEL = {
@@ -357,16 +372,20 @@ var ROW_LABEL = {
   estimated: "Estimated restore, from ESB",
   listed: "Last seen still out"
 };
+// Planned works get their own end-row words, matching the summary line: their
+// "estimate" is a schedule, and their listing is not an observed outage.
+var PLANNED_ROW_LABEL = { estimated: "Scheduled end", listed: "Last listed" };
 
-function updateLine(r, key) {
+function updateLine(r, key, planned) {
   // [kind, when, customers]
   var bits = [];
-  if (ROW_LABEL[r[0]]) bits.push("<b>" + ROW_LABEL[r[0]] + "</b>");
+  var label = (planned && PLANNED_ROW_LABEL[r[0]]) || ROW_LABEL[r[0]];
+  if (label) bits.push("<b>" + label + "</b>");
   if (r[2] != null) bits.push(num(r[2]) + " customers" + (r[0] === "update" ? " still off" : ""));
   return '<li class="' + (key ? "key" : "") + '"><time>' + when(r[1]) + "</time>" + bits.join(" · ") + "</li>";
 }
 
-function updateList(ups) {
+function updateList(ups, planned) {
   // Two rows are the reported start and end, which the summary line already
   // states; the timeline earns its place only when something happened between
   // them. That is 7% of outages.
@@ -376,14 +395,14 @@ function updateList(ups) {
   // default that hides the story.
   if (ups.length <= 3) {
     return '<ul class="tl">' + ups.map(function (u, i) {
-      return updateLine(u, i === 0 || i === ups.length - 1);
+      return updateLine(u, i === 0 || i === ups.length - 1, planned);
     }).join("") + "</ul>";
   }
   var mid = ups.slice(1, -1);
-  return '<ul class="tl">' + updateLine(ups[0], true) +
+  return '<ul class="tl">' + updateLine(ups[0], true, planned) +
     '<li><details><summary>' + mid.length + " further update" + (mid.length === 1 ? "" : "s") +
-    "</summary><ul>" + mid.map(function (u) { return updateLine(u, false); }).join("") +
-    "</ul></details></li>" + updateLine(ups[ups.length - 1], true) + "</ul>";
+    "</summary><ul>" + mid.map(function (u) { return updateLine(u, false, planned); }).join("") +
+    "</ul></details></li>" + updateLine(ups[ups.length - 1], true, planned) + "</ul>";
 }
 
 /* --- county shard loading ------------------------------------------------ */

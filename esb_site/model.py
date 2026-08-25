@@ -415,13 +415,17 @@ def _merge_group(members):
         # restoration is the feed catching up, not the outage continuing, and
         # taking the latest end regardless would downgrade a confirmed end to a
         # guess over that minute.
-        end, end_src = max(confirmed), "restored"
+        ender = max(
+            (o for o in members if o.end_src == "restored"), key=lambda o: o.end
+        )
     else:
-        end = max(o.end for o in members)
-        end_src = max(members, key=lambda o: o.end).end_src
-    # ESB revises its estimate as sections come back; the latest one is the
-    # statement the event ended on.
-    est = max((o.est for o in members if o.est), default=None)
+        ender = max(members, key=lambda o: o.end)
+    end, end_src = ender.end, ender.end_src
+    # ESB revises its estimate as sections come back, so the estimate the event
+    # ended on is the one carried by the record that ended it. Taking max()
+    # over the group instead can resurrect a stale figure from a sibling that
+    # closed early, after ESB had already revised it down.
+    est = ender.est
 
     # Customers off at any instant is the envelope over the members, not their
     # sum: each record describes part of the same event, and adding them counts
