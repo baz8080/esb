@@ -419,6 +419,9 @@ def _merge_group(members):
     else:
         end = max(o.end for o in members)
         end_src = max(members, key=lambda o: o.end).end_src
+    # ESB revises its estimate as sections come back; the latest one is the
+    # statement the event ended on.
+    est = max((o.est for o in members if o.est), default=None)
 
     # Customers off at any instant is the envelope over the members, not their
     # sum: each record describes part of the same event, and adding them counts
@@ -444,6 +447,7 @@ def _merge_group(members):
         end_src=end_src,
         restored=all(o.restored for o in members),
         ongoing=any(o.ongoing for o in members),
+        est=est,
         customers=max(c for _, _, c in segments),
         updates=_envelope_updates(members, segments, end, end_src, lead.planned),
         segments=segments,
@@ -514,6 +518,9 @@ class Outage(NamedTuple):
     chain: tuple
     updates: list
     segments: list  # (start, end, customers), the count as it changed over time
+    # ESB's published restore estimate, kept alongside the end rather than
+    # collapsed into it: the pages show the estimate and the actual restore.
+    est: datetime | None = None
 
     @property
     def end_known(self):
@@ -732,6 +739,9 @@ def load_outages(db_path, sa_index, now):
                     start=start,
                     end=end,
                     end_src=end_src,
+                    # The same sanity rule as the end selection: an estimate
+                    # before the outage started is nonsense, not an estimate.
+                    est=est if est and start < est else None,
                     restored=bool(row["is_final"]),
                     ongoing=ongoing,
                     reason=row["planned_outage_reason"] or "",

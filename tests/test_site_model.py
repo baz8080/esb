@@ -832,10 +832,131 @@ class TestPartialDays(SiteModelCase):
             outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
         )["cells"]
         html = render._day_cells(cells, "2026-08", model.partial_days(self.until))
-        self.assertIn(f"2026-08-12: no significant fault{statusui.PARTIAL_NOTE}", html)
+        self.assertIn(f"Wed 12 Aug: no significant fault{statusui.PARTIAL_NOTE}", html)
         # The full days beside it say nothing extra, and neither does a day
         # with no data to qualify.
-        self.assertIn('data-cap="2026-08-11: no significant fault"', html)
-        self.assertIn('data-cap="2026-08-13: no data collected for this day"', html)
+        self.assertIn('data-cap="Tue 11 Aug: no significant fault"', html)
+        self.assertIn('data-cap="Thu 13 Aug: no data collected for this day"', html)
         # The caption is shown by the page's readout, not a tooltip.
         self.assertNotIn("title=", html)
+
+
+class TestEstimatePlumbing(SiteModelCase):
+    """ESB's restore estimate reaches the page beside the actual restore."""
+
+    def test_the_estimate_survives_beside_a_confirmed_restore(self):
+        self.observe(
+            detail("1", restoreTime="10/08/2026 11:00"),
+            datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc),
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        outages, _, _ = self.load()
+        o = outages[0]
+        self.assertEqual(o.end_src, "restored")
+        # estRestoreTime 13:00 Dublin is 12:00 UTC in August.
+        self.assertEqual(o.est, datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc))
+        self.assertEqual(render.case_record(o)[10], "2026-08-10T12:00")
+
+    def test_a_merged_event_keeps_the_latest_estimate(self):
+        at = datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc)
+        self.observe(detail("1", restoreTime="10/08/2026 11:00"), at)
+        self.observe(
+            detail(
+                "2",
+                restoreTime="10/08/2026 11:00",
+                estRestoreTime="10/08/2026 14:00",
+            ),
+            at,
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 1)
+        self.assertEqual(
+            outages[0].est, datetime(2026, 8, 10, 13, 0, tzinfo=timezone.utc)
+        )
+
+
+class TestCaseCopy(unittest.TestCase):
+    """The outage card's summary line, in the words the page shows.
+
+    Records are hand-made in case_record's shape:
+    [id, location, planned, customers, start, end, endSrc, reason, chain,
+    updates, est].
+    """
+
+    @staticmethod
+    def record(**over):
+        k = [
+            "1", "Glasnevin", 0, 17,
+            "2026-08-24T10:46", "2026-08-24T14:32", "restored",
+            "", [], [], "2026-08-24T15:00",
+        ]
+        fields = {
+            "planned": 2, "customers": 3, "start": 4, "end": 5,
+            "end_src": 6, "reason": 7, "est": 10,
+        }
+        for name, value in over.items():
+            k[fields[name]] = value
+        return k
+
+    def test_a_confirmed_restore_shows_the_estimate_beside_it(self):
+        html = render._case_html(self.record())
+        self.assertIn(
+            "17 customers · began Mon 24 Aug, 10:46 · restored 14:32 · "
+            "ESB's estimate was 15:00",
+            html,
+        )
+        self.assertIn('<span class="when">off 3 h 46 min</span>', html)
+
+    def test_an_end_on_a_later_day_names_the_day(self):
+        html = render._case_html(self.record(end="2026-08-25T01:10", est=None))
+        self.assertIn("restored Tue 25 Aug, 01:10", html)
+
+    def test_an_unconfirmed_end_says_so_and_rounds_the_duration(self):
+        html = render._case_html(
+            self.record(end="2026-08-24T15:00", end_src="estimated", est=None)
+        )
+        self.assertIn("ESB estimated restore by 15:00, not confirmed", html)
+        # 4 h 14 min does not deserve minute precision on a guess.
+        self.assertIn('<span class="when">off about 4 h</span>', html)
+
+    def test_a_last_sighting_reads_as_one(self):
+        html = render._case_html(
+            self.record(end="2026-08-24T14:32", end_src="listed", est=None)
+        )
+        self.assertIn("last seen out at 14:32", html)
+
+    def test_a_planned_outage_carries_its_reason(self):
+        html = render._case_html(
+            self.record(planned=1, end_src="listed", est=None,
+                        reason="Connect New Customers")
+        )
+        self.assertIn("· connect new customers", html)
+
+    def test_planned_works_read_as_a_schedule_not_a_failed_promise(self):
+        html = render._case_html(
+            self.record(planned=1, end="2026-08-24T15:00", end_src="estimated",
+                        est=None)
+        )
+        self.assertIn("scheduled until 15:00", html)
+        self.assertNotIn("not confirmed", html)
+
+    def test_span_hm_never_shows_a_decimal(self):
+        self.assertEqual(render._span_hm(0.5), "30 min")
+        self.assertEqual(render._span_hm(3 + 46 / 60), "3 h 46 min")
+        self.assertEqual(render._span_hm(4.0), "4 h")
+        self.assertEqual(render._span_hm(4.24, about=True), "4 h")
+        self.assertEqual(render._span_hm(0.1, about=True), "30 min")
+        self.assertEqual(render._span_hm(72), "3 days")
+
+    def test_the_legend_swatches_use_the_cell_classes(self):
+        html = render._legend_html()
+        self.assertIn('<span><i class="b5"></i>planned works</span>', html)
+        self.assertIn('<i class="b0"></i>no significant fault', html)
+        # inline styles would be a second copy of the site.css colour map
+        self.assertNotIn("style=", html)
+
+    def test_customer_figures_round_to_their_real_precision(self):
+        self.assertEqual(render._approx(32069), 32000)
+        self.assertEqual(render._approx(9432), 9400)
+        self.assertEqual(render._approx(151678), 152000)
