@@ -26,6 +26,7 @@ TEMPLATES = Path(__file__).parent
 SITE_HTML = TEMPLATES / "site.html"
 COUNTY_HTML = TEMPLATES / "county.html"
 SITE_CSS = TEMPLATES / "site.css"
+SITE_JS = TEMPLATES / "site.js"
 
 # How many outages a server-rendered county page carries. The page exists so
 # that a county has a real URL for a search engine and a reader arriving cold;
@@ -159,12 +160,19 @@ def build(outages, sa_index, now, until):
         # What the build knows, as distinct from when it ran. Without this the
         # page dates itself by the clock and a reader cannot tell a quiet week
         # from a collector that stopped. Formatted for display here - it is
-        # only ever shown, and the header says "Data to {observed}".
+        # only ever shown, and the footer says "Data to {observed}".
         "observed": (
             f"{statusui.fmt_date(until.date().isoformat(), now.date())},"
             f" {until:%H:%M} UTC"
         ),
-        "stale": now - until > STALE_AFTER,
+        # The same instant in a form Date.parse handles across engines, so the
+        # banner can say "17 hours ago" rather than ask a reader to do timezone
+        # arithmetic, and so the age is measured against the reader's clock
+        # instead of being frozen at the build's. STALE_AFTER travels with it
+        # for the same reason: a page served from cache has to be able to go
+        # stale on its own.
+        "observed_iso": f"{until:%Y-%m-%dT%H:%M:00Z}",
+        "stale_hours": round(STALE_AFTER.total_seconds() / 3600),
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
         "partial": model.partial_days(until),
@@ -424,15 +432,13 @@ def county_page(county, data, cases, ym, all_counties):
         f'<div class="sub">{label} · About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022<br>"
         # This page is entered cold from a search result, so it has to carry the
-        # same caveat the app does: the day bar ends where the data does.
-        f'Data to {html.escape(data["observed"])}'
-        + (
-            ' · <span class="stale">collection has stopped</span>'
-            if data["stale"]
-            else ""
-        )
-        + "</div>",
-        f'<div class="card"><div class="bar tall">'
+        # same caveat the app does: the day bar ends where the data does. The
+        # age is filled in by the page, against the reader's clock; the exact
+        # horizon stays beside it for anyone who wants the digits.
+        f'<span id="stamp" data-observed="{data["observed_iso"]}"'
+        f' data-stale-hours="{data["stale_hours"]}"></span>'
+        f'Data to {html.escape(data["observed"])}</div>',
+        f'<div class="card">{_legend_html()}<div class="bar tall">'
         f'{_day_cells(m[0], ym, data["partial"])}</div>'
         '<div class="daycap"></div><div class="tiles">',
         "".join(
@@ -440,7 +446,6 @@ def county_page(county, data, cases, ym, all_counties):
             for v, k in tiles
         ),
         "</div>",
-        _legend_html(),
         "</div>",
     ]
     if shown:
@@ -480,8 +485,14 @@ def county_page(county, data, cases, ym, all_counties):
 
 
 def _page(template, markers):
-    """A template with the shared UI and this site's stylesheet inlined, then its markers."""
-    markers = dict(markers, **{"SITE-CSS": SITE_CSS.read_text(encoding="utf-8")})
+    """A template with the shared UI and this site's own CSS and JS inlined, then its markers."""
+    markers = dict(
+        markers,
+        **{
+            "SITE-CSS": SITE_CSS.read_text(encoding="utf-8"),
+            "SITE-JS": SITE_JS.read_text(encoding="utf-8"),
+        },
+    )
     return statusui.assemble(template.read_text(encoding="utf-8"), markers)
 
 

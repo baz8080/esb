@@ -1,7 +1,8 @@
 """No page script may redeclare a global from statusui's ui.js.
 
 The shared file is inlined ahead of each page's own script, so a redeclaration
-silently shadows the shared helper on that page alone.
+silently shadows the shared helper on that page alone. site.js is inlined into
+the same <script> as the shared file, so it is checked against it directly.
 """
 
 import re
@@ -18,9 +19,10 @@ class TestUiGlobals(unittest.TestCase):
         decl = r"^(?:function|var)\s+(\w+)"
         shared_js = (Path(statusui.__file__).parent / "ui.js").read_text()
         shared = set(re.findall(decl, shared_js, re.M))
-        for page in ("site.html", "county.html"):
+        for page in ("site.html", "county.html", "site.js"):
             text = (HERE / "esb_site" / page).read_text()
-            # everything after the shared script is the site's own
-            own = text.split("<!--UI-JS-->", 1)[1]
+            # everything after the shared script is the site's own; site.js is
+            # all its own, and is inlined into both pages
+            own = text.split("<!--UI-JS-->", 1)[-1]
             mine = set(re.findall(decl, own, re.M))
             self.assertFalse(mine & shared, f"{page} redeclares {sorted(mine & shared)}")
