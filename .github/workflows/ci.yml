@@ -26,18 +26,10 @@ jobs:
   test:
     runs-on: ubuntu-latest
     strategy:
-      # Both legs report: a floor that only fails after the other leg is
-      # cancelled tells you nothing about which one broke.
       fail-fast: false
       matrix:
-        # 3.11 is `requires-python`, and what the Pi runs — bookworm's python3.
-        # 3.14 is `.python-version`, what a contributor and the site build get.
-        # ruff only guards the floor's *syntax*; a 3.12-only stdlib call would
-        # lint clean, pass on 3.14 and fail at deploy. This is what stops it.
         python: ["3.11", "3.14"]
     env:
-      # beats .python-version, so the leg picks the interpreter without the
-      # checkout having to be edited
       UV_PYTHON: ${{ matrix.python }}
     steps:
       - uses: actions/checkout@v7
