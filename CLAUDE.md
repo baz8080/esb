@@ -93,6 +93,7 @@ Every one of these has already cost someone an hour:
 | Part-observed days keep their colour and say so in the tooltip | `notes/grading.md` § Short days say so |
 | 2.5M customer denominator, and which DAPR figures are comparable | `notes/grading.md` § The customer denominator |
 | The Pi pushes twice daily (midnight and noon local) and the site builds after each slot; the stale banner trips at 16h — above the widest legitimate push gap (~14h), below a missed midnight push (17h+) | `STALE_AFTER` in `esb_site/render.py` |
+| The banner states the data's *age* ("Updated 17 hours ago"), not its timestamp; the exact horizon stays in the footer. A healthy overnight gap is a big number, so the warning, not the wording, carries it | `freshness()` in statusui's `ui.js` |
 | The design layer is shared with uisce and lifts via `../statusui`, a uv git dependency pinned in `uv.lock` — edit upstream, then `../statusui/rollout.sh` bumps all three sites. Vendored copies were tried first and drifted within a day. `esb_site/site.css` is this site's own | `notes/grading.md` § The vendored copy became a pinned dependency; statusui's README |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their

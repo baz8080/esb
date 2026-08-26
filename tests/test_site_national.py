@@ -222,7 +222,8 @@ class PayloadCase(unittest.TestCase):
         self.assertEqual(
             set(self.data),
             {
-                "generated", "observed", "stale", "partial", "compare",
+                "generated", "observed", "observed_iso", "stale_hours",
+                "partial", "compare",
                 "start", "months", "esb",
                 "counties", "customers", "stats", "national",
             },

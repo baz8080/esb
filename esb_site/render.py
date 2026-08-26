@@ -159,12 +159,16 @@ def build(outages, sa_index, now, until):
         # What the build knows, as distinct from when it ran. Without this the
         # page dates itself by the clock and a reader cannot tell a quiet week
         # from a collector that stopped. Formatted for display here - it is
-        # only ever shown, and the header says "Data to {observed}".
+        # only ever shown, and the footer says "Data to {observed}".
         "observed": (
             f"{statusui.fmt_date(until.date().isoformat(), now.date())},"
             f" {until:%H:%M} UTC"
         ),
-        "stale": now - until > STALE_AFTER,
+        # The same instant for freshness(), which dates the page against the
+        # reader's clock rather than the build's. STALE_AFTER travels with it,
+        # so a page served from cache can still go stale.
+        "observed_iso": f"{until:%Y-%m-%dT%H:%M:00Z}",
+        "stale_hours": round(STALE_AFTER.total_seconds() / 3600),
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
         "partial": model.partial_days(until),
@@ -423,16 +427,13 @@ def county_page(county, data, cases, ym, all_counties):
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">{label} · About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022<br>"
-        # This page is entered cold from a search result, so it has to carry the
-        # same caveat the app does: the day bar ends where the data does.
-        f'Data to {html.escape(data["observed"])}'
-        + (
-            ' · <span class="stale">collection has stopped</span>'
-            if data["stale"]
-            else ""
-        )
-        + "</div>",
-        f'<div class="card"><div class="bar tall">'
+        # Entered cold from a search result, so it carries the same caveat the
+        # app does: the day bar ends where the data does. The page prefixes the
+        # age; without script this still reads on its own.
+        f'<span id="stamp" data-observed="{data["observed_iso"]}"'
+        f' data-stale-hours="{data["stale_hours"]}">'
+        f'Data to {html.escape(data["observed"])}</span></div>',
+        f'<div class="card">{_legend_html()}<div class="bar tall">'
         f'{_day_cells(m[0], ym, data["partial"])}</div>'
         '<div class="daycap"></div><div class="tiles">',
         "".join(
@@ -440,7 +441,6 @@ def county_page(county, data, cases, ym, all_counties):
             for v, k in tiles
         ),
         "</div>",
-        _legend_html(),
         "</div>",
     ]
     if shown:

@@ -27,13 +27,21 @@
   published a restore time the end is marked as an estimate or as the last sighting. Full method
   and sources are on the <a href="../index.html">main page</a>.</p>
   </details>
-  <p>Unofficial, and not affiliated with ESB Networks or the CRU. Built from snapshots of ESB's
+  <p>Independent, and not affiliated with ESB Networks or the CRU. Built from snapshots of ESB's
   public PowerCheck feed, which keeps no history of its own.</p>
 </footer>
 </div>
 <script>
 <!--UI-JS-->
 </script>
-<script>bindDayCaption();</script>
+<script>
+bindDayCaption();
+// the span already holds "Data to ...", so a page whose script never ran still
+// reads; with script the age goes in front of it
+var stamp = document.getElementById("stamp");
+stamp.innerHTML = freshness(stamp.getAttribute("data-observed"),
+  +stamp.getAttribute("data-stale-hours"), "collection has stopped") +
+  " · " + stamp.textContent;
+</script>
 </body>
 </html>

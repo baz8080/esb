@@ -19,8 +19,8 @@
 <div class="wrap">
   <header>
     <h1>Irish Electricity Outages</h1>
-    <div class="sub">Power cuts on the ESB Networks distribution system, county by county.</div>
-    <div class="sub2">Unofficial. Not affiliated with ESB Networks or the CRU. <span id="stamp"></span></div>
+    <div class="sub">Power cuts on the ESB Networks distribution system. Pick your county for details.</div>
+    <div class="sub2">Independent. Not affiliated with ESB Networks or the CRU.</div>
   </header>
 
   <main>
@@ -37,8 +37,8 @@
         </div>
       </div>
       <p class="basis" id="basis"></p>
-      <div id="list"></div>
       <div class="legend" id="legend"></div>
+      <div id="list"></div>
       <h3 class="natheading">Nationally this month</h3>
       <div class="tiles" id="tiles"></div>
     </section>
@@ -127,7 +127,7 @@
     </details>
 
     <p id="src">Built twice daily from snapshots of ESB Networks' public PowerCheck feed, which
-    keeps no history of its own.</p>
+    keeps no history of its own. <span id="stamp"></span></p>
   </footer>
 </div>
 
@@ -275,8 +275,6 @@ function renderOverview() {
   document.getElementById("natline").textContent =
     plural(n[1], "fault") + " and " + plural(n[2], "planned outage") +
     " in " + monthLabel(curMonth);
-  document.getElementById("natmeta").innerHTML = within == null ? ""
-    : "<b>" + within + "%</b> restored within " + D.esb.hours + " hours";
 
   document.getElementById("basis").innerHTML =
     "Counties are graded on ESB Networks' own published aim: <b>supply restored within " +
@@ -312,6 +310,7 @@ function renderCounty() {
     '<div class="controls"><div class="months">' + monthTabs(D.months, curMonth, "setMonth") + "</div></div>";
 
   var summary = '<div class="card">' +
+    '<div class="legend">' + legendHtml() + "</div>" +
     '<div class="bar tall">' + bar(m ? m[0] : "", curMonth) + "</div>" +
     '<div class="daycap"></div>' +
     '<div class="tiles" style="margin-bottom:0">' + [
@@ -321,8 +320,7 @@ function renderCounty() {
       [m ? num(m[6]) : 0, "customers hit by faults"]
     ].map(function (t) {
       return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
-    }).join("") + "</div>" +
-    '<div class="legend">' + legendHtml() + "</div></div>";
+    }).join("") + "</div></div>";
 
   var body;
   if (loading) body = '<div class="card"><div class="empty">Loading outages…</div></div>';
@@ -519,7 +517,9 @@ function boot() {
     return;
   }
   curMonth = D.months[D.months.length - 1];
-  document.getElementById("stamp").innerHTML = stampLine(D);
+  document.getElementById("natmeta").innerHTML =
+    freshness(D.observed_iso, D.stale_hours, "collection has stopped");
+  document.getElementById("stamp").textContent = "Data to " + D.observed + ".";
   // Filled from the build, not written into the prose: these three drift every
   // time the corpus grows, and the paragraph they sit in is the page's argument
   // for why its CML is not ESB's.

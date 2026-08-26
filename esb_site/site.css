@@ -25,3 +25,9 @@
    on the heading line itself */
 .chead + .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
 .chead .pop { color: var(--muted); font-size: 12.5px; }
+
+/* The key belongs above the bars it explains; base.css orders it after them. */
+@media (max-width: 640px) {
+  #overview > .legend { order: 4; margin-top: 12px; }
+  #overview > #list { order: 5; }
+}
