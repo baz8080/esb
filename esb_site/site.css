@@ -18,8 +18,9 @@
   border-radius: 4px; padding: 2px 8px;
 }
 
-/* county page: the line under the heading, and the customer figure that sits
-   on the heading line itself */
+/* the line under a drill-down heading, and the customer figure that sits on
+   the heading line itself. The first is promoted to statusui's base.css; this
+   copy goes when the pin moves. */
 .chead + .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
 .chead .pop { color: var(--muted); font-size: 12.5px; }
 

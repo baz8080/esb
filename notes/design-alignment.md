@@ -33,3 +33,19 @@ applied to lifts. What esb absorbed:
 esb's own layout was the reference for the county rows (chevron, two-line
 percentage stat, right-aligned counts) and the county-page card
 (legend → tall bar → tiles), so nothing changed here on those.
+
+## The county page got a way in from the app — 2026-08-26
+
+The app never linked to `c/<slug>.html`. The page linked into the app ("open the interactive view"), so it was a one-way trip, and the missing leg was the one that matters: a reader already looking at Cork had no way to reach Cork's durable address.
+
+`renderCounty` now carries a link on its own line under the heading, above the month tabs — the placement lifts uses and uisce adopted at the same time. The rule that styles it, `.chead + .sub`, is promoted to statusui's `base.css`; this repo and lifts had been carrying it byte for byte and uisce is now a third consumer. The local copy stays until the pin moves — `uv.lock` can only track statusui's `main`, so deleting it here would unstyle the line on the deployed site until rollout.
+
+Placed above the tabs rather than below despite the risk of reading as a tab modifier: the `margin-bottom: 16px` on `.sub` separates them, and matching the other two sites was worth more than the residual ambiguity.
+
+**Wording: "Every month for County Cork on one page", not "permalink".** The label makes a promise, so it has to match what is actually on the other side. This view is one month at a time; the page — since it became an archive earlier the same day — is every month plus the outage history. Naming that difference gives a reader a reason to follow the link. lifts says "Permanent link to Athy station" instead, because its page carries the same months and cases its view does, and naming *that* for its content would promise something the reader is already looking at. Same placement, different words, on purpose.
+
+"Permalink" was rejected here for two reasons: it undersells a page that now has more than the view, and it is blogging-era vocabulary a general audience mostly does not hold. The county is in the link text because a screen reader lists links stripped of their context.
+
+The overview row's `<a href>` already pointed at the page with the click suppressed, so a crawler and a "copy link address" always reached it; this closes the gap for a reader who has already drilled in.
+
+Guarded by `tests/test_permalink_affordance.py`.
