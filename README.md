@@ -133,7 +133,7 @@ you to ignore the ones that matter.
 
 ## Deploying on a Raspberry Pi (or any systemd host)
 
-The collector needs nothing but Python 3.9+ and the system timezone data.
+The collector needs nothing but Python 3.11+ and the system timezone data.
 systemd's `StateDirectory=` creates the data directory with the right owner
 before every run, so there is no ownership setup to get wrong.
 

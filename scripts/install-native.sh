@@ -22,8 +22,8 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # The collector is standard library only, so this is the entire dependency list.
-if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)'; then
-    echo "python3 3.9 or newer is required; found $(python3 -V 2>&1)" >&2
+if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+    echo "python3 3.11 or newer is required; found $(python3 -V 2>&1)" >&2
     exit 1
 fi
 

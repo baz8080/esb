@@ -17,10 +17,13 @@ uv run python -m unittest discover -s tests -t .
 ```
 
 Plain `python3` works for all of these too; uv only pins the interpreter, to the
-3.14 in `.python-version`. The collector itself still has to run on the Pi's
-Python, which `scripts/install-native.sh` gates at 3.9 — `requires-python` says
-so, and ruff takes its target from it, so the linter will not suggest syntax the
-Pi cannot run.
+3.14 in `.python-version`. That pin is the dev and CI interpreter, not the floor:
+`requires-python` says **3.11**, because that is what Raspberry Pi OS bookworm
+ships and the collector has to run there. `scripts/install-native.sh` gates on
+the same number, and ruff takes its target from it, so the linter will not
+suggest syntax the Pi cannot run. One floor covers both halves — 3.11 already
+allows everything the site uses, so splitting the two is not worth a second
+config.
 
 The collected data is a separate repository, `baz8080/esb-data`, normally
 checked out at `../esb-data`. Set `ESB_DATA_DIR` to it, or pass `--data-dir`.
@@ -99,6 +102,16 @@ Every one of these has already cost someone an hour:
 Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries
 pointers only, never the rationale, or it becomes the thing it exists to fix.
+
+## Comments
+
+Comments earn their place or they go. Say **why**, not what — never a paraphrase
+of the line below, a heading for an obviously-named block, or an explanation of a
+standard flag. What does earn a comment: a reason the obvious approach was
+rejected, a dependency nothing else records, a constraint from outside the code.
+
+One line where one will do. If the reasoning needs a paragraph it belongs in the
+commit message, the PR, or `notes/` — not above the line.
 
 ## Before changing anything the site publishes
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from . import model, render
@@ -39,9 +39,9 @@ def main(argv=None) -> int:
         return 1
 
     now = (
-        datetime.fromisoformat(args.now).replace(tzinfo=timezone.utc)
+        datetime.fromisoformat(args.now).replace(tzinfo=UTC)
         if args.now
-        else datetime.now(timezone.utc)
+        else datetime.now(UTC)
     )
 
     sa_index = model.SmallAreaIndex.load()

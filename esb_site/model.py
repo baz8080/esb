@@ -16,7 +16,7 @@ import csv
 import math
 import sqlite3
 from collections import defaultdict
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
 
@@ -28,7 +28,7 @@ SA_TOWNS_PATH = DATA_DIR / "sa_towns.csv"
 # current outages and purges them a few hours after restoration, so nothing
 # before this instant exists anywhere and no amount of later work can recover
 # it. Days before it are rendered as "no data", never as "no outages".
-COLLECTION_START = datetime(2026, 7, 31, 21, 2, 11, tzinfo=timezone.utc)
+COLLECTION_START = datetime(2026, 7, 31, 21, 2, 11, tzinfo=UTC)
 
 # The denominator for CML and CI. Both figures ESB publishes point at the same
 # number: the Distribution System Statistics in DAPR 2024 give "c. 2.5 million
@@ -146,13 +146,13 @@ REPEAT_RADIUS_KM = 1.0
 def parse_utc(value):
     if not value:
         return None
-    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc)
+    return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
 def month_bounds(ym):
     year, month = int(ym[:4]), int(ym[5:7])
-    lo = datetime(year, month, 1, tzinfo=timezone.utc)
-    hi = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=timezone.utc)
+    lo = datetime(year, month, 1, tzinfo=UTC)
+    hi = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=UTC)
     return lo, hi
 
 
@@ -344,7 +344,7 @@ def label_repeats(events):
     for group in by_place.values():
         group.sort(key=lambda o: o.start)
         run = [group[0]]
-        for prev, cur in zip(group, group[1:]):
+        for prev, cur in zip(group, group[1:], strict=False):
             gap = (cur.start - prev.end).total_seconds()
             if 0 <= gap <= REPEAT_WINDOW.total_seconds() and _near(prev, cur):
                 run.append(cur)
@@ -433,7 +433,7 @@ def _merge_group(members):
     # which is the shape the underlying restoration actually has.
     bounds = sorted({b for o in members for seg in o.segments for b in seg[:2]})
     segments = []
-    for a, b in zip(bounds, bounds[1:]):
+    for a, b in zip(bounds, bounds[1:], strict=False):
         n = max(
             (c for o in members for (s, e, c) in o.segments if s <= a and e >= b),
             default=0,
@@ -857,7 +857,7 @@ def county_month(outages, county, customers, ym, now, until):
     cells = []
     for d in range(1, days_in_month + 1):
         day = date(month_lo.year, month_lo.month, d)
-        day_lo = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+        day_lo = datetime(day.year, day.month, day.day, tzinfo=UTC)
         if day_lo >= now:
             cells.append(DAY_FUTURE)
         elif day_lo + timedelta(days=1) <= COLLECTION_START or day_lo >= until:
