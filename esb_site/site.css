@@ -1,6 +1,5 @@
 /* This site's own rules, inlined after statusui's shared base.css in
    both index.html and the county pages. */
-:root { --row-cols: 150px 1fr 190px 10px; --stats-cols: 92px auto; }
 
 /* day-cell buckets: 0 normal, 1–4 fault severity, 5 planned, 8 no data, 9 to come.
    The legend swatches share these rules so the key can never drift from the bars;
@@ -13,8 +12,6 @@
 .bar i.b8, .bar i.b9, .legend i.b8 { background: var(--cell-empty); }
 .legend i.b0 { background: var(--good); }
 
-.stats .cml { font-size: 14.5px; }
-
 .repeat {
   display: inline-block; margin-top: 5px; font-size: 12px; font-weight: 600;
   color: var(--serious-text); background: color-mix(in srgb, var(--serious) 14%, transparent);
@@ -25,9 +22,3 @@
    on the heading line itself */
 .chead + .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
 .chead .pop { color: var(--muted); font-size: 12.5px; }
-
-/* The key belongs above the bars it explains; base.css orders it after them. */
-@media (max-width: 640px) {
-  #overview > .legend { order: 4; margin-top: 12px; }
-  #overview > #list { order: 5; }
-}
