@@ -15,10 +15,8 @@ dev = ["ruff>=0.15"]
 site = ["statusui"]
 
 # Pinned to a commit in uv.lock; ../statusui/rollout.sh moves the pin.
-# Temporarily tracking the alignment branch; repoint to the bare URL and
-# re-lock once statusui's claude/uisce-esb-design-alignment-djqu7s merges.
 [tool.uv.sources]
-statusui = { git = "https://github.com/baz8080/statusui", branch = "claude/uisce-esb-design-alignment-djqu7s" }
+statusui = { git = "https://github.com/baz8080/statusui" }
 
 # Not a distributable package: both entry points are run as modules from the
 # source tree, and the Pi install is a file copy. Without this uv would try to
