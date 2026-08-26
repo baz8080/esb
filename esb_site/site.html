@@ -26,7 +26,7 @@
   <main>
     <section id="overview">
       <div class="banner">
-        <strong id="natline">Loading…</strong>
+        <span id="natline">Loading…</span>
         <span class="meta" id="natmeta"></span>
       </div>
       <div class="controls">
@@ -39,7 +39,7 @@
       <p class="basis" id="basis"></p>
       <div class="legend" id="legend"></div>
       <div id="list"></div>
-      <h3 class="natheading">Nationally this month</h3>
+      <h3 class="natheading" id="natHeading"></h3>
       <div class="tiles" id="tiles"></div>
     </section>
 
@@ -53,81 +53,64 @@
     <details><summary>What this measures</summary>
     <p><b>The grade is ESB's own published aim:</b> supply restored within
     <b>4 hours in 95% of cases</b>. Each county is scored on the share of its
-    fault-interrupted customers restored within that window - A meets the 95% aim,
-    then B 90%, C 80%, D 70%, F below. Planned works are excluded.</p>
+    fault-interrupted customers back within that window - A meets the 95% aim,
+    then B 90%, C 80%, D 70%, F below. Planned works are excluded. The site is
+    built twice daily from snapshots of ESB Networks' public PowerCheck feed,
+    which keeps no history of its own.</p>
     </details>
 
-    <details><summary>How the grade is worked out</summary>
-    <p>The standard comes from the <a
+    <details><summary>How these numbers are worked out</summary>
+    <p>The aim comes from the <a
     href="https://esbnetworksprdsastd01.blob.core.windows.net/media/docs/default-source/publications/customer-charter.pdf">Customer
-    Charter</a> the CRU approves, under the Restore Supply Guarantee: <q>our aim
-    is to restore supply within less than 4 hours in 95% of cases</q>. The same
-    guarantee pays compensation if you are without power for <b>24 hours</b>
-    after ESB was made aware, and again for each further 12 hours; outages past
-    that mark are counted separately on each county page.</p>
-    <p>A month with fewer than five faults is left ungraded, because one long
-    outage in a quiet county would swing the letter two bands. Planned works are
-    excluded exactly as the CRU's incentive excludes them: they are notified in
-    advance and never report a restore time (they simply stop being listed), so
-    their true duration is not something this data knows.</p>
-    </details>
-
-    <details><summary>The other figure: Customer Minutes Lost</summary>
-    <p><b>CML</b> is the minutes an average customer spends without supply over a
-    year, and it is the unit the CRU regulates ESB Networks in. For 2024 the CRU
-    target was <b>78.7</b> and ESB Networks reported <b>117.47</b> (<a
+    Charter</a> the CRU approves: <q>our aim is to restore supply within less
+    than 4 hours in 95% of cases</q>. The same guarantee pays compensation after
+    <b>24 hours</b> without power; outages past that mark are counted separately
+    on each county page. A month with fewer than five faults is left ungraded -
+    one long outage in a quiet county would swing the letter two bands. Planned
+    works are excluded just as the CRU's incentive excludes them: they are
+    announced in advance and never report a restore time.</p>
+    <p>The figure the CRU actually regulates is <b>Customer Minutes Lost</b> -
+    the minutes an average customer spends without supply over a year. For 2024
+    the target was <b>78.7</b> and ESB Networks reported <b>117.47</b> (<a
     href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">Distribution
-    Annual Performance Report 2024</a>; targets are set under the CRU's <a
+    Annual Performance Report 2024</a>; targets set under the CRU's <a
     href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
-    framework</a>).</p>
-    <p>It is shown here for comparison but does not set the grade, because this
-    data cannot reproduce it on ESB's scale. The durations match almost exactly,
-    an implied <b id="cmp-caidi">–</b> minutes per interrupted customer against
-    ESB's <b id="cmp-esb-caidi">–</b>, but the feed counts about
-    <b id="cmp-bias">–</b> more interrupted customers, since it reports everyone
-    on the affected section when a fault is logged while ESB settles on a smaller
-    number once crews have isolated it. A <em>share</em> of customers is immune
-    to that; a <em>total</em> of them is not.</p>
+    framework</a>). It is shown for comparison but does not set the grade: the
+    feed counts about <b id="cmp-bias">–</b> more interrupted customers than ESB
+    finally settles on, though the durations agree - an implied
+    <b id="cmp-caidi">–</b> minutes per interrupted customer against ESB's
+    <b id="cmp-esb-caidi">–</b>. A <em>share</em> of customers is immune to that
+    overcount; a <em>total</em> of them is not.</p>
     </details>
 
     <details><summary>How to read an outage</summary>
     <p>Each outage shows when it <b>began</b> and when supply was <b>restored</b>,
-    both times as ESB reports them. The rows between are the customer count
-    falling as crews restore sections, which is the one thing no ESB field
-    records and has to come from watching the feed.</p>
-    <p>ESB back-dates the start to when the fault began rather than when it was
-    published: across 1,460 outages the field was revised 8 times, and not one
-    outage appeared in the feed before its own reported start. So the durations
-    here are the outage, not the notice.</p>
-    <p>This site polls every 30 minutes, so a short outage can begin and end
-    between two polls and be recorded only after it finished. That affects when
-    we <em>noticed</em> an outage, not the times shown, which are ESB's own.
-    Where ESB never published a restore time the end is marked as an estimate or
-    as the last sighting, and never presented as a measurement.</p>
+    both times as ESB reports them; the rows between are the customer count
+    falling as crews restore sections. ESB back-dates the start to when the fault
+    began rather than when it was published, so the durations here measure the
+    outage, not the notice. Where ESB never published a restore time the end is
+    marked as an estimate or a last sighting, never presented as a measurement.</p>
     <p>ESB opens a new record each time a fault's scope changes, so records
     sharing a location and start time are folded into one outage here. A fault
-    that returns to the same spot within 15 minutes is a separate interruption
-    and stays a separate row, tagged as a repeat.</p>
+    that returns to the same spot is a separate interruption and stays a
+    separate row, tagged as a repeat.</p>
     </details>
 
     <details><summary>What it cannot tell you</summary>
-    <p>ESB excludes storm days from its published figures so they compare with
-    other utilities: <q>To benchmark our outage performance against other
-    utilities storm days (the effects of severe weather) are removed for
-    unplanned CI and CML reporting</q> (<a
+    <p>ESB removes storm days from its own published figures to compare with
+    other utilities (<a
     href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">DAPR
-    2024</a>). The Customer Charter likewise exempts <q>exceptional cases such as
-    storms</q> from the restoration guarantee. Nothing in the public feed
-    identifies a storm day, so this site excludes nothing.</p>
+    2024</a>), and the Customer Charter exempts <q>exceptional cases such as
+    storms</q>. Nothing in the public feed identifies a storm day, so this site
+    excludes nothing.</p>
     <p>Counties come from the nearest Census Small Area to each outage's
-    coordinates, because the feed carries no county field. A "customer" in ESB's
-    figures is a meter (a home, farm or business), and ESB publishes no
-    per-county count, so the county figures here are its roughly 2.5 million
-    meters split by each county's share of the Census 2022 population.</p>
+    coordinates - the feed carries no county field. A "customer" is a meter (a
+    home, farm or business), and ESB publishes no per-county count, so the
+    county figures split its roughly 2.5 million meters by each county's share
+    of the Census 2022 population.</p>
     </details>
 
-    <p id="src">Built twice daily from snapshots of ESB Networks' public PowerCheck feed, which
-    keeps no history of its own. <span id="stamp"></span></p>
+    <p id="gen"><a href="https://github.com/baz8080/esb">Source code</a> · not affiliated with ESB Networks or the CRU.</p>
   </footer>
 </div>
 
@@ -272,17 +255,23 @@ function renderOverview() {
 
   var n = D.national[curMonth] || [0, 0, 0, 0, 0, null];
   var within = n[5];
-  document.getElementById("natline").textContent =
-    plural(n[1], "fault") + " and " + plural(n[2], "planned outage") +
-    " in " + monthLabel(curMonth);
+  // "so far" only while the viewed month is still collecting
+  var partial = D.observed_iso.slice(0, 7) === curMonth;
+  document.getElementById("natline").innerHTML =
+    "<strong>" + monthLabelLong(curMonth) + (partial ? " so far" : "") + ":</strong> " +
+    plural(n[1], "fault") + " and " + plural(n[2], "planned outage");
 
   document.getElementById("basis").innerHTML =
     "Counties are graded on ESB Networks' own published aim: <b>supply restored within " +
     D.esb.hours + " hours in " + D.esb.share + "% of cases</b>, measured across the customers each " +
-    "fault interrupted." + (within == null ? "" : " Nationally this month: <b>" + within + "%</b>.") +
+    "fault interrupted." + (within == null ? "" :
+      " Nationally " + (partial ? "this month" : "in " + monthLabelLong(curMonth)) +
+      ": <b>" + within + "%</b>.") +
     // one hover cue above the list, not a placeholder in every strip
     ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
 
+  document.getElementById("natHeading").textContent =
+    "The national picture in " + monthLabelLong(curMonth);
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "restored within 4 hours"],
     [num(n[3]), "customers hit by faults"],
@@ -429,86 +418,6 @@ function render() {
   revealMonthTab(document.getElementById(county ? "countyview" : "overview").querySelector(".months"));
 }
 
-/* --- search -------------------------------------------------------------- */
-/* The place-name index is the one part of the payload that grows with the
-   number of distinct names rather than with time, so it is fetched on the first
-   keystroke instead of loading for every reader who never searches. */
-var SEARCH_STATE = null;
-var SEARCH_WAITING = [];
-function ensureSearch(then) {
-  if (SEARCH_STATE === "ok") return then();
-  // Queue rather than call straight back: a second keystroke arriving while
-  // search.js is still in flight would otherwise run the callback against an
-  // index that has not landed and report the search as permanently broken.
-  SEARCH_WAITING.push(then);
-  if (SEARCH_STATE === "loading") return;
-  SEARCH_STATE = "loading";
-  var s = document.createElement("script");
-  s.src = "search.js" + cacheBust(D);
-  var timer = setTimeout(finish, 10000);
-  function finish() {
-    clearTimeout(timer);
-    SEARCH_STATE = window.ESB_SEARCH ? "ok" : "error";
-    var waiting = SEARCH_WAITING;
-    SEARCH_WAITING = [];
-    waiting.forEach(function (fn) { fn(); });
-  }
-  s.onload = finish;
-  s.onerror = finish;
-  document.head.appendChild(s);
-}
-
-function runSearch() {
-  var box = document.getElementById("results");
-  if (document.getElementById("q").value.trim().length < 2) { box.hidden = true; return; }
-  if (SEARCH_STATE !== "ok") {
-    box.hidden = false;
-    box.innerHTML = '<div class="none">Searching…</div>';
-  }
-  ensureSearch(showResults);
-}
-
-function showResults() {
-  // The query is re-read rather than captured: a callback queued behind the
-  // index load fires after the reader has typed more, and the newest query is
-  // the one they are waiting on.
-  var q = document.getElementById("q").value.trim().toLowerCase();
-  var box = document.getElementById("results");
-  if (q.length < 2) { box.hidden = true; return; }
-  var idx = window.ESB_SEARCH;
-  if (!idx) {
-    box.hidden = false;
-    box.innerHTML = '<div class="none">Search is unavailable - try reloading.</div>';
-    return;
-  }
-  var hits = [];
-  // Counties first, so typing a county name never buries it under the towns
-  // inside it.
-  D.counties.forEach(function (c) {
-    if (c.toLowerCase().indexOf(q) === 0) hits.push([c, c, 0]);
-  });
-  D.counties.forEach(function (c) {
-    (idx[c] || []).forEach(function (name) {
-      var at = name.toLowerCase().indexOf(q);
-      if (at !== -1) hits.push([name, c, at + 1]);
-    });
-  });
-  hits.sort(function (a, b) { return a[2] - b[2] || a[0].localeCompare(b[0]); });
-  hits = hits.slice(0, 40);
-  box.hidden = false;
-  box.innerHTML = hits.length
-    ? hits.map(function (e) {
-        return '<button onclick="pick(\'' + esc(e[1]).replace(/'/g, "\\'") + '\')">' + esc(e[0]) +
-          (e[0] === e[1] ? "" : ' <span class="rc">' + esc(e[1]) + "</span>") + "</button>";
-      }).join("")
-    : '<div class="none">Nothing matching “' + esc(q) + '”</div>';
-}
-function pick(county) {
-  document.getElementById("q").value = "";
-  document.getElementById("results").hidden = true;
-  go(county);
-}
-
 /* --- boot ---------------------------------------------------------------- */
 function boot() {
   if (!D) {
@@ -517,18 +426,24 @@ function boot() {
     return;
   }
   curMonth = D.months[D.months.length - 1];
-  document.getElementById("natmeta").innerHTML =
-    freshness(D.observed_iso, D.stale_hours, "collection has stopped");
-  document.getElementById("stamp").textContent = "Data to " + D.observed + ".";
+  var natmeta = document.getElementById("natmeta");
+  natmeta.innerHTML = freshness(D.observed_iso, D.stale_hours, "collection has stopped");
+  // the exact horizon, for whoever hovers the age chip; the footer stopped
+  // carrying it when the sites' footers were aligned
+  natmeta.title = "Data to " + D.observed;
   // Filled from the build, not written into the prose: these three drift every
   // time the corpus grows, and the paragraph they sit in is the page's argument
   // for why its CML is not ESB's.
   document.getElementById("cmp-caidi").textContent = D.compare.caidi;
   document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
   document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
-  document.getElementById("q").addEventListener("input", runSearch);
-  document.addEventListener("click", function (e) {
-    if (!e.target.closest(".search")) document.getElementById("results").hidden = true;
+  bindSearch({
+    input: document.getElementById("q"),
+    results: document.getElementById("results"),
+    counties: D.counties,
+    src: "search.js" + cacheBust(D),
+    loaded: function () { return window.ESB_SEARCH; },
+    pick: go
   });
   bindDayCaption();
   bindMonthReveal();
