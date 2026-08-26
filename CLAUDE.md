@@ -103,6 +103,16 @@ Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries
 pointers only, never the rationale, or it becomes the thing it exists to fix.
 
+## Comments
+
+Comments earn their place or they go. Say **why**, not what — never a paraphrase
+of the line below, a heading for an obviously-named block, or an explanation of a
+standard flag. What does earn a comment: a reason the obvious approach was
+rejected, a dependency nothing else records, a constraint from outside the code.
+
+One line where one will do. If the reasoning needs a paragraph it belongs in the
+commit message, the PR, or `notes/` — not above the line.
+
 ## Before changing anything the site publishes
 
 `tests/test_site_national.py` compares this pipeline against ESB's own published
