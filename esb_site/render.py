@@ -26,7 +26,6 @@ TEMPLATES = Path(__file__).parent
 SITE_HTML = TEMPLATES / "site.html"
 COUNTY_HTML = TEMPLATES / "county.html"
 SITE_CSS = TEMPLATES / "site.css"
-SITE_JS = TEMPLATES / "site.js"
 
 # How many outages a server-rendered county page carries. The page exists so
 # that a county has a real URL for a search engine and a reader arriving cold;
@@ -165,12 +164,9 @@ def build(outages, sa_index, now, until):
             f"{statusui.fmt_date(until.date().isoformat(), now.date())},"
             f" {until:%H:%M} UTC"
         ),
-        # The same instant in a form Date.parse handles across engines, so the
-        # banner can say "17 hours ago" rather than ask a reader to do timezone
-        # arithmetic, and so the age is measured against the reader's clock
-        # instead of being frozen at the build's. STALE_AFTER travels with it
-        # for the same reason: a page served from cache has to be able to go
-        # stale on its own.
+        # The same instant for freshness(), which dates the page against the
+        # reader's clock rather than the build's. STALE_AFTER travels with it,
+        # so a page served from cache can still go stale.
         "observed_iso": f"{until:%Y-%m-%dT%H:%M:00Z}",
         "stale_hours": round(STALE_AFTER.total_seconds() / 3600),
         # Two dates at most, and the same for every county, so they sit here
@@ -431,13 +427,12 @@ def county_page(county, data, cases, ym, all_counties):
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">{label} · About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022<br>"
-        # This page is entered cold from a search result, so it has to carry the
-        # same caveat the app does: the day bar ends where the data does. The
-        # age is filled in by the page, against the reader's clock; the exact
-        # horizon stays beside it for anyone who wants the digits.
+        # Entered cold from a search result, so it carries the same caveat the
+        # app does: the day bar ends where the data does. The page prefixes the
+        # age; without script this still reads on its own.
         f'<span id="stamp" data-observed="{data["observed_iso"]}"'
-        f' data-stale-hours="{data["stale_hours"]}"></span>'
-        f'Data to {html.escape(data["observed"])}</div>',
+        f' data-stale-hours="{data["stale_hours"]}">'
+        f'Data to {html.escape(data["observed"])}</span></div>',
         f'<div class="card">{_legend_html()}<div class="bar tall">'
         f'{_day_cells(m[0], ym, data["partial"])}</div>'
         '<div class="daycap"></div><div class="tiles">',
@@ -485,14 +480,8 @@ def county_page(county, data, cases, ym, all_counties):
 
 
 def _page(template, markers):
-    """A template with the shared UI and this site's own CSS and JS inlined, then its markers."""
-    markers = dict(
-        markers,
-        **{
-            "SITE-CSS": SITE_CSS.read_text(encoding="utf-8"),
-            "SITE-JS": SITE_JS.read_text(encoding="utf-8"),
-        },
-    )
+    """A template with the shared UI and this site's stylesheet inlined, then its markers."""
+    markers = dict(markers, **{"SITE-CSS": SITE_CSS.read_text(encoding="utf-8")})
     return statusui.assemble(template.read_text(encoding="utf-8"), markers)
 
 

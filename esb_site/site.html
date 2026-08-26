@@ -134,7 +134,6 @@
 <script src="data.js"></script>
 <script>
 <!--UI-JS-->
-<!--SITE-JS-->
 </script>
 <script>
 "use strict";
@@ -518,7 +517,8 @@ function boot() {
     return;
   }
   curMonth = D.months[D.months.length - 1];
-  document.getElementById("natmeta").innerHTML = freshness(D.observed_iso, D.stale_hours);
+  document.getElementById("natmeta").innerHTML =
+    freshness(D.observed_iso, D.stale_hours, "collection has stopped");
   document.getElementById("stamp").textContent = "Data to " + D.observed + ".";
   // Filled from the build, not written into the prose: these three drift every
   // time the corpus grows, and the paragraph they sit in is the page's argument
