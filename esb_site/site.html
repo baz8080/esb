@@ -47,12 +47,8 @@
   </main>
 
   <footer>
-    <p>This site snapshots ESB Networks' public PowerCheck feed and keeps the results. ESB
-    publishes no historical archive and purges each outage from the feed a few hours after
-    restoration, so nothing before <span id="startdate"></span> exists here, and days before
-    it are shown as “no data” rather than as no outages. Storm days are <b>not</b> excluded
-    here, though ESB excludes them from its own published figures, so winter months will
-    read worse than ESB's.</p>
+    <p>Storm days are <b>not</b> excluded here, though ESB excludes them from its own
+    published figures, so winter months will read worse than ESB's.</p>
 
     <details><summary>What this measures</summary>
     <p><b>The grade is ESB's own published aim:</b> supply restored within
@@ -130,8 +126,8 @@
     meters split by each county's share of the Census 2022 population.</p>
     </details>
 
-    <p id="src">Built from snapshots of ESB Networks' public PowerCheck feed, which keeps no
-    history of its own.</p>
+    <p id="src">Built twice daily from snapshots of ESB Networks' public PowerCheck feed, which
+    keeps no history of its own.</p>
   </footer>
 </div>
 
@@ -524,7 +520,6 @@ function boot() {
   }
   curMonth = D.months[D.months.length - 1];
   document.getElementById("stamp").innerHTML = stampLine(D);
-  document.getElementById("startdate").textContent = D.start;
   // Filled from the build, not written into the prose: these three drift every
   // time the corpus grows, and the paragraph they sit in is the page's argument
   // for why its CML is not ESB's.
