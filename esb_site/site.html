@@ -264,7 +264,9 @@ function renderOverview() {
   document.getElementById("basis").innerHTML =
     "Counties are graded on ESB Networks' own published aim: <b>supply restored within " +
     D.esb.hours + " hours in " + D.esb.share + "% of cases</b>, measured across the customers each " +
-    "fault interrupted." + (within == null ? "" : " Nationally this month: <b>" + within + "%</b>.") +
+    "fault interrupted." + (within == null ? "" :
+      " Nationally " + (partial ? "this month" : "in " + monthLabelLong(curMonth)) +
+      ": <b>" + within + "%</b>.") +
     // one hover cue above the list, not a placeholder in every strip
     ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
 
