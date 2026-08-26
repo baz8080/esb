@@ -1,9 +1,10 @@
 [Unit]
-Description=Back up ESB outage data daily
+Description=Back up ESB outage data twice daily
 Documentation=https://github.com/baz8080/esb
 
 [Timer]
-OnCalendar=daily
+# Midnight and noon local; the noon slot just keeps the published site fresher.
+OnCalendar=*-*-* 00,12:00:00
 Persistent=true
 RandomizedDelaySec=1800
 

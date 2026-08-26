@@ -32,11 +32,10 @@ SITE_CSS = TEMPLATES / "site.css"
 # the full month lives in the shard the app loads.
 COUNTY_PAGE_CASES = 40
 
-# How far the data may lag the build before the page says so. The collector
-# pushes daily and the site rebuilds daily, so a gap under this is the normal
-# handover; past it, something has stopped and the reader should be told rather
-# than left reading the day bars as a quiet week.
-STALE_AFTER = timedelta(hours=24)
+# How far the data may lag the build before the page says so. Pushes land at
+# local midnight and noon, so with jitter and DST a build can legitimately see
+# ~14h-old data, while a dead collector shows 17h+ by the next morning cron.
+STALE_AFTER = timedelta(hours=16)
 
 slug = statusui.slug
 month_label = statusui.month_label

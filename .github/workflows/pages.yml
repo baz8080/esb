@@ -2,11 +2,11 @@ name: Build site
 
 on:
   schedule:
-    # The collector pushes to esb-data on a daily timer with up to 30 minutes of
-    # jitter, so this runs well clear of it. Nothing is lost by being late: the
-    # database is rebuilt from the raw logs every time, so a missed run simply
-    # publishes more data the next day.
+    # One run after each push slot: the collector pushes to esb-data at local
+    # midnight and noon with up to 30 minutes of jitter, and these clear both
+    # whether Dublin is on UTC or UTC+1.
     - cron: '40 5 * * *'
+    - cron: '40 12 * * *'
   push:
     branches: [main]
   workflow_dispatch:
