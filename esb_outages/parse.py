@@ -8,7 +8,7 @@ the parsed values in the database, so a bug in this module costs nothing that a
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
 # ESB's timestamps carry no offset. They are Europe/Dublin wall-clock time:
@@ -65,10 +65,10 @@ def parse_esb_datetime(value: str | None) -> tuple[str | None, bool]:
     local = naive.replace(tzinfo=DUBLIN)
 
     ambiguous = local.utcoffset() != local.replace(fold=1).utcoffset()
-    roundtrip = local.astimezone(timezone.utc).astimezone(DUBLIN)
+    roundtrip = local.astimezone(UTC).astimezone(DUBLIN)
     imaginary = roundtrip.replace(tzinfo=None) != naive
 
-    utc = local.astimezone(timezone.utc)
+    utc = local.astimezone(UTC)
     return utc.strftime("%Y-%m-%dT%H:%M:%SZ"), bool(ambiguous or imaginary)
 
 

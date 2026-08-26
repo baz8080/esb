@@ -16,7 +16,7 @@ import calendar
 import os
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from esb_site import model, render
@@ -41,7 +41,7 @@ class NationalCase(unittest.TestCase):
         cls.index = model.SmallAreaIndex.load()
         # The clock is pinned so the assertions do not drift as the corpus grows
         # past them; it moves forward when the reference window is widened.
-        cls.now = datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc)
+        cls.now = datetime(2026, 8, 17, 9, 0, tzinfo=UTC)
         cls.outages, cls.unplaced, cls.until = model.load_outages(
             DB_PATH, cls.index, cls.now
         )
@@ -198,7 +198,7 @@ class PayloadCase(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         index = model.SmallAreaIndex.load()
-        now = datetime(2026, 8, 17, 9, 0, tzinfo=timezone.utc)
+        now = datetime(2026, 8, 17, 9, 0, tzinfo=UTC)
         outages, _, until = model.load_outages(DB_PATH, index, now)
         cls._tmp = tempfile.TemporaryDirectory()
         cls.dir = Path(cls._tmp.name)

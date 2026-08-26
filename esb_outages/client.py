@@ -12,7 +12,6 @@ import gzip
 import json
 import os
 import random
-import socket
 import time
 import urllib.error
 import urllib.request
@@ -121,7 +120,7 @@ class EsbClient:
             if exc.code >= 500:
                 raise TransientError(f"{exc.code} from {url}: {body}") from exc
             raise ApiError(f"{exc.code} from {url}: {body}") from exc
-        except (urllib.error.URLError, socket.timeout, TimeoutError, OSError) as exc:
+        except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise TransientError(f"network failure for {url}: {exc}") from exc
 
     def get_json(self, path: str) -> dict:

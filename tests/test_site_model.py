@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import tempfile
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import statusui
@@ -19,7 +19,7 @@ from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
 from esb_site import model, render
 
-NOW = datetime(2026, 8, 20, 0, 0, 0, tzinfo=timezone.utc)
+NOW = datetime(2026, 8, 20, 0, 0, 0, tzinfo=UTC)
 
 
 def iso(dt):
@@ -119,7 +119,7 @@ class TestDayBuckets(unittest.TestCase):
 
 class TestPlacement(SiteModelCase):
     def test_coordinates_resolve_to_a_county_and_town(self):
-        self.observe(detail("1"), datetime(2026, 8, 10, 10, tzinfo=timezone.utc))
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, tzinfo=UTC))
         outages, unplaced, _ = self.load()
         self.assertEqual(unplaced, 0)
         self.assertEqual(len(outages), 1)
@@ -128,7 +128,7 @@ class TestPlacement(SiteModelCase):
     def test_a_point_off_the_island_is_not_placed(self):
         self.observe(
             detail("1", point={"c": "48.85,2.35"}),  # Paris
-            datetime(2026, 8, 10, 10, tzinfo=timezone.utc),
+            datetime(2026, 8, 10, 10, tzinfo=UTC),
         )
         outages, unplaced, _ = self.load()
         self.assertEqual((len(outages), unplaced), (0, 1))
@@ -141,7 +141,7 @@ class TestPlacement(SiteModelCase):
 
 class TestClassification(SiteModelCase):
     def test_restored_does_not_erase_that_it_was_a_fault(self):
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         self.observe(detail("1"), t)
         self.observe(
             detail("1", outageType="Restored", restoreTime="10/08/2026 12:30"),
@@ -152,7 +152,7 @@ class TestClassification(SiteModelCase):
         self.assertEqual(outages[0].end_src, "restored")
 
     def test_planned_stays_planned_and_never_reports_a_restore(self):
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         self.observe(detail("1", outageType="Planned"), t)
         outages, _, _ = self.load()
         self.assertTrue(outages[0].planned)
@@ -161,7 +161,7 @@ class TestClassification(SiteModelCase):
 
 class TestEndTime(SiteModelCase):
     def test_real_restore_time_wins(self):
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         self.observe(
             detail("1", outageType="Restored", restoreTime="10/08/2026 11:45"), t
         )
@@ -170,30 +170,30 @@ class TestEndTime(SiteModelCase):
         self.assertEqual(o.end_src, "restored")
         self.assertTrue(o.end_known)
         # 11:45 Dublin in August is 10:45 UTC.
-        self.assertEqual(o.end, datetime(2026, 8, 10, 10, 45, tzinfo=timezone.utc))
+        self.assertEqual(o.end, datetime(2026, 8, 10, 10, 45, tzinfo=UTC))
 
     def test_estimate_is_used_when_it_precedes_the_last_sighting(self):
         # Seen at 09:30 and 14:00 UTC, estimated back at 13:00 Dublin = 12:00 UTC.
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc))
-        self.observe(detail("1"), datetime(2026, 8, 10, 14, 0, tzinfo=timezone.utc))
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
+        self.observe(detail("1"), datetime(2026, 8, 10, 14, 0, tzinfo=UTC))
         outages, _, _ = self.load()
         o = outages[0]
         self.assertEqual(o.end_src, "estimated")
-        self.assertEqual(o.end, datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc))
+        self.assertEqual(o.end, datetime(2026, 8, 10, 12, 0, tzinfo=UTC))
 
     def test_last_sighting_wins_when_it_precedes_the_estimate(self):
         # Dropped out of the feed at 09:30 UTC, long before its 12:00 estimate.
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc))
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
         outages, _, _ = self.load()
         o = outages[0]
         self.assertEqual(o.end_src, "listed")
-        self.assertEqual(o.end, datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc))
+        self.assertEqual(o.end, datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
 
     def test_an_estimate_before_the_start_is_not_an_estimate(self):
         """Falling back rather than clamping: clamping made the outage zero-length."""
         self.observe(
             detail("1", startTime="10/08/2026 09:00", estRestoreTime="10/08/2026 08:00"),
-            datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc),
+            datetime(2026, 8, 10, 9, 30, tzinfo=UTC),
         )
         outages, _, _ = self.load()
         o = outages[0]
@@ -204,7 +204,7 @@ class TestEndTime(SiteModelCase):
 
 class TestUpdates(SiteModelCase):
     def test_an_outage_that_never_changes_has_one_update(self):
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         for i in range(5):
             self.observe(detail("1"), t + timedelta(minutes=30 * i))
         outages, _, _ = self.load()
@@ -217,7 +217,7 @@ class TestUpdates(SiteModelCase):
         updates a few seconds apart, which inflated the count on a third of all
         outages.
         """
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         self.observe(detail("1"), t)
         body = detail("1", outageType="Restored", restoreTime="10/08/2026 12:30")
         item = {"i": "1", "t": "Restored", "p": body["point"]}
@@ -228,7 +228,7 @@ class TestUpdates(SiteModelCase):
         self.assertEqual(len(outages[0].updates), 2)
 
     def test_customer_count_changes_are_updates(self):
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         for i, n in enumerate((100, 80, 40)):
             self.observe(detail("1", numCustAffected=n), t + timedelta(minutes=30 * i))
         outages, _, _ = self.load()
@@ -236,7 +236,7 @@ class TestUpdates(SiteModelCase):
 
     def test_status_message_noise_is_not_an_update(self):
         """statusMessage has five distinct values and unstable whitespace."""
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         self.observe(detail("1", statusMessage="We apologise."), t)
         self.observe(
             detail("1", statusMessage="We  apologise."), t + timedelta(minutes=30)
@@ -245,7 +245,7 @@ class TestUpdates(SiteModelCase):
         self.assertEqual(len(outages[0].updates), 1)
 
     def test_coordinate_refinement_is_not_an_update(self):
-        t = datetime(2026, 8, 10, 10, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         self.observe(detail("1"), t)
         self.observe(
             detail("1", point={"c": "53.36861,-6.27101"}), t + timedelta(minutes=30)
@@ -261,7 +261,7 @@ class TestCustomerMinutes(SiteModelCase):
         Multiplying the final count by the whole duration would say 80, and the
         first count by the whole duration would say 200.
         """
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)  # 10:00 Dublin
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)  # 10:00 Dublin
         self.observe(detail("1", numCustAffected=100, startTime="10/08/2026 10:00"), t)
         self.observe(
             detail("1", numCustAffected=40, startTime="10/08/2026 10:00"),
@@ -279,15 +279,15 @@ class TestCustomerMinutes(SiteModelCase):
         )
         outages, _, _ = self.load()
         o = outages[0]
-        lo = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        lo = datetime(2026, 8, 1, tzinfo=UTC)
         self.assertAlmostEqual(o.customer_minutes(lo, NOW) / 60.0, 140.0, places=3)
 
     def test_nothing_accrues_outside_the_window(self):
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         self.observe(detail("1"), t)
         outages, _, _ = self.load()
         o = outages[0]
-        after = datetime(2026, 8, 11, tzinfo=timezone.utc)
+        after = datetime(2026, 8, 11, tzinfo=UTC)
         self.assertEqual(o.customer_minutes(after, NOW), 0.0)
 
 
@@ -296,7 +296,7 @@ class TestEventMerging(SiteModelCase):
 
     def split_fault(self):
         # One event: 900 customers off at 10:00 Dublin, restored in two stages.
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         common = {"location": "Glasnevin", "startTime": "10/08/2026 10:00"}
         self.observe(detail("1", numCustAffected=900, **common), t)
         self.observe(
@@ -330,7 +330,7 @@ class TestEventMerging(SiteModelCase):
         self.split_fault()
         outages, _, _ = self.load()
         o = outages[0]
-        self.assertEqual(o.end, datetime(2026, 8, 10, 11, 0, tzinfo=timezone.utc))
+        self.assertEqual(o.end, datetime(2026, 8, 10, 11, 0, tzinfo=UTC))
         self.assertEqual(o.end_src, "restored")
         self.assertEqual(o.minutes, 120.0)
 
@@ -338,14 +338,14 @@ class TestEventMerging(SiteModelCase):
         """900 off for an hour, then 400 for an hour: 1300 customer-hours."""
         self.split_fault()
         outages, _, _ = self.load()
-        lo = datetime(2026, 8, 1, tzinfo=timezone.utc)
+        lo = datetime(2026, 8, 1, tzinfo=UTC)
         self.assertAlmostEqual(
             outages[0].customer_minutes(lo, NOW) / 60.0, 1300.0, places=3
         )
 
     def test_a_record_lingering_past_a_confirmed_restore_does_not_downgrade_it(self):
         """The feed leaves a Fault row up briefly after the last section is back."""
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         common = {"location": "Glasnevin", "startTime": "10/08/2026 10:00"}
         self.observe(
             detail(
@@ -357,17 +357,17 @@ class TestEventMerging(SiteModelCase):
         self.observe(detail("2", **common), t + timedelta(hours=1, minutes=5))
         outages, _, _ = self.load()
         self.assertEqual(outages[0].end_src, "restored")
-        self.assertEqual(outages[0].end, datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc))
+        self.assertEqual(outages[0].end, datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
 
     def test_different_locations_are_not_merged(self):
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         self.observe(detail("1", location="Glasnevin"), t)
         self.observe(detail("2", location="Santry"), t)
         outages, _, _ = self.load()
         self.assertEqual(len(outages), 2)
 
     def test_a_fault_and_a_planned_outage_are_never_merged(self):
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         self.observe(detail("1", outageType="Fault"), t)
         self.observe(detail("2", outageType="Planned"), t)
         outages, _, _ = self.load()
@@ -394,7 +394,7 @@ class TestEventMerging(SiteModelCase):
         the two patterns apart, which is why the merge key is the start time
         rather than a tolerance around it. See notes/grading.md.
         """
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         self.observe(
             detail(
                 "1", numCustAffected=150, startTime="10/08/2026 10:00",
@@ -419,7 +419,7 @@ class TestEventMerging(SiteModelCase):
         Merging would hand one county's customers to its neighbour, and each
         county's page has to carry the customers actually in it.
         """
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         common = {"location": "Little Bray", "startTime": "10/08/2026 10:00"}
         self.observe(detail("1", point={"c": "53.20873,-6.12507"}, **common), t)
         self.observe(detail("2", point={"c": "53.22514,-6.13477"}, **common), t)
@@ -435,7 +435,7 @@ class TestEventMerging(SiteModelCase):
                 "1", outageType="Restored", startTime="10/08/2026 10:00",
                 restoreTime="10/08/2026 10:30",
             ),
-            datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc),
+            datetime(2026, 8, 10, 10, 0, tzinfo=UTC),
         )
         outages, _, _ = self.load()
         o = outages[0]
@@ -448,7 +448,7 @@ class TestRepeatChains(SiteModelCase):
     """Same spot, failing again shortly after being restored."""
 
     def chain_of(self, *windows):
-        t = datetime(2026, 8, 10, 6, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 6, 0, tzinfo=UTC)
         for i, (start, end) in enumerate(windows):
             self.observe(
                 detail(
@@ -480,7 +480,7 @@ class TestRepeatChains(SiteModelCase):
         self.assertEqual(outages[0].chain, ())
 
     def test_planned_works_are_never_chained(self):
-        t = datetime(2026, 8, 10, 12, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 12, tzinfo=UTC)
         self.observe(
             detail("1", outageType="Planned", startTime="10/08/2026 10:00",
                    estRestoreTime="10/08/2026 11:00"), t)
@@ -492,7 +492,7 @@ class TestRepeatChains(SiteModelCase):
 
     def test_the_same_town_far_apart_is_not_a_chain(self):
         """Two faults in one big town are not the same spot failing twice."""
-        t = datetime(2026, 8, 10, 12, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 12, tzinfo=UTC)
         self.observe(
             detail("1", startTime="10/08/2026 10:00", outageType="Restored",
                    restoreTime="10/08/2026 11:00"), t)
@@ -518,7 +518,7 @@ class TestTimeline(SiteModelCase):
                 "1", numCustAffected=31, outageType="Restored",
                 startTime="10/08/2026 15:15", restoreTime="10/08/2026 18:17",
             ),
-            datetime(2026, 8, 10, 20, 2, tzinfo=timezone.utc),  # 21:02 Dublin
+            datetime(2026, 8, 10, 20, 2, tzinfo=UTC),  # 21:02 Dublin
         )
         outages, _, _ = self.load()
         o = outages[0]
@@ -526,12 +526,12 @@ class TestTimeline(SiteModelCase):
         kinds = [r[0] for r in rows]
         self.assertEqual(kinds, ["began", "restored"])
         # 15:15 and 18:17 Dublin are 14:15 and 17:17 UTC.
-        self.assertEqual(rows[0][1], datetime(2026, 8, 10, 14, 15, tzinfo=timezone.utc))
-        self.assertEqual(rows[-1][1], datetime(2026, 8, 10, 17, 17, tzinfo=timezone.utc))
+        self.assertEqual(rows[0][1], datetime(2026, 8, 10, 14, 15, tzinfo=UTC))
+        self.assertEqual(rows[-1][1], datetime(2026, 8, 10, 17, 17, tzinfo=UTC))
         self.assertEqual(rows[0][2], 31)
 
     def test_the_first_and_last_rows_are_always_the_reported_anchors(self):
-        t = datetime(2026, 8, 10, 9, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, tzinfo=UTC)
         self.observe(detail("1"), t)
         outages, _, _ = self.load()
         o = outages[0]
@@ -543,7 +543,7 @@ class TestTimeline(SiteModelCase):
 
     def test_an_unchanged_count_adds_no_rows(self):
         """Polling the same figure eight times is not eight updates."""
-        t = datetime(2026, 8, 10, 9, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, tzinfo=UTC)
         for i in range(8):
             self.observe(detail("1"), t + timedelta(minutes=30 * i))
         outages, _, _ = self.load()
@@ -553,7 +553,7 @@ class TestTimeline(SiteModelCase):
 
 class TestCountyMonth(SiteModelCase):
     def test_planned_works_are_kept_out_of_the_grade(self):
-        t = datetime(2026, 8, 10, 9, 0, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         self.observe(
             detail("1", outageType="Planned", numCustAffected=5000), t
         )
@@ -638,27 +638,27 @@ class TestCollectionHorizon(SiteModelCase):
     """`now` says what is in the future; the data says what is known."""
 
     def test_the_horizon_is_the_last_run_that_reached_the_feed(self):
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
         self.load()
-        self.assertEqual(self.until, datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.assertEqual(self.until, datetime(2026, 8, 12, 6, tzinfo=UTC))
 
     def test_a_run_that_never_reached_the_feed_does_not_extend_it(self):
         """An auth failure or a dead connection observed nothing."""
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
         self.store.record_run(
             run_id="dead",
-            started_at_utc=iso(datetime(2026, 8, 15, 6, tzinfo=timezone.utc)),
+            started_at_utc=iso(datetime(2026, 8, 15, 6, tzinfo=UTC)),
             status="unreachable",
         )
         self.load()
-        self.assertEqual(self.until, datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.assertEqual(self.until, datetime(2026, 8, 12, 6, tzinfo=UTC))
 
     def test_days_past_the_horizon_are_not_days_without_outages(self):
         """The failure this exists to stop: silence published as calm."""
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=1)
         outages, _, index = self.load()
         s = model.county_month(
             outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
@@ -670,8 +670,8 @@ class TestCollectionHorizon(SiteModelCase):
 
     def test_the_measured_window_stops_at_the_horizon(self):
         """Time the collector was down is not time this site watched."""
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=1)
         outages, _, index = self.load()
         s = model.county_month(
             outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
@@ -691,7 +691,7 @@ class TestOngoingOutages(SiteModelCase):
         # Out for 30 minutes and still going when collection stopped. Scoring
         # that as a restoration inside 4 hours is how a live fault flatters the
         # grade on every build.
-        t = datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
         self.observe(detail("1", startTime="10/08/2026 10:00"), t)
         self.poll(t, n_listed=1)
         outages, _, index = self.load()
@@ -701,7 +701,7 @@ class TestOngoingOutages(SiteModelCase):
         self.assertIsNone(s["within"])
 
     def test_a_restored_outage_is_judged_however_recent(self):
-        t = datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc)
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
         self.observe(
             detail("1", outageType="Restored", restoreTime="10/08/2026 10:20"), t
         )
@@ -712,8 +712,8 @@ class TestOngoingOutages(SiteModelCase):
 
     def test_one_stopped_being_listed_before_the_horizon_is_judged(self):
         """Gone from the feed is an ending, even without a restore time."""
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=0)
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=0)
         outages, _, index = self.load()
         self.assertFalse(outages[0].ongoing)
         self.assertIsNotNone(self.judged(outages, index)["within"])
@@ -722,9 +722,9 @@ class TestOngoingOutages(SiteModelCase):
         """Past 24 hours is true of an outage that has not ended yet."""
         self.observe(
             detail("1", startTime="09/08/2026 08:00"),
-            datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc),
+            datetime(2026, 8, 10, 9, 30, tzinfo=UTC),
         )
-        self.poll(datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc), n_listed=1)
+        self.poll(datetime(2026, 8, 10, 9, 30, tzinfo=UTC), n_listed=1)
         outages, _, index = self.load()
         self.assertTrue(outages[0].ongoing)
         self.assertEqual(self.judged(outages, index)["over_compensation"], 1)
@@ -740,7 +740,7 @@ class TestShardMonths(SiteModelCase):
         # it, and a reader could count the rows and come up one short.
         self.observe(
             detail("1", startTime="01/08/2026 00:00"),
-            datetime(2026, 7, 31, 23, 30, tzinfo=timezone.utc),
+            datetime(2026, 7, 31, 23, 30, tzinfo=UTC),
         )
         self.observe(
             detail(
@@ -749,9 +749,9 @@ class TestShardMonths(SiteModelCase):
                 outageType="Restored",
                 restoreTime="01/08/2026 12:00",
             ),
-            datetime(2026, 8, 1, 11, 30, tzinfo=timezone.utc),
+            datetime(2026, 8, 1, 11, 30, tzinfo=UTC),
         )
-        self.poll(datetime(2026, 8, 1, 11, 30, tzinfo=timezone.utc), n_listed=1)
+        self.poll(datetime(2026, 8, 1, 11, 30, tzinfo=UTC), n_listed=1)
         outages, _, index = self.load()
         months = ["2026-07", "2026-08"]
 
@@ -766,8 +766,8 @@ class TestShardMonths(SiteModelCase):
             self.assertEqual(counted, len(by_month[ym]), ym)
 
     def test_a_month_the_outage_never_touches_does_not_list_it(self):
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 10, 9, tzinfo=timezone.utc), n_listed=1)
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 10, 9, tzinfo=UTC), n_listed=1)
         outages, _, _ = self.load()
         by_month = render.shard(outages, ["2026-07", "2026-08"], self.until)
         self.assertEqual(by_month["2026-07"], [])
@@ -782,10 +782,10 @@ class TestSegmentWindow(SiteModelCase):
         # two polls with the count revised upward - which happens because ESB
         # does not drop restored outages straight away. Those observations
         # describe an outage that was already over.
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=timezone.utc))
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
         for at, n in [
-            (datetime(2026, 8, 10, 10, 30, tzinfo=timezone.utc), 250),
-            (datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc), 300),
+            (datetime(2026, 8, 10, 10, 30, tzinfo=UTC), 250),
+            (datetime(2026, 8, 10, 11, 30, tzinfo=UTC), 300),
         ]:
             self.observe(
                 detail(
@@ -798,7 +798,7 @@ class TestSegmentWindow(SiteModelCase):
             )
         outages, _, _ = self.load()
         o = outages[0]
-        self.assertEqual(o.end, datetime(2026, 8, 10, 10, 0, tzinfo=timezone.utc))
+        self.assertEqual(o.end, datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
         # Every segment lies inside the outage, and none of them is inverted.
         for seg_start, seg_end, _ in o.segments:
             self.assertLess(seg_start, seg_end)
@@ -811,8 +811,8 @@ class TestPartialDays(SiteModelCase):
     """A day watched for six hours is not a quiet day."""
 
     def test_the_first_and_last_days_of_collection_are_short(self):
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=1)
         self.load()
         self.assertEqual(
             model.partial_days(self.until),
@@ -821,12 +821,12 @@ class TestPartialDays(SiteModelCase):
 
     def test_a_horizon_on_the_stroke_of_midnight_leaves_a_whole_day(self):
         """[lo, hi) - a window ending at 00:00 covers the previous day fully."""
-        until = datetime(2026, 8, 13, 0, 0, tzinfo=timezone.utc)
+        until = datetime(2026, 8, 13, 0, 0, tzinfo=UTC)
         self.assertEqual(model.partial_days(until)[-1], "2026-08-12")
 
     def test_the_short_days_are_the_ones_the_page_qualifies(self):
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc), n_listed=1)
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=1)
         outages, _, index = self.load()
         cells = model.county_month(
             outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
@@ -847,21 +847,21 @@ class TestEstimatePlumbing(SiteModelCase):
     def test_the_estimate_survives_beside_a_confirmed_restore(self):
         self.observe(
             detail("1", restoreTime="10/08/2026 11:00"),
-            datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc),
+            datetime(2026, 8, 10, 11, 30, tzinfo=UTC),
         )
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
         outages, _, _ = self.load()
         o = outages[0]
         self.assertEqual(o.end_src, "restored")
         # estRestoreTime 13:00 Dublin is 12:00 UTC in August.
-        self.assertEqual(o.est, datetime(2026, 8, 10, 12, 0, tzinfo=timezone.utc))
+        self.assertEqual(o.est, datetime(2026, 8, 10, 12, 0, tzinfo=UTC))
         self.assertEqual(render.case_record(o)[10], "2026-08-10T12:00")
 
     def test_a_merged_event_keeps_the_estimate_of_the_record_that_ended_it(self):
         # A sibling that closed early still carries ESB's old 18:00 estimate;
         # the record that ended the event had it revised down to 12:00. max()
         # over the group would resurrect the stale 18:00.
-        at = datetime(2026, 8, 10, 11, 45, tzinfo=timezone.utc)
+        at = datetime(2026, 8, 10, 11, 45, tzinfo=UTC)
         self.observe(
             detail(
                 "1",
@@ -878,14 +878,14 @@ class TestEstimatePlumbing(SiteModelCase):
             ),
             at,
         )
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
         outages, _, _ = self.load()
         self.assertEqual(len(outages), 1)
         self.assertEqual(
-            outages[0].end, datetime(2026, 8, 10, 10, 30, tzinfo=timezone.utc)
+            outages[0].end, datetime(2026, 8, 10, 10, 30, tzinfo=UTC)
         )
         self.assertEqual(
-            outages[0].est, datetime(2026, 8, 10, 11, 0, tzinfo=timezone.utc)
+            outages[0].est, datetime(2026, 8, 10, 11, 0, tzinfo=UTC)
         )
 
     def test_an_estimate_the_page_cannot_show_is_not_serialized(self):
@@ -894,11 +894,11 @@ class TestEstimatePlumbing(SiteModelCase):
         # at all. Neither belongs in the shard.
         self.observe(
             detail("1", restoreTime="10/08/2026 13:00"),
-            datetime(2026, 8, 10, 12, 30, tzinfo=timezone.utc),
+            datetime(2026, 8, 10, 12, 30, tzinfo=UTC),
         )
         self.observe(detail("2", location="Marino"),
-                     datetime(2026, 8, 10, 11, 30, tzinfo=timezone.utc))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=timezone.utc))
+                     datetime(2026, 8, 10, 11, 30, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
         outages, _, _ = self.load()
         by_loc = {o.location: o for o in outages}
         self.assertEqual(by_loc["Glasnevin"].est, by_loc["Glasnevin"].end)

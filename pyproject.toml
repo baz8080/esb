@@ -7,7 +7,7 @@
 name = "esb"
 version = "1.0.0"
 description = "Long-term collector and status site for ESB Networks outage data"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 dependencies = []
 
 [dependency-groups]
