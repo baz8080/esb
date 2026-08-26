@@ -489,11 +489,15 @@ def county_page(county, data, by_month, months, until, all_counties):
     faults = sum(1 for k in cases if not k[2])
     planned = len(cases) - faults
     title = f"Power outages in County {county}"
+    # The counts are the county's whole record; the list below stops at
+    # COUNTY_PAGE_CASES. So they are stated as the county's, and what the page
+    # actually holds is named separately - a snippet reading "95 faults and 139
+    # planned" as an inventory would be counted and found short.
     desc = (
-        f"Power cuts recorded in County {county} since {data['start']}: "
-        f"{faults:,} fault{'' if faults == 1 else 's'} and "
-        f"{planned:,} planned outage{'' if planned == 1 else 's'} from "
-        f"ESB Networks' PowerCheck feed, month by month."
+        f"County {county}: {faults:,} fault{'' if faults == 1 else 's'} and "
+        f"{planned:,} planned power cut{'' if planned == 1 else 's'} since "
+        f"{data['start']}. Month-by-month totals and the most recent outages, "
+        f"from ESB Networks' PowerCheck feed."
     )
     tiles = [
         ("–" if m[2] is None else f"{m[2]:g}%", "restored within 4 hours"),

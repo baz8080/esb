@@ -66,7 +66,7 @@ class TestTheSubjectIsACounty(CountyPageCase):
         )
         self.poll(datetime(2026, 9, 3, 0, 0, tzinfo=UTC), n_listed=2)
         desc = re.search(r'name="description" content="([^"]*)"', self.render_county())
-        self.assertIn("1 fault and 1 planned outage", desc.group(1))
+        self.assertIn("1 fault and 1 planned power cut", desc.group(1))
         self.assertIn("since", desc.group(1))
 
 
