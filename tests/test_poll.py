@@ -169,11 +169,10 @@ class TestFailurePaths(PollTestCase):
 
 
 class TestUnwritableDataDir(PollTestCase):
+    @unittest.skipIf(os.geteuid() == 0, "root bypasses permission checks")
     def test_readonly_directory_exits_six_without_a_traceback(self):
         # The directory exists but the process cannot write to it: a full disk,
         # or an owner that does not match the user the collector runs as.
-        import os
-
         target = self.data_dir / "readonly"
         target.mkdir()
         os.chmod(target, 0o500)
