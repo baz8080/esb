@@ -18,10 +18,7 @@
   border-radius: 4px; padding: 2px 8px;
 }
 
-/* the line under a drill-down heading, and the customer figure that sits on
-   the heading line itself. The first is promoted to statusui's base.css; this
-   copy goes when the pin moves. */
-.chead + .sub { color: var(--muted); font-size: 12.5px; margin-bottom: 16px; }
+/* the customer figure that sits on the drill-down heading line itself */
 .chead .pop { color: var(--muted); font-size: 12.5px; }
 
 /* county page: the month-by-month archive. A table is the one thing here that
