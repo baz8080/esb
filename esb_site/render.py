@@ -27,10 +27,11 @@ SITE_HTML = TEMPLATES / "site.html"
 COUNTY_HTML = TEMPLATES / "county.html"
 SITE_CSS = TEMPLATES / "site.css"
 
-# How many outages a server-rendered county page carries. The page exists so
-# that a county has a real URL for a search engine and a reader arriving cold;
-# the full month lives in the shard the app loads.
-COUNTY_PAGE_CASES = 40
+# How many outages a server-rendered county page carries, newest first across
+# every month it has data for. 150 rather than the 40 it started at: measured on
+# the August 2026 corpus that is 3.2 KB more gzipped on the largest page for 3.7x
+# the indexable text. A cap remains because the archive grows without bound.
+COUNTY_PAGE_CASES = 150
 
 # How far the data may lag the build before the page says so. Pushes land at
 # local midnight and noon, so with jitter and DST a build can legitimately see
@@ -405,14 +406,98 @@ def _day_cells(cells, ym, partial):
     return statusui.day_cells(cells, ym, partial, DAY_LABELS, qualify=lambda ch: ch not in "89")
 
 
-def county_page(county, data, cases, ym, all_counties):
-    m = data["stats"][county][ym]
+def _county_cases(by_month, months):
+    """Every outage in one county, newest first, once each.
+
+    A shard files an outage under every month it overlaps, so flattening one
+    without this would list a fault that ran past midnight on the 31st twice.
+    """
+    seen, cases = set(), []
+    for ym in reversed(months):
+        for k in by_month.get(ym, []):
+            if k[0] not in seen:
+                seen.add(k[0])
+                cases.append(k)
+    # by start rather than by the month it was filed under, so the boundary
+    # spanners sit where a reader looking for them expects
+    cases.sort(key=lambda k: k[4] or "", reverse=True)
+    return cases
+
+
+def _month_watched(ym, until):
+    """"from 31 Jul" - the part of a month the collector actually saw.
+
+    The same reason `partial_days` exists, one level up: the first and last
+    months are short, and a row of zeros for three hours of July reads as a
+    quiet month rather than an absent collector.
+    """
+    lo, hi = model.month_bounds(ym)
+    olo, ohi = model.observed_window(ym, until)
+    bits = []
+    if olo > lo:
+        bits.append(f"from {olo:%-d %b}")
+    if ohi < hi:
+        bits.append(f"to {ohi:%-d %b}")
+    return " ".join(bits)
+
+
+def _county_months_html(county, data, months, until):
+    """One row per month, newest first.
+
+    Read straight off the payload the app charts, so the page and the county
+    view cannot come to disagree about a month.
+    """
+    rows = []
+    for ym in reversed(months):
+        m = data["stats"][county][ym]
+        watched = _month_watched(ym, until)
+        rows.append(
+            f'<tr><th scope="row">{month_label(ym)}'
+            + (f'<span class="part">{watched}</span>' if watched else "")
+            + "</th>"
+            f'<td><span class="gradechip g-{m[1] or "none"}">{m[1] or "–"}</span></td>'
+            f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
+            f"<td>{m[4]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
+            f"<td>{m[3]:,.1f}</td></tr>"
+        )
+    return (
+        '<div class="card"><h2>Month by month</h2><div class="scroll">'
+        '<table class="mtable"><thead><tr>'
+        '<th scope="col">Month</th><th scope="col">Grade</th>'
+        '<th scope="col">Restored in 4h</th>'
+        '<th scope="col">Faults</th><th scope="col">Planned</th>'
+        '<th scope="col">Customers hit</th>'
+        '<th scope="col" title="Customer minutes lost per customer, annualised, '
+        'unplanned">CML</th>'
+        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>'
+    )
+
+
+def county_page(county, data, by_month, months, until, all_counties):
+    """The whole body of c/<slug>.html.
+
+    Every month, not only the latest. The URL names a county, so what it
+    publishes has to be that county's record; carrying one month made the page's
+    subject - and its title - change under the same URL every time the month
+    rolled over.
+    """
+    latest = months[-1]
+    m = data["stats"][county][latest]
     grade = m[1]
-    label = month_label(ym)
-    title = f"Power outages in County {county} - {label}"
+    label = month_label(latest)
+    cases = _county_cases(by_month, months)
+    faults = sum(1 for k in cases if not k[2])
+    planned = len(cases) - faults
+    title = f"Power outages in County {county}"
+    # The counts are the county's whole record; the list below stops at
+    # COUNTY_PAGE_CASES. So they are stated as the county's, and what the page
+    # actually holds is named separately - a snippet reading "95 faults and 139
+    # planned" as an inventory would be counted and found short.
     desc = (
-        f"{m[4]} faults and {m[5]} planned power outages recorded in County {county} "
-        f"during {label}, from ESB Networks' PowerCheck feed."
+        f"County {county}: {faults:,} fault{'' if faults == 1 else 's'} and "
+        f"{planned:,} planned power cut{'' if planned == 1 else 's'} since "
+        f"{data['start']}. Month-by-month totals and the most recent outages, "
+        f"from ESB Networks' PowerCheck feed."
     )
     tiles = [
         ("–" if m[2] is None else f"{m[2]:g}%", "restored within 4 hours"),
@@ -425,7 +510,7 @@ def county_page(county, data, cases, ym, all_counties):
         '<a class="back" href="../index.html">← All counties</a>',
         f'<div class="chead"><span class="gradechip g-{grade or "none"}">{grade or "–"}</span>',
         f"<h1>County {html.escape(county)}</h1></div>",
-        f'<div class="sub">{label} · About {data["customers"][county]:,} homes '
+        f'<div class="sub">About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022<br>"
         # Entered cold from a search result, so it carries the same caveat the
         # app does: the day bar ends where the data does. The page prefixes the
@@ -433,8 +518,8 @@ def county_page(county, data, cases, ym, all_counties):
         f'<span id="stamp" data-observed="{data["observed_iso"]}"'
         f' data-stale-hours="{data["stale_hours"]}">'
         f'Data to {html.escape(data["observed"])}</span></div>',
-        f'<div class="card">{_legend_html()}<div class="bar tall">'
-        f'{_day_cells(m[0], ym, data["partial"])}</div>'
+        f'<div class="card"><h2>{label}</h2>{_legend_html()}<div class="bar tall">'
+        f'{_day_cells(m[0], latest, data["partial"])}</div>'
         '<div class="daycap"></div><div class="tiles">',
         "".join(
             f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>'
@@ -443,20 +528,25 @@ def county_page(county, data, cases, ym, all_counties):
         "</div>",
         "</div>",
     ]
+    body.append(_county_months_html(county, data, months, until))
     if shown:
-        body.append(f'<div class="card"><h2>Outages in {label}</h2>')
+        body.append(
+            f'<div class="card"><h2>Outage history '
+            f'<span class="n">{len(cases):,}</span></h2>'
+        )
         body.append("".join(_case_html(k) for k in shown))
         if len(cases) > len(shown):
             body.append(
                 f'<p class="empty" style="padding-top:12px">'
-                f"{len(cases) - len(shown)} more not shown here - "
-                f'<a href="../index.html#county/{county}">open the full month</a>.</p>'
+                f"{len(cases) - len(shown):,} older outages not shown here - "
+                f'<a href="../index.html#county/{county}">open the interactive '
+                f"view</a>.</p>"
             )
         body.append("</div>")
     else:
         body.append(
-            f'<div class="card"><p class="empty">No outages were recorded in '
-            f"{html.escape(county)} during {label}.</p></div>"
+            f'<div class="card"><p class="empty">No outages have been recorded in '
+            f"{html.escape(county)} since {data['start']}.</p></div>"
         )
     body.append('<div class="card"><h2>Every county</h2><p class="nav">')
     body.append(
@@ -491,7 +581,6 @@ def write(site_dir, outages, sa_index, now, until):
     (site_dir / "h").mkdir(parents=True, exist_ok=True)
 
     data, by_county, months, search = build(outages, sa_index, now, until)
-    latest = months[-1]
 
     (site_dir / "index.html").write_text(
         _page(SITE_HTML, {"CANONICAL": f"{BASE_URL}/"}), encoding="utf-8"
@@ -514,7 +603,7 @@ def write(site_dir, outages, sa_index, now, until):
             encoding="utf-8",
         )
         (site_dir / "c" / f"{slug(county)}.html").write_text(
-            county_page(county, data, by_month.get(latest, []), latest, sa_index.counties),
+            county_page(county, data, by_month, months, until, sa_index.counties),
             encoding="utf-8",
         )
 

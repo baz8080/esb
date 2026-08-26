@@ -99,6 +99,8 @@ Every one of these has already cost someone an hour:
 | The banner states the data's *age* ("Updated 17 hours ago"), not its timestamp. A healthy overnight gap is a big number, so the warning, not the wording, carries it | `freshness()` in statusui's `ui.js` |
 | The exact horizon left the footer (owner call, 2026-08-26); it survives as the age chip's hover title and the county pages' sub line | `notes/design-alignment.md` |
 | Banner, national heading and footer formats are aligned with uisce; the merged "How these numbers are worked out" disclosure and the "Source code · not affiliated" line are the shared shape | `notes/design-alignment.md` |
+| The app's county view links to `c/<slug>.html` from its own line under the heading; the wording names the difference (one month here, every month there) rather than calling itself a permalink, and uisce says the same sentence because its page stands in the same relation to its view | `notes/design-alignment.md` § The county page got a way in from the app |
+| The county page's meta description states the county's record, then names what the page holds, in that order — the page caps its list, and a snippet truncated mid-sentence must not read as an inventory | `notes/design-alignment.md` § The meta description had the same shape as the link |
 | The design layer is shared with uisce and lifts via `../statusui`, a uv git dependency pinned in `uv.lock` — edit upstream, then `../statusui/rollout.sh` bumps all three sites. Vendored copies were tried first and drifted within a day. `esb_site/site.css` is this site's own | `notes/grading.md` § The vendored copy became a pinned dependency; statusui's README |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their

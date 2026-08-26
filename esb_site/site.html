@@ -296,6 +296,12 @@ function renderCounty() {
     '<div class="chead">' + gradeChip(m ? m[1] : null, true) + "<h2>" + esc(c) + "</h2>" +
       '<span class="pop">About ' + num(D.customers[c]) +
       " homes and businesses · estimated from Census 2022</span></div>" +
+    // Named for what is on the other side rather than for being a permalink:
+    // this view is one month at a time and that page is all of them, so a
+    // reader has a reason to follow it. The county is in the link text because
+    // a screen reader lists links stripped of their context.
+    '<div class="sub"><a href="c/' + slug(c) + '.html">Every month for County ' +
+      esc(c) + " on one page</a></div>" +
     '<div class="controls"><div class="months">' + monthTabs(D.months, curMonth, "setMonth") + "</div></div>";
 
   var summary = '<div class="card">' +
