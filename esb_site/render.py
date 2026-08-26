@@ -33,13 +33,13 @@ SITE_CSS = TEMPLATES / "site.css"
 COUNTY_PAGE_CASES = 40
 
 # How far the data may lag the build before the page says so. The collector
-# pushes daily with up to 30 minutes of jitter, so consecutive pushes can be
-# 24.5 hours apart (25.5 across a DST change), and the site rebuilds on every
-# push to main as well as on its morning cron — an evening merge can build
-# against data legitimately older than 24 hours. A push the collector actually
-# missed is first seen by the morning build at 30+ hours. 28 sits between the
-# two; the numbers are in notes/staleness.md.
-STALE_AFTER = timedelta(hours=28)
+# pushes at local midnight and noon with up to 30 minutes of jitter, so
+# consecutive pushes can be 13.5 hours apart across a DST change, and the site
+# rebuilds on every push to main as well as on its crons — a merge landing just
+# before a push can build against data legitimately ~14 hours old. A collector
+# that has actually died is first seen by the morning cron at 17+ hours. 16
+# sits between the two; the numbers are in notes/staleness.md.
+STALE_AFTER = timedelta(hours=16)
 
 slug = statusui.slug
 month_label = statusui.month_label
