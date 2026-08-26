@@ -3,9 +3,7 @@ Description=Back up ESB outage data twice daily
 Documentation=https://github.com/baz8080/esb
 
 [Timer]
-# Midnight and noon, local time. The second slot exists for publication
-# latency only: the site rebuilds after each push, so it halves how far the
-# published page runs behind the feed. The raw logs lose nothing either way.
+# Midnight and noon local; the noon slot just keeps the published site fresher.
 OnCalendar=*-*-* 00,12:00:00
 Persistent=true
 RandomizedDelaySec=1800

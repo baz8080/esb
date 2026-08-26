@@ -32,13 +32,9 @@ SITE_CSS = TEMPLATES / "site.css"
 # the full month lives in the shard the app loads.
 COUNTY_PAGE_CASES = 40
 
-# How far the data may lag the build before the page says so. The collector
-# pushes at local midnight and noon with up to 30 minutes of jitter, so
-# consecutive pushes can be 13.5 hours apart across a DST change, and the site
-# rebuilds on every push to main as well as on its crons — a merge landing just
-# before a push can build against data legitimately ~14 hours old. A collector
-# that has actually died is first seen by the morning cron at 17+ hours. 16
-# sits between the two; the numbers are in notes/staleness.md.
+# How far the data may lag the build before the page says so. Pushes land at
+# local midnight and noon, so with jitter and DST a build can legitimately see
+# ~14h-old data, while a dead collector shows 17h+ by the next morning cron.
 STALE_AFTER = timedelta(hours=16)
 
 slug = statusui.slug
