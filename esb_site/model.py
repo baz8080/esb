@@ -202,7 +202,7 @@ def day_bucket(fault_minutes_per_customer, has_planned):
 
 
 class SmallAreaIndex:
-    """Census Small Area centroids, grid-hashed, for point -> county lookups.
+    """Census Small Area centroids, grid-hashed, for point -> area lookups.
 
     Ported from the uisce site generator, with the radius-and-footprint logic
     dropped. ESB publishes a point per outage rather than a service area, so the
@@ -217,14 +217,25 @@ class SmallAreaIndex:
         self._bins = defaultdict(list)
         self._cache = {}
         self.county_pop = defaultdict(int)
-        for lat, lon, county, town, pop in rows:
+        self.town_pop = defaultdict(int)
+        sums = defaultdict(lambda: [0.0, 0.0])
+        for lat, lon, county, code, town, pop in rows:
             # math.floor, not int: Irish longitudes are negative and int()
             # truncates towards zero, so int() here against the floor() in
             # `place` files every centroid one bin east of where it is sought.
             self._bins[
                 (math.floor(lat / self.BIN), math.floor(lon / self.BIN))
-            ].append((lat, lon, county, town))
+            ].append((lat, lon, county, code, town))
             self.county_pop[county] += pop
+            self.town_pop[code] += pop
+            sums[code][0] += lat * pop
+            sums[code][1] += lon * pop
+        # Weighted by population rather than land: "near" on an area page means
+        # near its people, and a settlement's Small Areas cluster where they live.
+        self.centroids = {
+            code: (s[0] / self.town_pop[code], s[1] / self.town_pop[code])
+            for code, s in sums.items()
+        }
         self.counties = sorted(self.county_pop)
         national = sum(self.county_pop.values())
         # ESB publishes no per-county customer count, so customers are
@@ -240,19 +251,19 @@ class SmallAreaIndex:
         places = {}
         with open(towns_path, encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
-                places[r["guid"]] = (r["town_county"], r["town_name"])
+                places[r["guid"]] = (r["town_county"], r["town_code"], r["town_name"])
         rows = []
         with open(pop_path, encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
                 place = places.get(r["guid"])
                 if place:
                     rows.append(
-                        (float(r["lat"]), float(r["lon"]), place[0], place[1], int(r["pop"]))
+                        (float(r["lat"]), float(r["lon"]), *place, int(r["pop"]))
                     )
         return cls(rows)
 
     def place(self, lat, lon):
-        """Nearest Small Area's (county, town), or None if implausibly far."""
+        """Nearest Small Area's (county, area code, town), or None if implausibly far."""
         key = (round(lat, 4), round(lon, 4))
         if key in self._cache:
             return self._cache[key]
@@ -264,13 +275,15 @@ class SmallAreaIndex:
                 for dx in range(-ring, ring + 1):
                     if max(abs(dy), abs(dx)) != ring:
                         continue  # only the cells this ring adds
-                    for slat, slon, county, town in self._bins.get((by + dy, bx + dx), ()):
+                    for slat, slon, county, code, town in self._bins.get(
+                        (by + dy, bx + dx), ()
+                    ):
                         d = math.hypot(
                             (slat - lat) * 111.0,
                             (slon - lon) * 111.0 * math.cos(math.radians(lat)),
                         )
                         if d < best_d:
-                            best, best_d = (county, town), d
+                            best, best_d = (county, code, town), d
             # Every bin within `ring` of the target has now been read, so any
             # centroid still unseen is at least that many bins away. Once the
             # best hit is closer than that floor, no further ring can beat it -
@@ -284,6 +297,21 @@ class SmallAreaIndex:
         result = best if best_d <= 25.0 else None
         self._cache[key] = result
         return result
+
+
+def area_has_page(code):
+    """Whether an area names a place a reader could search for.
+
+    uisce's rule, minus its unplaced bucket - an outage that cannot be placed is
+    dropped before it gets here. An Electoral Division is the countryside around
+    somewhere rather than a place (all 2,808 are named "Around ..."), and a
+    city's "-rest" code is the remainder of its Local Electoral Areas; hundreds
+    of near-identical pages for them is what a search engine demotes as scaled
+    thin content. Deliberately not gated on an outage count as well: a floor
+    would make a URL appear the day an area's second fault arrives, and a
+    permalink that comes and goes is worse than a short one.
+    """
+    return not code.startswith("ed:") and not code.endswith("-rest")
 
 
 class Update(NamedTuple):
@@ -501,6 +529,9 @@ class Outage(NamedTuple):
     ids: list  # every ESB outage id folded into this event
     county: str
     town: str
+    # The town's stable key in the census vocabulary; the name is for display
+    # and the code is what the per-area pages group on.
+    town_code: str
     location: str
     planned: bool
     customers: int  # peak reported, which is what an interruption count wants
@@ -665,7 +696,7 @@ def load_outages(db_path, sa_index, now):
             if place is None:
                 unplaced += 1
                 continue
-            county, town = place
+            county, town_code, town = place
             updates = _build_updates(row, changes.get(row["outage_id"], []))
 
             # `Restored` overwrites whatever the outage was, so the earliest
@@ -737,6 +768,7 @@ def load_outages(db_path, sa_index, now):
                     ids=[row["outage_id"]],
                     county=county,
                     town=town,
+                    town_code=town_code,
                     location=row["location"] or town,
                     planned=planned,
                     customers=max([n for _, _, n in segments] or [0]),
