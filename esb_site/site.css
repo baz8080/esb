@@ -43,7 +43,10 @@
 /* Per-area rows, shared by areas.html, c/*.html and the nearby card. A
    deliberate local copy of uisce's rules; promoting them to statusui is the
    follow-up (notes/area-pages.md). */
-ul.areas { list-style: none; columns: 2; column-gap: 28px; margin-top: 8px; }
+/* base.css resets margin but not padding, so a bare <ul> keeps the user
+   agent's 40px indent even with the marker gone */
+ul.areas { list-style: none; columns: 2; column-gap: 28px; margin-top: 8px;
+           padding: 0; }
 ul.areas li { break-inside: avoid; display: flex; align-items: baseline;
               gap: 6px; padding: 3px 0; font-size: 13.5px; }
 ul.areas li a { text-decoration: none; border-bottom: 1px solid var(--border); }

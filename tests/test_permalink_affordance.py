@@ -52,7 +52,7 @@ class DescriptionCase(unittest.TestCase):
         index = model.SmallAreaIndex.load()
         now = datetime(2026, 8, 31, tzinfo=UTC)
         data, _, months, _ = render.build([], index, now, now)
-        n = render.COUNTY_PAGE_CASES + 40 if n is None else n
+        n = 190 if n is None else n
         shard = {
             "2026-08": [
                 [f"o{i}", "Somewhere", i % 2, 10, "2026-08-01T09:00",
@@ -64,11 +64,11 @@ class DescriptionCase(unittest.TestCase):
         return re.search(r'name="description" content="([^"]*)"', page).group(1)
 
     def test_the_counts_are_the_county_s_record_not_a_promise_of_a_listing(self):
-        """The page stops at COUNTY_PAGE_CASES, so a description reading as an
-        inventory would be counted and found short."""
+        """The counts and the listing agree since the cap came off, but the
+        order still matters: the record first, what the page holds after it."""
         desc = self.build()
         self.assertIn("County Dublin: ", desc)
-        self.assertIn("Month-by-month totals and the most recent outages", desc)
+        self.assertIn("Month-by-month totals and every outage recorded", desc)
         self.assertNotIn("recorded in County", desc)
 
     def test_it_stays_true_when_a_search_engine_truncates_it(self):
@@ -78,7 +78,7 @@ class DescriptionCase(unittest.TestCase):
         desc = self.build().replace("&#x27;", "'")
         head = desc.split(". ")[0]
         self.assertIn("since 31 July 2026", head)
-        self.assertNotIn("most recent", head)
+        self.assertNotIn("every outage recorded", head)
 
     def test_it_fits_a_search_result(self):
         self.assertLessEqual(len(self.build().replace("&#x27;", "'")), 160)
