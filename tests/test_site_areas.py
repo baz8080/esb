@@ -96,6 +96,34 @@ class TestKmLabel(unittest.TestCase):
         self.assertEqual(render._km_label(4.4), "4 km")
 
 
+class TestTheDirectoryHeading(unittest.TestCase):
+    def test_one_area_is_not_one_areas(self):
+        """A from-scratch dataset can leave a county with a single area, and
+        the rows two lines down already do the n == 1 dance."""
+        one = [("19848", "Testtown", 100, [object()])]
+        two = one + [("01626", "Othertown", 200, [object()])]
+        self.assertIn("· 1 area ·", render._areas_index_html([("Carlow", one)]))
+        self.assertIn("· 2 areas ·", render._areas_index_html([("Carlow", two)]))
+
+
+class TestCentroids(unittest.TestCase):
+    def test_an_uninhabited_area_falls_back_to_the_plain_mean(self):
+        """The shipped CSV has no zero-population code, but a regenerated CSO
+        extract carrying one must degrade to an unweighted centroid rather
+        than crash every esb_site command."""
+        index = model.SmallAreaIndex(
+            [
+                (53.0, -8.0, "Clare", "z1", "Ghosttown", 0),
+                (53.2, -8.2, "Clare", "z1", "Ghosttown", 0),
+                (52.0, -9.0, "Clare", "z2", "Realtown", 100),
+            ]
+        )
+        lat, lon = index.centroids["z1"]
+        self.assertAlmostEqual(lat, 53.1)
+        self.assertAlmostEqual(lon, -8.1)
+        self.assertEqual(index.centroids["z2"], (52.0, -9.0))
+
+
 class AreaSiteCase(SiteModelCase):
     """One whole-site build per test: the assertions are about files agreeing
     with each other, which a single page render cannot show."""

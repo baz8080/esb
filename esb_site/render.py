@@ -11,7 +11,6 @@ only way to hold that line is to never put a per-outage record in `data.js`.
 from __future__ import annotations
 
 import html
-import math
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -665,18 +664,12 @@ def _areas_index_html(index):
         # would make "page" select every county in the country.
         sections.append(
             f'<section id="c-{slug(county)}" data-county="{html.escape(county)}">'
-            f"<h2>County {html.escape(county)} <span>· {len(areas)} areas · "
+            f"<h2>County {html.escape(county)} <span>· {len(areas)} "
+            f'area{"" if len(areas) == 1 else "s"} · '
             f'<a href="c/{slug(county)}.html">county page</a></span></h2>'
             f'<ul class="areas">{_area_items(county, areas)}</ul></section>'
         )
     return f"<nav>{nav}</nav>\n{''.join(sections)}"
-
-
-def _km(a, b):
-    return math.hypot(
-        (a[0] - b[0]) * 111.0,
-        (a[1] - b[1]) * 111.0 * math.cos(math.radians(a[0])),
-    )
 
 
 def _km_label(d):
@@ -705,7 +698,7 @@ def nearby_areas(index, sa_index):
     for _county, code, _name in pages:
         centre = sa_index.centroids[code]
         out[code] = sorted(
-            (_km(centre, sa_index.centroids[other]), oc, oname)
+            (model.km(*centre, *sa_index.centroids[other]), oc, oname)
             for oc, other, oname in pages
             if other != code
         )[:NEARBY_AREAS]

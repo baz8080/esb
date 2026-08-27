@@ -164,6 +164,19 @@ def month_list(start, end):
     return months
 
 
+def km(lat1, lon1, lat2, lon2):
+    """Equirectangular distance, referenced to the first point's latitude.
+
+    The one statement of the 111-km-per-degree arithmetic: pin placement,
+    repeat-fault chaining and the nearby-areas card all measure distance with
+    this, so they cannot quietly disagree about what "near" means.
+    """
+    return math.hypot(
+        (lat1 - lat2) * 111.0,
+        (lon1 - lon2) * 111.0 * math.cos(math.radians(lat1)),
+    )
+
+
 def merge(intervals):
     """Union overlapping [start, end) pairs. Lifted from the uisce generator."""
     merged = []
@@ -218,7 +231,7 @@ class SmallAreaIndex:
         self._cache = {}
         self.county_pop = defaultdict(int)
         self.town_pop = defaultdict(int)
-        sums = defaultdict(lambda: [0.0, 0.0])
+        sums = defaultdict(lambda: [0.0, 0.0, 0.0, 0.0, 0])
         for lat, lon, county, code, town, pop in rows:
             # math.floor, not int: Irish longitudes are negative and int()
             # truncates towards zero, so int() here against the floor() in
@@ -228,14 +241,23 @@ class SmallAreaIndex:
             ].append((lat, lon, county, code, town))
             self.county_pop[county] += pop
             self.town_pop[code] += pop
-            sums[code][0] += lat * pop
-            sums[code][1] += lon * pop
+            s = sums[code]
+            s[0] += lat * pop
+            s[1] += lon * pop
+            s[2] += lat
+            s[3] += lon
+            s[4] += 1
         # Weighted by population rather than land: "near" on an area page means
-        # near its people, and a settlement's Small Areas cluster where they live.
-        self.centroids = {
-            code: (s[0] / self.town_pop[code], s[1] / self.town_pop[code])
-            for code, s in sums.items()
-        }
+        # near its people, and a settlement's Small Areas cluster where they
+        # live. No code in the shipped CSV sums to zero people, but a future
+        # CSO extract carrying one uninhabited settlement must not crash every
+        # build - it falls back to the plain mean.
+        self.centroids = {}
+        for code, (wlat, wlon, plat, plon, n) in sums.items():
+            pop = self.town_pop[code]
+            self.centroids[code] = (
+                (wlat / pop, wlon / pop) if pop else (plat / n, plon / n)
+            )
         self.counties = sorted(self.county_pop)
         national = sum(self.county_pop.values())
         # ESB publishes no per-county customer count, so customers are
@@ -278,10 +300,7 @@ class SmallAreaIndex:
                     for slat, slon, county, code, town in self._bins.get(
                         (by + dy, bx + dx), ()
                     ):
-                        d = math.hypot(
-                            (slat - lat) * 111.0,
-                            (slon - lon) * 111.0 * math.cos(math.radians(lat)),
-                        )
+                        d = km(lat, lon, slat, slon)
                         if d < best_d:
                             best, best_d = (county, code, town), d
             # Every bin within `ring` of the target has now been read, so any
@@ -389,13 +408,7 @@ def label_repeats(events):
 def _near(a, b):
     if None in (a.lat, a.lon, b.lat, b.lon):
         return True
-    return (
-        math.hypot(
-            (a.lat - b.lat) * 111.0,
-            (a.lon - b.lon) * 111.0 * math.cos(math.radians(a.lat)),
-        )
-        <= REPEAT_RADIUS_KM
-    )
+    return km(a.lat, a.lon, b.lat, b.lon) <= REPEAT_RADIUS_KM
 
 
 def _tag(run, chains):
