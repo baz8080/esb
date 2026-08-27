@@ -9,6 +9,7 @@ it cut power to, and every page has to say so and point at its neighbours.
 from __future__ import annotations
 
 import csv
+import json
 import re
 import tempfile
 import unittest
@@ -163,6 +164,37 @@ class AreaSiteCase(SiteModelCase):
     def text_of(self, page):
         body = re.sub(r"<(script|style).*?</\1>", "", page, flags=re.S)
         return re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body)).strip()
+
+
+class TestTheSearchIndex(AreaSiteCase):
+    """search.js is what the box fetches on the first keystroke. A name with a
+    page carries its slug so the hit can link straight to it; ESB's own location
+    strings name no Census area and stay bare, which is also what the annotation
+    beside the hit is reading."""
+
+    def index(self):
+        body = self.page("search.js")
+        self.assertTrue(body.startswith("window.ESB_PLACES = "))
+        return json.loads(body.split(" = ", 1)[1].rstrip(";\n"))
+
+    def test_a_place_with_a_page_carries_its_slug(self):
+        self.assertIn(["Skerries", "skerries"], self.index()["Dublin"])
+
+    def test_an_area_without_a_page_stays_a_bare_name(self):
+        # "Around Ballynashee" is an ED, and "Ballynashee" is ESB's own string
+        self.assertEqual(sorted(self.index()["Sligo"]), ["Around Ballynashee", "Ballynashee"])
+
+    def test_every_slug_it_emits_has_a_page_behind_it(self):
+        """The one thing this index must not do is offer a 404."""
+        found = 0
+        for county, names in self.index().items():
+            for entry in names:
+                if isinstance(entry, str):
+                    continue
+                found += 1
+                path = self.out / "a" / render.slug(county) / f"{entry[1]}.html"
+                self.assertTrue(path.exists(), path)
+        self.assertTrue(found, "no slugs emitted, so nothing was proved")
 
 
 class TestThePage(AreaSiteCase):
