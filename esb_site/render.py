@@ -34,12 +34,6 @@ SITE_CSS = TEMPLATES / "site.css"
 # covers a plausible substation catchment without becoming a gazetteer.
 NEARBY_AREAS = 5
 
-# How many outages a server-rendered county page carries, newest first across
-# every month it has data for. 150 rather than the 40 it started at: measured on
-# the August 2026 corpus that is 3.2 KB more gzipped on the largest page for 3.7x
-# the indexable text. A cap remains because the archive grows without bound.
-COUNTY_PAGE_CASES = 150
-
 # How far the data may lag the build before the page says so. Pushes land at
 # local midnight and noon, so with jitter and DST a build can legitimately see
 # ~14h-old data, while a dead collector shows 17h+ by the next morning cron.
@@ -508,14 +502,13 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     faults = sum(1 for k in cases if not k[2])
     planned = len(cases) - faults
     title = f"Power outages in County {county}"
-    # The counts are the county's whole record; the list below stops at
-    # COUNTY_PAGE_CASES. So they are stated as the county's, and what the page
-    # actually holds is named separately - a snippet reading "95 faults and 139
-    # planned" as an inventory would be counted and found short.
+    # The counts and the listing now agree, but the order still matters: the
+    # record first, what the page holds after it, so a snippet cut by width
+    # leaves a true sentence behind.
     desc = (
         f"County {county}: {faults:,} fault{'' if faults == 1 else 's'} and "
         f"{planned:,} planned power cut{'' if planned == 1 else 's'} since "
-        f"{data['start']}. Month-by-month totals and the most recent outages, "
+        f"{data['start']}. Month-by-month totals and every outage recorded, "
         f"from ESB Networks' PowerCheck feed."
     )
     tiles = [
@@ -524,7 +517,6 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
         (m[5], "planned outages"),
         (f"{m[6]:,}", "customers hit by faults"),
     ]
-    shown = cases[:COUNTY_PAGE_CASES]
     body = [
         '<a class="back" href="../index.html">← All counties</a>',
         f'<div class="chead"><span class="gradechip g-{grade or "none"}">{grade or "–"}</span>',
@@ -548,19 +540,12 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
         "</div>",
     ]
     body.append(_county_months_html(county, data, months, until))
-    if shown:
+    if cases:
         body.append(
-            f'<div class="card"><h2>Outage history '
-            f'<span class="n">{len(cases):,}</span></h2>'
+            f'<div class="card"><h2>Outage history <span class="n">'
+            f'· {len(cases):,} outage{"" if len(cases) == 1 else "s"}</span></h2>'
         )
-        body.append("".join(_case_html(k) for k in shown))
-        if len(cases) > len(shown):
-            body.append(
-                f'<p class="empty" style="padding-top:12px">'
-                f"{len(cases) - len(shown):,} older outages not shown here - "
-                f'<a href="../index.html#county/{county}">open the interactive '
-                f"view</a>.</p>"
-            )
+        body.append("".join(_case_html(k) for k in cases))
         body.append("</div>")
     else:
         body.append(
@@ -569,8 +554,8 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
         )
     if areas:
         body.append(
-            f'<div class="card"><h2>Areas with an outage '
-            f'<span class="n">{len(areas)}</span></h2>'
+            f'<div class="card"><h2>Areas with an outage <span class="n">'
+            f'· {len(areas):,} area{"" if len(areas) == 1 else "s"}</span></h2>'
             f'<ul class="areas">{_area_items(county, areas, "../")}</ul></div>'
         )
     body.append('<div class="card"><h2>Every county</h2><p class="nav">')
@@ -716,7 +701,8 @@ def area_page(county, name, pop, events, nearby, data):
         f'<div class="sub">{pop:,} people · Census 2022 · '
         f"County&nbsp;{html.escape(county)}</div>",
         f'<div class="card"><h2>Every outage pinned near {html.escape(name)} '
-        f'<span class="n">{len(cases):,}</span></h2>',
+        f'<span class="n">· {len(cases):,} outage'
+        f'{"" if len(cases) == 1 else "s"}</span></h2>',
         # the one thing this page must not overclaim
         '<p class="note">An outage is filed under the Census area nearest the '
         "fault ESB reported, not under every area it cut power to. A fault that "
@@ -738,9 +724,8 @@ def area_page(county, name, pop, events, nearby, data):
         '<div class="card"><h2>Elsewhere</h2><p class="nav">'
         f'<a href="../../c/{slug(county)}.html">County {html.escape(county)}’s '
         "whole record</a> "
-        '<a href="../../areas.html">every area on this site</a> '
-        f'<a href="../../index.html#county/{county}">the interactive view of '
-        f"County {html.escape(county)}</a></p></div>"
+        f'<a href="../../index.html#county/{county}">County&nbsp;'
+        f"{html.escape(county)}’s interactive view</a></p></div>"
     )
     # the record first, what the page holds last - truncation must not turn
     # the snippet into an inventory claim (the county pages' rule)

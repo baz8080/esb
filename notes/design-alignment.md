@@ -61,3 +61,55 @@ Now: "County Cork: 95 faults and 139 planned power cuts since 31 July 2026. Mont
 **Ordered so that truncation cannot make it false.** A snippet is cut by pixel width, not character count, and what survives is the front. Cut anywhere in the second sentence, this reads "County Cork: 95 faults and 139 planned power cuts since 31 July 2026" — still true. The old one truncated back into an inventory claim, which is the failure the reordering exists to prevent. 155–160 characters across all 26 counties, so the tail that goes is the source attribution, which is the right thing to lose.
 
 Guarded by `tests/test_permalink_affordance.py::DescriptionCase`, including the truncation property and the length ceiling.
+
+## The copy and consistency pass — 2026-08-27
+
+Driven from uisce, whose live pages were read end to end; the findings that were not
+uisce-specific were applied here the same day. The two sites' static pages are close enough
+that most of them were the same finding twice.
+
+### The county page lists every outage — `COUNTY_PAGE_CASES` is gone
+
+The cap was 150, and the page carried "N older outages not shown here — open the interactive
+view" underneath. A page whose whole purpose is to be the durable, indexable record of a
+county should not be the one surface that holds a fraction of it. Both went; `county_page`
+renders `cases` rather than a slice of it.
+
+Measured on the August 2026 corpus, rebuilt from `../esb-data`: the largest county page
+(Cork) goes **100.7 KB → 127.4 KB**, and the 26 pages together 1,767 KB → 1,825 KB. That is
+well inside anything a static host cares about.
+
+The original comment's objection stands and is worth writing down rather than deleting: *the
+archive grows without bound and nothing now bounds the page.* The bound to reintroduce, if
+one is needed, is a **byte budget rather than a count** — a count was always a proxy for
+bytes and a poor one, since a row's width varies with the location string.
+
+`desc` moved with it: "Month-by-month totals and every outage recorded". The record-then-
+listing ordering stays for the reason design-alignment.md § the meta description already
+gives — a snippet cut by width has to leave a true sentence behind — but the clause it is
+protecting is now true rather than merely careful.
+
+### One name per thing
+
+- The area page's "Elsewhere" block dropped to two links: the county's whole record, and
+  `County X's interactive view`. The directory link it gave up moved into the footer of
+  `county.html` and `area.html`, where uisce's static pages already carried one and this
+  site's did not.
+- Heading counts read `· N outages` / `· N areas`. The static pages printed a bare `<span
+  class="n">150</span>`, which is a number with nothing saying what it counts; the directory's
+  own section headings were already in the target format. Row counts inside `ul.areas` keep
+  their bare `N outages` — a row with a dotted leader is not a heading.
+
+### `ul.areas` was indented 40px by the user agent
+
+`base.css` resets `margin` and not `padding`, so `list-style: none` removes the marker and
+leaves the gutter it sat in. The rule takes its own padding back now. uisce had the same bug
+in the same rule plus in `ul.notices`, which is what turned it up. This does not change the
+promotion follow-up in `notes/area-pages.md` — it makes the two copies agree again, which is
+the precondition for promoting them.
+
+### Not changed here
+
+The footers already read `Source code · not affiliated with ESB Networks or the CRU.` on
+every page, and the app is already called "the interactive view" rather than a map. uisce
+moved to this site's wording on both counts, not the other way round.

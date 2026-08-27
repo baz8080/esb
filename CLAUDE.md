@@ -80,6 +80,9 @@ Every one of these has already cost someone an hour:
 | Why CML was rejected as the basis (scale bias, and a relative scale mislabels a good network) | `notes/grading.md` § Why not Customer Minutes Lost |
 | One ESB event is one row: ids sharing a location and start time are merged | `notes/grading.md` § Settled |
 | Planned works are excluded from the grade | `notes/grading.md` § Settled |
+| The county page lists **every** outage; `COUNTY_PAGE_CASES` is gone (largest page 100.7 → 127.4 KB). A count was always a proxy for bytes — if a bound is needed again, make it a byte budget | `notes/design-alignment.md` § The copy and consistency pass (2026-08-27) |
+| One name per thing: the directory is "every area with an outage", the app is "County X's interactive view", heading counts read `· N outages` (row counts stay bare) | `notes/design-alignment.md` § One name per thing (2026-08-27) |
+| `base.css` resets margin, not padding, so a bare `<ul>` keeps the UA's 40px indent — `ul.areas` resets its own | `notes/design-alignment.md` § `ul.areas` was indented 40px (2026-08-27) |
 | Storm days are *not* excluded, and the page says so | `notes/grading.md` § Settled |
 | Ending an outage on ESB's estimate rather than its last sighting | `notes/grading.md` § Settled (measured: 1.18× vs 2.26×) |
 | Customer-minutes integrated over the count, not multiplied | `notes/grading.md` § Settled |

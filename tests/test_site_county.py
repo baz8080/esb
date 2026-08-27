@@ -164,7 +164,7 @@ class TestThePageStandsAlone(CountyPageCase):
         )
 
 
-class TestTheCap(unittest.TestCase):
+class TestTheHistoryListing(unittest.TestCase):
     """A hand-made shard: the rule under test is a count, and building a
     thousand outages through the store would say nothing extra about it."""
 
@@ -193,15 +193,15 @@ class TestTheCap(unittest.TestCase):
         self.assertEqual(page.count('<div class="case"'), 3)
         self.assertNotIn("older outages not shown", page)
 
-    def test_a_long_county_stops_at_the_cap_and_says_what_it_held_back(self):
-        """Unbounded, the busiest county's page would grow with the archive for
-        as long as the site runs."""
-        over = render.COUNTY_PAGE_CASES + 17
-        page = self.page_for(over)
-        self.assertEqual(page.count('<div class="case"'), render.COUNTY_PAGE_CASES)
-        self.assertIn("17 older outages not shown here", page)
+    def test_a_long_county_is_listed_in_full(self):
+        """The cap came off on 2026-08-27: this page presents itself as the
+        county's whole record, and a "167 older outages not shown here" line
+        underneath said otherwise."""
+        page = self.page_for(167)
+        self.assertEqual(page.count('<div class="case"'), 167)
+        self.assertNotIn("not shown here", page)
         self.assertIn("Outage history", page)
-        self.assertIn(f"{over:,}", page)
+        self.assertIn("· 167 outages", page)
 
 
 if __name__ == "__main__":
