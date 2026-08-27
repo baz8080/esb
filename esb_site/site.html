@@ -457,7 +457,7 @@ function boot() {
     results: document.getElementById("results"),
     counties: D.counties,
     src: "search.js" + cacheBust(D),
-    loaded: function () { return window.ESB_SEARCH; },
+    loaded: function () { return window.ESB_PLACES; },
     href: function (c, t) {
       return t ? "a/" + slug(c) + "/" + t + ".html" : "c/" + slug(c) + ".html";
     },

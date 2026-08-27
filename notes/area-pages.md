@@ -103,6 +103,22 @@ settlement, and neither is an "Around ..." ED — so those hits go to the county
 a "· county" annotation. A hit that quietly does something else is worse than one that
 says what it will do.
 
+Fourteen settlements share their county's name — Carlow, Cavan, Donegal, Kildare, Kilkenny,
+Leitrim, Longford, Louth, Monaghan, Roscommon, Sligo, Tipperary, Wexford, Wicklow. They are
+excluded from the index by the pre-existing `name != o.county` line, so `a/sligo/sligo.html` is
+built and listed in `areas.html` but is not reachable from the box; uisce arrives at the same
+place by a different route, where statusui's `name|county` dedup lets the county hit win. Left
+as it is: typing a county name almost always means the county, and the county view is the
+richer answer. Reopen it only with an answer for what two rows both labelled "Sligo" would say.
+
+`search.js` assigns `ESB_PLACES` rather than `ESB_SEARCH`, and the rename is load-bearing. The
+file is fetched on the first keystroke, so a tab opened before a deploy pairs its own inlined
+`ui.js` with the current file, and the cache-bust is a query string the server ignores rather
+than a version it selects. The old `searchHits` calls `toLowerCase` on an entry, which throws on
+the pair, before the dropdown's markup is assigned — leaving it stuck on "Searching…" until a
+reload. Renaming with the shape means that reader gets "Search is unavailable - try reloading"
+instead, which is the box's own state and tells them what to do. The same rename went into uisce.
+
 No 404 is possible by construction rather than by check: `build` and `area_index` read
 the same outage list, so a name only carries a slug when a page was written from the same
 events. The test asserts it anyway, since that is the one thing this index must not do.

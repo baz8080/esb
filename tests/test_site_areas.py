@@ -174,7 +174,7 @@ class TestTheSearchIndex(AreaSiteCase):
 
     def index(self):
         body = self.page("search.js")
-        self.assertTrue(body.startswith("window.ESB_SEARCH = "))
+        self.assertTrue(body.startswith("window.ESB_PLACES = "))
         return json.loads(body.split(" = ", 1)[1].rstrip(";\n"))
 
     def test_a_place_with_a_page_carries_its_slug(self):

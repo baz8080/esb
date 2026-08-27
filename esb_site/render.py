@@ -783,8 +783,13 @@ def write(site_dir, outages, sa_index, now, until):
     (site_dir / "data.js").write_text(
         "window.ESB_DATA = " + _dumps(data) + ";\n", encoding="utf-8"
     )
+    # ESB_PLACES, not ESB_SEARCH: search.js is fetched lazily, so a tab opened
+    # before a deploy pairs its own inlined ui.js with the current file. The
+    # entries carry a slug now, and the old searchHits calls toLowerCase on
+    # them - renaming with the shape means that reader gets the box's own
+    # "unavailable, try reloading" instead of a dropdown stuck on "Searching".
     (site_dir / "search.js").write_text(
-        "window.ESB_SEARCH = " + _dumps(search) + ";\n", encoding="utf-8"
+        "window.ESB_PLACES = " + _dumps(search) + ";\n", encoding="utf-8"
     )
     (site_dir / "areas.html").write_text(
         _page(
