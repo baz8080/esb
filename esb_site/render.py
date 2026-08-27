@@ -25,7 +25,14 @@ BUDGET_BYTES = 500 * 1024
 TEMPLATES = Path(__file__).parent
 SITE_HTML = TEMPLATES / "site.html"
 COUNTY_HTML = TEMPLATES / "county.html"
+AREAS_HTML = TEMPLATES / "areas.html"
+AREA_HTML = TEMPLATES / "area.html"
 SITE_CSS = TEMPLATES / "site.css"
+
+# Neighbour links per area page: the reader's check of where else an outage
+# may be filed, since the pin is the fault and not everyone it cut off. Five
+# covers a plausible substation catchment without becoming a gazetteer.
+NEARBY_AREAS = 5
 
 # How many outages a server-rendered county page carries, newest first across
 # every month it has data for. 150 rather than the 40 it started at: measured on
@@ -473,7 +480,7 @@ def _county_months_html(county, data, months, until):
     )
 
 
-def county_page(county, data, by_month, months, until, all_counties):
+def county_page(county, data, by_month, months, until, all_counties, areas=()):
     """The whole body of c/<slug>.html.
 
     Every month, not only the latest. The URL names a county, so what it
@@ -548,6 +555,12 @@ def county_page(county, data, by_month, months, until, all_counties):
             f'<div class="card"><p class="empty">No outages have been recorded in '
             f"{html.escape(county)} since {data['start']}.</p></div>"
         )
+    if areas:
+        body.append(
+            f'<div class="card"><h2>Areas with an outage '
+            f'<span class="n">{len(areas)}</span></h2>'
+            f'<ul class="areas">{_area_items(county, areas, "../")}</ul></div>'
+        )
     body.append('<div class="card"><h2>Every county</h2><p class="nav">')
     body.append(
         " ".join(
@@ -569,6 +582,173 @@ def county_page(county, data, by_month, months, until, all_counties):
     )
 
 
+def area_path(county, name):
+    """`a/<county>/<area>.html`. Name, not code - a code is not a filename -
+    and under the county because names repeat across counties; (county, name)
+    is unique over the whole CSO file, asserted in the tests."""
+    return f"a/{slug(county)}/{slug(name)}.html"
+
+
+def area_index(outages, sa_index):
+    """[(county, [(code, name, pop, events), ...]), ...], A-Z, events newest
+    first. Grouped on the census assignment, never ESB's location string,
+    which fragments (uisce measured 3,866 distinct values in its feed's)."""
+    by_area = defaultdict(list)
+    for o in outages:
+        by_area[(o.county, o.town_code)].append(o)
+    by_county = defaultdict(list)
+    for (county, code), events in by_area.items():
+        # id breaking ties so a rebuild is reproducible
+        events.sort(key=lambda o: (o.start, o.id), reverse=True)
+        by_county[county].append(
+            (code, events[0].town, sa_index.town_pop[code], events)
+        )
+    return [
+        (county, sorted(areas, key=lambda a: (a[1], a[0])))
+        for county, areas in sorted(by_county.items())
+    ]
+
+
+def _area_items(county, areas, prefix=""):
+    """The <li> rows for one county's areas, shared by areas.html and c/*.html
+    so the two cannot disagree about a count; `prefix` hops up from c/. A
+    pageless "Around ..." row is plain text - this app has no area route to
+    fall back on, and the section heading already links the county's record.
+    """
+    items = []
+    for code, name, pop, events in areas:
+        n = len(events)
+        where = (
+            f'<a href="{prefix}{area_path(county, name)}">{html.escape(name)}</a>'
+            if model.area_has_page(code)
+            else html.escape(name)
+        )
+        # units on every row, not a column heading that scrolls away
+        items.append(
+            f"<li>{where}"
+            '<span class="fill"></span>'
+            f'<span class="n">{n} outage{"" if n == 1 else "s"}</span>'
+            f'<span class="p">{pop:,} people</span></li>'
+        )
+    return "".join(items)
+
+
+def _areas_index_html(index):
+    """The directory's body: a jump nav and one section per county."""
+    nav = " · ".join(
+        f'<a href="#c-{slug(c)}">{html.escape(c)}</a>' for c, _ in index
+    )
+    sections = []
+    for county, areas in index:
+        # data-county is the bare name for the search: matching the heading
+        # would make "page" select every county in the country
+        sections.append(
+            f'<section id="c-{slug(county)}" data-county="{html.escape(county)}">'
+            f"<h2>County {html.escape(county)} <span>· {len(areas)} "
+            f'area{"" if len(areas) == 1 else "s"} · '
+            f'<a href="c/{slug(county)}.html">county page</a></span></h2>'
+            f'<ul class="areas">{_area_items(county, areas)}</ul></section>'
+        )
+    return f"<nav>{nav}</nav>\n{''.join(sections)}"
+
+
+def _km_label(d):
+    if d < 1.0:
+        return "under 1 km"
+    return f"{statusui.half_up(d)} km"
+
+
+def nearby_areas(index, sa_index):
+    """{code: [(km, county, name), ...]} - each page's NEARBY_AREAS nearest
+    pages: the attribution disclaimer made actionable. County lines are
+    deliberately not a fence, and only paged areas qualify - a link must
+    have somewhere to go."""
+    pages = [
+        (county, code, name)
+        for county, areas in index
+        for code, name, _pop, _events in areas
+        if model.area_has_page(code)
+    ]
+    out = {}
+    for _county, code, _name in pages:
+        centre = sa_index.centroids[code]
+        out[code] = sorted(
+            (model.km(*centre, *sa_index.centroids[other]), oc, oname)
+            for oc, other, oname in pages
+            if other != code
+        )[:NEARBY_AREAS]
+    return out
+
+
+def area_page(county, name, pop, events, nearby, data):
+    """The whole body of a/<county>/<area>.html.
+
+    Uncapped, unlike the county page's list - an area accrues a handful of
+    outages, and the description promises every one. No grade, day bar or
+    CML: both are calibrated to county-scale denominators (notes/area-pages.md).
+    """
+    cases = [case_record(o) for o in events]
+    faults = sum(1 for o in events if not o.planned)
+    planned = len(events) - faults
+    near = "".join(
+        f'<li><a href="../{slug(c)}/{slug(n)}.html">{html.escape(n)}</a>'
+        '<span class="fill"></span>'
+        f'<span class="n">{_km_label(d)}</span>'
+        f'<span class="p">{"" if c == county else f"County {html.escape(c)}"}</span></li>'
+        for d, c, n in nearby
+    )
+    body = [
+        f'<a class="back" href="../../c/{slug(county)}.html">'
+        f"← County {html.escape(county)}</a>",
+        f"<div class=\"chead\"><h1>{html.escape(name)}</h1></div>",
+        f'<div class="sub">{pop:,} people · Census 2022 · '
+        f"County&nbsp;{html.escape(county)}</div>",
+        f'<div class="card"><h2>Every outage pinned near {html.escape(name)} '
+        f'<span class="n">{len(cases):,}</span></h2>',
+        # the one thing this page must not overclaim
+        '<p class="note">An outage is filed under the Census area nearest the '
+        "fault ESB reported, not under every area it cut power to. A fault that "
+        f"affected {html.escape(name)} may therefore be listed under a nearby "
+        "area, and a fault listed here may have cut power well beyond it - "
+        "which is how an outage can count more customers than "
+        f"{html.escape(name)} has people.</p>",
+        "".join(_case_html(k) for k in cases),
+        "</div>",
+    ]
+    if near:
+        body.append(
+            '<div class="card"><h2>Nearby areas</h2>'
+            '<p class="note">The nearest areas with a page of their own - an '
+            "outage close to the boundary may be filed under one of these.</p>"
+            f'<ul class="areas">{near}</ul></div>'
+        )
+    body.append(
+        '<div class="card"><h2>Elsewhere</h2><p class="nav">'
+        f'<a href="../../c/{slug(county)}.html">County {html.escape(county)}’s '
+        "whole record</a> "
+        '<a href="../../areas.html">every area on this site</a> '
+        f'<a href="../../index.html#county/{county}">the interactive view of '
+        f"County {html.escape(county)}</a></p></div>"
+    )
+    # the record first, what the page holds last - truncation must not turn
+    # the snippet into an inventory claim (the county pages' rule)
+    desc = (
+        f"{name}, County {county}: {faults:,} fault{'' if faults == 1 else 's'} and "
+        f"{planned:,} planned power cut{'' if planned == 1 else 's'} pinned nearby "
+        f"since {data['start']}. Every one of them, newest first, from ESB "
+        f"Networks' PowerCheck feed."
+    )
+    return _page(
+        AREA_HTML,
+        {
+            "TITLE": html.escape(f"Power outages near {name}, County {county}"),
+            "DESC": html.escape(desc),
+            "CANONICAL": f"{BASE_URL}/{area_path(county, name)}",
+            "BODY": "".join(body),
+        },
+    )
+
+
 def _page(template, markers):
     """A template with the shared UI and this site's stylesheet inlined, then its markers."""
     markers = dict(markers, **{"SITE-CSS": SITE_CSS.read_text(encoding="utf-8")})
@@ -581,6 +761,9 @@ def write(site_dir, outages, sa_index, now, until):
     (site_dir / "h").mkdir(parents=True, exist_ok=True)
 
     data, by_county, months, search = build(outages, sa_index, now, until)
+    index = area_index(outages, sa_index)
+    county_areas = dict(index)
+    nearby = nearby_areas(index, sa_index)
 
     (site_dir / "index.html").write_text(
         _page(SITE_HTML, {"CANONICAL": f"{BASE_URL}/"}), encoding="utf-8"
@@ -590,6 +773,13 @@ def write(site_dir, outages, sa_index, now, until):
     )
     (site_dir / "search.js").write_text(
         "window.ESB_SEARCH = " + _dumps(search) + ";\n", encoding="utf-8"
+    )
+    (site_dir / "areas.html").write_text(
+        _page(
+            AREAS_HTML,
+            {"AREAS": _areas_index_html(index), "CANONICAL": f"{BASE_URL}/areas.html"},
+        ),
+        encoding="utf-8",
     )
 
     for county in sa_index.counties:
@@ -603,12 +793,34 @@ def write(site_dir, outages, sa_index, now, until):
             encoding="utf-8",
         )
         (site_dir / "c" / f"{slug(county)}.html").write_text(
-            county_page(county, data, by_month, months, until, sa_index.counties),
+            county_page(
+                county, data, by_month, months, until, sa_index.counties,
+                county_areas.get(county, ()),
+            ),
             encoding="utf-8",
         )
 
+    area_paths = []
+    for county, areas in index:
+        for code, name, pop, events in areas:
+            if not model.area_has_page(code):
+                continue
+            rel = area_path(county, name)
+            path = site_dir / rel
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                area_page(county, name, pop, events, nearby[code], data),
+                encoding="utf-8",
+            )
+            area_paths.append(rel)
+
     lastmod = now.strftime("%Y-%m-%d")
-    paths = [""] + [f"c/{slug(c)}.html" for c in sa_index.counties]
+    paths = (
+        [""]
+        + [f"c/{slug(c)}.html" for c in sa_index.counties]
+        + ["areas.html"]
+        + area_paths
+    )
     (site_dir / "sitemap.xml").write_text(
         statusui.sitemap(BASE_URL, paths, lastmod), encoding="utf-8"
     )
@@ -618,6 +830,18 @@ def write(site_dir, outages, sa_index, now, until):
 
 def size_report(site_dir):
     """What a reader downloads before they touch anything; printed on every build."""
-    return statusui.size_report(
+    total, report = statusui.size_report(
         site_dir, BUDGET_BYTES, "c", "county pages", extra=[("search.js", "on first keystroke")]
     )
+    # outside the initial load but printed: a crawl surface going quietly
+    # empty is invisible from the field
+    site_dir = Path(site_dir)
+    pages = list((site_dir / "a").glob("*/*.html"))
+    report += (
+        f"\n  {'areas.html':<16}"
+        f"{(site_dir / 'areas.html').stat().st_size / 1024:8.1f} KB   (standalone)"
+        f"\n  {'area pages':<16}"
+        f"{sum(p.stat().st_size for p in pages) / 1024:8.1f} KB"
+        f"   ({len(pages)} files)"
+    )
+    return total, report

@@ -608,9 +608,9 @@ class TestPlacementGrid(unittest.TestCase):
         """
         index = model.SmallAreaIndex.load()
         rows = [
-            (lat, lon, county, town)
+            (lat, lon, county, code, town)
             for cell in index._bins.values()
-            for (lat, lon, county, town) in cell
+            for (lat, lon, county, code, town) in cell
         ]
 
         def nearest(lat, lon):

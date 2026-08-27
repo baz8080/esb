@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Every area - Irish Electricity Outages</title>
+<meta name="description" content="Every Irish town, settlement and rural area an ESB Networks power outage has been recorded near, county by county, with the number of outages each has seen.">
+<link rel="canonical" href="<!--CANONICAL-->">
+<style>
+<!--UI-CSS-->
+<!--SITE-CSS-->
+  /* The jump nav sticks, because the whole point of one long document is that
+     you can Ctrl+F it — and having scrolled to Wicklow you still want Cork. */
+  nav {
+    position: sticky; top: 0; z-index: 2; margin: 18px 0 8px;
+    padding: 10px 12px; border-radius: 8px; line-height: 2;
+    background: var(--surface); border: 1px solid var(--border);
+    font-size: 13px; color: var(--muted);
+    /* bounded so a short landscape window is not all nav; the narrow-window
+       side of the overlap is the static-nav breakpoint below */
+    max-height: 30vh; overflow-y: auto;
+  }
+  nav a { text-decoration: none; }
+  nav a:hover { text-decoration: underline; }
+
+  /* clears the two-line nav at desktop widths */
+  section { margin-top: 26px; scroll-margin-top: 104px; }
+  section h2 { font-size: 16px; font-weight: 650; padding-bottom: 6px;
+               border-bottom: 1px solid var(--grid); }
+  section h2 span { color: var(--muted); font-weight: 400; font-size: 13px; }
+
+  /* Search. Hundreds of areas behind a jump nav is not findable by anyone who
+     does not already know their county — and knowing the county is the thing a
+     visitor is least sure of for the "Around …" rural areas. */
+  .find { margin: 16px 0 0; }
+  .find input {
+    width: 100%; padding: 10px 12px; border-radius: 8px; font: inherit;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--border);
+  }
+  .find input:focus { outline: 2px solid var(--ink-2); outline-offset: -1px; }
+  .find p { color: var(--muted); font-size: 13px; margin-top: 6px; min-height: 1.45em; }
+  /* The nav holds the two lines the 104px scroll margin clears only when
+     roughly 900px wide; narrower it wraps taller and hides the heading a jump
+     link lands on — and on a phone it eats the screen — so below that it
+     scrolls away with the page instead of pinning to the top of it. */
+  @media (max-width: 900px) {
+    nav { position: static; max-height: none; }
+    section { scroll-margin-top: 12px; }
+  }
+
+  footer { margin-top: 40px; line-height: 1.6; }
+  footer p + p { margin-top: 8px; }
+</style>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
+</head>
+<body>
+<div class="wrap">
+  <a class="back" href="index.html">← Irish Electricity Outages</a>
+  <header>
+    <h1>Every area with an outage</h1>
+    <p class="sub">Every Census 2022 area an ESB Networks outage has been recorded near. Pick one for its full outage history.</p>
+    <div class="find">
+      <input id="q" type="search" placeholder="Search for your town or area" autocomplete="off" aria-label="Search for your town or area">
+      <p id="qcount" role="status" aria-live="polite"></p>
+    </div>
+  </header>
+
+  <!--AREAS-->
+
+  <footer>
+    <p>An area is a CSO settlement, a Local Electoral Area of one of the five cities, or the countryside of an Electoral Division shown as <em>Around&nbsp;…</em>. An outage is filed under the area nearest the fault ESB reported, so the figure beside each name counts outages pinned near that area — not necessarily every one that cut its power. <em>Around&nbsp;…</em> areas are countryside rather than places, so their history lives on the county page instead of a page of their own.</p>
+    <p>Areas with no outage at all are not listed: a page of them would say nothing. <a href="https://github.com/baz8080/esb">Source code</a> · not affiliated with ESB Networks or the CRU.</p>
+  </footer>
+</div>
+<script>
+// Filter in place over the rendered list — the whole directory is already in the
+// document, so this needs no data and no request. A county name matches its
+// whole section, because someone who knows only the county is exactly the
+// visitor the jump nav already served and the search must not serve worse.
+(function () {
+  const q = document.getElementById("q"), count = document.getElementById("qcount");
+  const nav = document.querySelector("nav");
+  const sections = [...document.querySelectorAll("section")].map(sec => ({
+    sec,
+    // the bare name, not the heading: the heading also carries the area count
+    // and the county-page link, and "page" must not match all 26 counties
+    county: sec.dataset.county.toLowerCase(),
+    // the name node only — the row's textContent also carries the units,
+    // and "outage", "people" or a bare digit must not match every row
+    items: [...sec.querySelectorAll("li")].map(li =>
+      ({ li, text: li.firstChild.textContent.trim().toLowerCase() })),
+  }));
+
+  function apply() {
+    const s = q.value.trim().toLowerCase();
+    let n = 0;
+    for (const { sec, county, items } of sections) {
+      const wholeCounty = !!s && county.includes(s);
+      let any = false;
+      for (const { li, text } of items) {
+        const hit = !s || wholeCounty || text.includes(s);
+        li.hidden = !hit;
+        if (hit) { any = true; n++; }
+      }
+      sec.hidden = !!s && !any;
+    }
+    // half its links would scroll to a hidden section during a search
+    nav.hidden = !!s;
+    count.textContent = s
+      ? (n ? `${n.toLocaleString()} ${n === 1 ? "area matches" : "areas match"} “${q.value.trim()}”`
+           : `No area matches “${q.value.trim()}”.`)
+      : "";
+  }
+
+  q.addEventListener("input", apply);
+  // a search field restored by the browser on back/reload starts with a value
+  if (q.value) apply();
+})();
+</script>
+</body>
+</html>
