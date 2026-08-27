@@ -29,11 +29,9 @@ AREAS_HTML = TEMPLATES / "areas.html"
 AREA_HTML = TEMPLATES / "area.html"
 SITE_CSS = TEMPLATES / "site.css"
 
-# How many neighbouring pages an area page points at. The pin an outage is
-# filed under is where the fault is, not everyone it cut power to, so the
-# neighbours are the reader's one-click check of where else their outage may
-# have been filed - five covers a town's plausible substation catchment without
-# turning the card into a gazetteer.
+# Neighbour links per area page: the reader's check of where else an outage
+# may be filed, since the pin is the fault and not everyone it cut off. Five
+# covers a plausible substation catchment without becoming a gazetteer.
 NEARBY_AREAS = 5
 
 # How many outages a server-rendered county page carries, newest first across
@@ -585,25 +583,16 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
 
 
 def area_path(county, name):
-    """`a/<county>/<area>.html` for an area with a page.
-
-    Nested under the county because an area name is not unique nationally, and
-    keyed on the name rather than the code because a code is not a filename -
-    the Electoral Divisions carry colons and slashes, which is what kept the
-    history shards per county. The county-and-name pair is unique over every
-    area in the CSO file, asserted in the tests rather than assumed.
-    """
+    """`a/<county>/<area>.html`. Name, not code - a code is not a filename -
+    and under the county because names repeat across counties; (county, name)
+    is unique over the whole CSO file, asserted in the tests."""
     return f"a/{slug(county)}/{slug(name)}.html"
 
 
 def area_index(outages, sa_index):
-    """[(county, [(code, name, pop, events), ...]), ...] - every area with an outage.
-
-    Counties A-Z, areas A-Z within them, each area's merged events newest first.
-    Grouped on the Small Area assignment rather than ESB's location string,
-    which fragments the same way the water feed's did (uisce measured 3,866
-    distinct values) and carries no population.
-    """
+    """[(county, [(code, name, pop, events), ...]), ...], A-Z, events newest
+    first. Grouped on the census assignment, never ESB's location string,
+    which fragments (uisce measured 3,866 distinct values in its feed's)."""
     by_area = defaultdict(list)
     for o in outages:
         by_area[(o.county, o.town_code)].append(o)
@@ -621,16 +610,10 @@ def area_index(outages, sa_index):
 
 
 def _area_items(county, areas, prefix=""):
-    """The <li> rows for one county's areas, shared by areas.html and c/*.html.
-
-    `prefix` is prepended to the link target because the county pages sit one
-    directory down; everything else about a row is identical on both pages, and
-    the two drifting apart is exactly the bug a reader would report as "the
-    directory says three outages and the county page says four".
-
-    An "Around ..." Electoral Division has no page (see model.area_has_page)
-    and this app has no area route to fall back on, so its row is plain text -
-    the section heading already links the county's own record.
+    """The <li> rows for one county's areas, shared by areas.html and c/*.html
+    so the two cannot disagree about a count; `prefix` hops up from c/. A
+    pageless "Around ..." row is plain text - this app has no area route to
+    fall back on, and the section heading already links the county's record.
     """
     items = []
     for code, name, pop, events in areas:
@@ -640,9 +623,7 @@ def _area_items(county, areas, prefix=""):
             if model.area_has_page(code)
             else html.escape(name)
         )
-        # The units ride on every row rather than in a column heading: the
-        # heading scrolls away after the first county, and two bare
-        # right-aligned integers are read in the wrong order by most people.
+        # units on every row, not a column heading that scrolls away
         items.append(
             f"<li>{where}"
             '<span class="fill"></span>'
@@ -659,9 +640,8 @@ def _areas_index_html(index):
     )
     sections = []
     for county, areas in index:
-        # data-county carries the bare name for the search: the heading also
-        # holds the count and the county-page link, and matching on all of that
-        # would make "page" select every county in the country.
+        # data-county is the bare name for the search: matching the heading
+        # would make "page" select every county in the country
         sections.append(
             f'<section id="c-{slug(county)}" data-county="{html.escape(county)}">'
             f"<h2>County {html.escape(county)} <span>· {len(areas)} "
@@ -679,15 +659,10 @@ def _km_label(d):
 
 
 def nearby_areas(index, sa_index):
-    """{code: [(km, county, name), ...]} - each page's NEARBY_AREAS nearest pages.
-
-    The pin an outage is filed under is where ESB reported the fault, so an
-    outage that cut a town's power can sit on a neighbouring page; these links
-    are the disclaimer on each page made actionable. Distances are between
-    population-weighted centroids, and county lines are deliberately not a
-    fence - a border reader's nearest neighbour is often in the next county.
-    Only areas with a page qualify: a link must have somewhere to go.
-    """
+    """{code: [(km, county, name), ...]} - each page's NEARBY_AREAS nearest
+    pages: the attribution disclaimer made actionable. County lines are
+    deliberately not a fence, and only paged areas qualify - a link must
+    have somewhere to go."""
     pages = [
         (county, code, name)
         for county, areas in index
@@ -708,11 +683,9 @@ def nearby_areas(index, sa_index):
 def area_page(county, name, pop, events, nearby, data):
     """The whole body of a/<county>/<area>.html.
 
-    Uncapped, unlike the county page's list: an area accrues a handful of
-    outages where a county accrues hundreds, and the meta description promises
-    every one. No grade, no day bar and no CML at this level - the charter
-    bands are calibrated to county-months, and the day-bar buckets divide by a
-    customer denominator that saturates against a village.
+    Uncapped, unlike the county page's list - an area accrues a handful of
+    outages, and the description promises every one. No grade, day bar or
+    CML: both are calibrated to county-scale denominators (notes/area-pages.md).
     """
     cases = [case_record(o) for o in events]
     faults = sum(1 for o in events if not o.planned)
@@ -732,8 +705,7 @@ def area_page(county, name, pop, events, nearby, data):
         f"County&nbsp;{html.escape(county)}</div>",
         f'<div class="card"><h2>Every outage pinned near {html.escape(name)} '
         f'<span class="n">{len(cases):,}</span></h2>',
-        # The one thing this page must not overclaim: the pin is where the
-        # fault is, not everyone it cut power to.
+        # the one thing this page must not overclaim
         '<p class="note">An outage is filed under the Census area nearest the '
         "fault ESB reported, not under every area it cut power to. A fault that "
         f"affected {html.escape(name)} may therefore be listed under a nearby "
@@ -758,8 +730,8 @@ def area_page(county, name, pop, events, nearby, data):
         f'<a href="../../index.html#county/{county}">the interactive view of '
         f"County {html.escape(county)}</a></p></div>"
     )
-    # The record first, what the page holds last, so a snippet cut by pixel
-    # width cannot read as an inventory it is not - the county pages' rule.
+    # the record first, what the page holds last - truncation must not turn
+    # the snippet into an inventory claim (the county pages' rule)
     desc = (
         f"{name}, County {county}: {faults:,} fault{'' if faults == 1 else 's'} and "
         f"{planned:,} planned power cut{'' if planned == 1 else 's'} pinned nearby "
@@ -861,8 +833,8 @@ def size_report(site_dir):
     total, report = statusui.size_report(
         site_dir, BUDGET_BYTES, "c", "county pages", extra=[("search.js", "on first keystroke")]
     )
-    # The area surface is outside the initial load but still printed: pages
-    # that exist to be crawled going quietly empty is invisible from the field.
+    # outside the initial load but printed: a crawl surface going quietly
+    # empty is invisible from the field
     site_dir = Path(site_dir)
     pages = list((site_dir / "a").glob("*/*.html"))
     report += (

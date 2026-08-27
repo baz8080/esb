@@ -165,12 +165,8 @@ def month_list(start, end):
 
 
 def km(lat1, lon1, lat2, lon2):
-    """Equirectangular distance, referenced to the first point's latitude.
-
-    The one statement of the 111-km-per-degree arithmetic: pin placement,
-    repeat-fault chaining and the nearby-areas card all measure distance with
-    this, so they cannot quietly disagree about what "near" means.
-    """
+    """The one statement of the 111-km-per-degree arithmetic, so placement,
+    repeat chains and the nearby-areas card cannot disagree about "near"."""
     return math.hypot(
         (lat1 - lat2) * 111.0,
         (lon1 - lon2) * 111.0 * math.cos(math.radians(lat1)),
@@ -247,11 +243,8 @@ class SmallAreaIndex:
             s[2] += lat
             s[3] += lon
             s[4] += 1
-        # Weighted by population rather than land: "near" on an area page means
-        # near its people, and a settlement's Small Areas cluster where they
-        # live. No code in the shipped CSV sums to zero people, but a future
-        # CSO extract carrying one uninhabited settlement must not crash every
-        # build - it falls back to the plain mean.
+        # Pop-weighted: "near" means near an area's people. A zero-pop code
+        # (none in the shipped CSV) falls back to the plain mean, not a crash.
         self.centroids = {}
         for code, (wlat, wlon, plat, plon, n) in sums.items():
             pop = self.town_pop[code]
@@ -321,14 +314,10 @@ class SmallAreaIndex:
 def area_has_page(code):
     """Whether an area names a place a reader could search for.
 
-    uisce's rule, minus its unplaced bucket - an outage that cannot be placed is
-    dropped before it gets here. An Electoral Division is the countryside around
-    somewhere rather than a place (all 2,808 are named "Around ..."), and a
-    city's "-rest" code is the remainder of its Local Electoral Areas; hundreds
-    of near-identical pages for them is what a search engine demotes as scaled
-    thin content. Deliberately not gated on an outage count as well: a floor
-    would make a URL appear the day an area's second fault arrives, and a
-    permalink that comes and goes is worse than a short one.
+    uisce's rule: "Around ..." EDs and city "-rest" remainders are buckets,
+    not places, and near-identical pages for them is scaled thin content.
+    Deliberately no outage-count floor - a permalink that comes and goes is
+    worse than a short one. Rationale and numbers in notes/area-pages.md.
     """
     return not code.startswith("ed:") and not code.endswith("-rest")
 
@@ -542,8 +531,7 @@ class Outage(NamedTuple):
     ids: list  # every ESB outage id folded into this event
     county: str
     town: str
-    # The town's stable key in the census vocabulary; the name is for display
-    # and the code is what the per-area pages group on.
+    # the town's stable census key, which the per-area pages group on
     town_code: str
     location: str
     planned: bool

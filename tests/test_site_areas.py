@@ -1,15 +1,9 @@
 """The area pages: what gets one, what it says, and what still does not.
 
-An area was reachable nowhere until 2026-08-27 - the assignment existed on
-every outage and was thrown away after naming the search index. These pages
-are the long tail the county pages cannot carry, and the interesting half is
-the exclusions: the "Around ..." Electoral Divisions would be over a thousand
-near-identical pages, which is the failure this surface has to avoid, so the
-predicate is guarded rather than trusted.
-
-The other thing guarded here is honesty about attribution. The pin an outage
-is filed under is where ESB reported the fault, not everyone it cut power to,
-and every area page has to say so and point at its neighbours.
+The interesting half is the exclusions - the "Around ..." EDs would be a
+thousand near-identical pages, so the predicate is guarded rather than
+trusted - and honesty about attribution: the pin is the fault, not everyone
+it cut power to, and every page has to say so and point at its neighbours.
 """
 
 from __future__ import annotations

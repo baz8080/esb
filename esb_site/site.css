@@ -40,10 +40,9 @@
 
 .card h2 .n { color: var(--muted); font-weight: 400; font-size: 13px; }
 
-/* The per-area rows: areas.html, the county pages and the area pages' nearby
-   card share them so an area reads the same everywhere. A deliberate local
-   copy of uisce's rules; two sites now want them identical, so promotion to
-   statusui base.css is the follow-up — see notes/area-pages.md. */
+/* Per-area rows, shared by areas.html, c/*.html and the nearby card. A
+   deliberate local copy of uisce's rules; promoting them to statusui is the
+   follow-up (notes/area-pages.md). */
 ul.areas { list-style: none; columns: 2; column-gap: 28px; margin-top: 8px; }
 ul.areas li { break-inside: avoid; display: flex; align-items: baseline;
               gap: 6px; padding: 3px 0; font-size: 13.5px; }
