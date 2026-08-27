@@ -447,13 +447,27 @@ function boot() {
   document.getElementById("cmp-caidi").textContent = D.compare.caidi;
   document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
   document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
+  // A hit is an entry point rather than a drill-down, so it is a real link: an
+  // area goes straight to its page, and a county keeps its click in the app
+  // while still yielding c/<county>.html to a middle-click. `slug` here is
+  // ui.js's, which the shard URLs above already trust for a county; an area
+  // name is not ASCII enough for it, which is why its slug rides in the index.
   bindSearch({
     input: document.getElementById("q"),
     results: document.getElementById("results"),
     counties: D.counties,
     src: "search.js" + cacheBust(D),
     loaded: function () { return window.ESB_SEARCH; },
-    pick: go
+    href: function (c, t) {
+      return t ? "a/" + slug(c) + "/" + t + ".html" : "c/" + slug(c) + ".html";
+    },
+    // a name that can only reach its county says so: ESB's own location
+    // strings name no Census area, and a hit that quietly does something else
+    // is worse than one that says what it will do
+    note: function (name, c, t) {
+      return name === c ? "" : t ? c : c + " · county";
+    },
+    pick: function (c, t) { if (t) return false; go(c); return true; }
   });
   bindDayCaption();
   bindMonthReveal();

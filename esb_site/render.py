@@ -154,13 +154,25 @@ def build(outages, sa_index, now, until):
     # once instead of beside every place in it. This is the only part of the
     # payload that grows with the number of distinct place names rather than
     # with time, which is why it is loaded on demand rather than up front.
+    #
+    # A Census settlement with a page is stored as `[name, slug]` so the hit can
+    # link straight to it; ESB's own location strings, which name no area, stay
+    # bare. Keyed on the name because `location` falls back to `town`, and the
+    # slug is right for that name either way. Every page these address is
+    # written from the same outages below, so a slug here always has a file.
+    paged = {}
     search = {}
     for o in outages:
+        if model.area_has_page(o.town_code):
+            paged.setdefault(o.county, {})[o.town] = slug(o.town)
         names = search.setdefault(o.county, set())
         for name in (o.town, o.location):
             if name and name != o.county:
                 names.add(name)
-    search = {c: sorted(names) for c, names in sorted(search.items())}
+    search = {
+        c: [[n, paged[c][n]] if n in paged.get(c, ()) else n for n in sorted(names)]
+        for c, names in sorted(search.items())
+    }
 
     data = {
         "generated": _stamp(now),

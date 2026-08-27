@@ -74,6 +74,39 @@ area view, which esb does not have). The app links the directory from its footer
 directory is standalone so the first paint carries none of it. Worth revisiting only if the
 directory's unlinked majority — the countryside rows — turns out to be what readers want.
 
+## Search reaches them — 2026-08-27
+
+The pages shipped and the one control a reader uses could not reach them: typing
+"Newbridge" and clicking the hit landed you on County Kildare, to find Newbridge again
+yourself. That was statusui's index shape rather than a routing choice — `searchHits`
+returned `[name, county]` and the matched name was discarded — so `pick: go` was the
+only thing the callback was given.
+
+`search.js` now stores a Census settlement that has a page as `[name, slug]`, and every
+hit is a real link: an area to `a/<county>/<slug>.html`, a county to `c/<county>.html`
+with the click kept in the app, the way the county rows already work. The slug is
+shipped rather than derived because `ui.js`'s `slug` is not `statusui.slug` and leaves a
+fada as a dash; it is trusted for the county half only, which the shard URLs already do.
+
+**The "No app area view" decision above was reconsidered here, for convergence with
+uisce, and stands.** uisce has an `#area` view as well as its pages, so the symmetric
+answer was to build esb one and route search at it. It earns almost nothing over the
+page: the two are the same content, uisce's view has no month tabs and no search box in
+it, pushState does not get a drill-down counted in analytics, and the page is indexable,
+shareable and middle-clickable where a fragment is none of those. A search hit is an
+entry point, not a drill-down, and entry points should be real URLs. So the two sites
+converge **on the page**, with the same code in both, and esb needs no route to do it.
+
+Not every name in the index can reach an area, and the dropdown says so. The index holds
+ESB's own `location` strings beside the Census names — "Skerries Road" is not a
+settlement, and neither is an "Around ..." ED — so those hits go to the county and carry
+a "· county" annotation. A hit that quietly does something else is worse than one that
+says what it will do.
+
+No 404 is possible by construction rather than by check: `build` and `area_index` read
+the same outage list, so a name only carries a slug when a page was written from the same
+events. The test asserts it anyway, since that is the one thing this index must not do.
+
 ## Residue to watch
 
 - Merge requires an *identical* location string: a fault ESB re-publishes under a varied
