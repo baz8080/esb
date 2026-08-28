@@ -219,20 +219,33 @@ a line that was already there: *"Every area with an outage - the full directory.
 Method and sources are on the main page."*
 
 The county page's identical disclosure went the same way on the owner's call —
-the two sentences were redundant there for exactly the same reason, and its
-footer now carries the same "Method and sources are on the main page" clause.
-What it keeps is the paragraph the area page never had: the grade explanation,
-which is that page's own vocabulary, and the footer rule above it, which still
-has prose under it to divide.
+the two sentences were redundant there for exactly the same reason — and then
+its grade paragraph followed. The grade *chip* stays; the four sentences under
+it explaining the A–F bands, planned works and storm days did not, and the
+county page's footer is now the same two lines as the area page's.
+
+**What the county page loses with that paragraph:** the letter beside the
+county name, and the Grade column in its table, are no longer explained
+anywhere on the page — only through the "main page" link beside them. A `title`
+on each chip would put it back for anyone hovering (~1.5 KB a page, unlike the
+39 KB the directory's tooltips would have cost), but it reaches no phone, and
+it was not asked for.
 
 ### The rule above the footer went with it
 
 With two grey lines under it, the shared `footer { margin-top: 40px;
 padding-top: 18px; border-top }` read as a horizontal rule stranded in
-whitespace rather than the top of anything. Overridden **in `area.html` alone**
-— `margin-top: 26px`, no border — the way `areas.html` already carries its own
-page rules. Not pushed to statusui and not put in `site.css`: every other
-page's footer carries paragraphs, where the rule does the job it is there for.
+whitespace rather than the top of anything.
+
+It was overridden in `area.html` alone for about an hour, until the county
+page's footer shrank to the same two lines and `areas.html` turned out to have
+been carrying its own copy of the 40px all along. Three copies of one rule is
+what moving `.chead + .sub` upstream existed to end, so **the override is now
+`site.css`** — `margin-top: 26px`, no border — and **the index opts back in at
+the bottom of `site.html`**, restoring base.css's values. That is the one
+footer on the site that is a block of prose (the grade, the method, what the
+numbers cannot tell you), which is a block worth dividing; the three static
+templates just end.
 
 ## Residue to watch
 
