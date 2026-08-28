@@ -58,9 +58,7 @@
     <p><b>The grade is ESB's own published aim:</b> supply restored within
     <b>4 hours in 95% of cases</b>. Each county is scored on the share of its
     fault-interrupted customers back within that window - A meets the 95% aim,
-    then B 90%, C 80%, D 70%, F below. Planned works are excluded. The site is
-    built twice daily from snapshots of ESB Networks' public PowerCheck feed,
-    which keeps no history of its own.</p>
+    then B 90%, C 80%, D 70%, F below.</p>
     </details>
 
     <details><summary>How these numbers are worked out</summary>
@@ -94,10 +92,6 @@
     began rather than when it was published, so the durations here measure the
     outage, not the notice. Where ESB never published a restore time the end is
     marked as an estimate or a last sighting, never presented as a measurement.</p>
-    <p>ESB opens a new record each time a fault's scope changes, so records
-    sharing a location and start time are folded into one outage here. A fault
-    that returns to the same spot is a separate interruption and stays a
-    separate row, tagged as a repeat.</p>
     </details>
 
     <details><summary>What it cannot tell you</summary>
@@ -143,12 +137,16 @@ var GRADES = {
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
-// The national total is customer-time, and "17215 days" reads as nonsense
-// against a 31-day month; once it passes a year, years are the honest unit.
+// The national total is customers multiplied by the hours they were off, so
+// the unit has to carry the "customer": "54 years" against a 31-day month
+// reads as a claim about the calendar. Years once it passes one, for the same
+// reason - "17215 days". The unit rides in the tile's label rather than beside
+// the number, which has a 150px column to sit in at 24px.
 function customerTime(h) {
-  var years = h / 24 / 365.25;
-  if (years >= 1) return (years >= 10 ? Math.round(years) : years.toFixed(1)) + " years";
-  return fmtHours(h);
+  var years = h / 24 / 365.25, days = h / 24;
+  if (years >= 1) return [years >= 10 ? Math.round(years) : years.toFixed(1), "customer-years"];
+  if (days >= 1) return [days >= 10 ? Math.round(days) : days.toFixed(1), "customer-days"];
+  return [Math.round(h), "customer-hours"];
 }
 
 // a timestamp against the outage's start day: the clock time alone when it
@@ -270,11 +268,16 @@ function renderOverview() {
 
   document.getElementById("natHeading").textContent =
     "The national picture in " + monthLabelLong(curMonth);
+  var ct = customerTime(n[4]);
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "restored within 4 hours"],
     [num(n[3]), "customers hit by faults"],
-    [customerTime(n[4]), "of customer time off supply"],
-    [fmtCml(n[0]) + " CML", "annualised, unplanned"]
+    [ct[0], ct[1] + " off supply"],
+    // "CML" is only ever expanded in the footer, and it already means faults
+    // only, so the initials and "unplanned" both went. "A year" stays: the
+    // figure is a month's rate stretched to twelve, and without those two
+    // words it reads as minutes lost in the month, which is ~12x smaller.
+    [fmtCml(n[0]), "customer minutes lost a year"]
   ].map(function (t) {
     return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
   }).join("");

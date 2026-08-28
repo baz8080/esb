@@ -113,3 +113,75 @@ the precondition for promoting them.
 The footers already read `Source code · not affiliated with ESB Networks or the CRU.` on
 every page, and the app is already called "the interactive view" rather than a map. uisce
 moved to this site's wording on both counts, not the other way round.
+
+## The tiles say what they mean — 2026-08-28
+
+Owner read of the national tiles, in a reader's voice. Two of the four were
+written for someone who already knows the domain.
+
+### `154 CML` / `annualised, unplanned`
+
+Three pieces of jargon in five words. **CML** is expanded exactly once on the
+page, in a footer disclosure most readers never open, so on the tile it is four
+letters that mean nothing. **Unplanned** is redundant: CML is a fault index by
+construction — planned works are excluded everywhere on this site, and the tile
+sits beside another that says "customers hit by faults". **Annualised** is the
+word a reader has no way to decode.
+
+Now `154` / `customer minutes lost a year`.
+
+"A year" was kept against the instruction to say only "customer minutes lost",
+because dropping it makes the tile false rather than merely terse: the figure is
+`national_cml`, a month's rate stretched to twelve months, so under a heading
+that reads "The national picture in August 2026" a bare "customer minutes lost"
+claims the average customer lost 154 minutes *in August*. The August figure is
+about a twelfth of that. Two words are cheaper than an order of magnitude, and
+they are plain English where "annualised" was not — they say what annualised
+means instead of naming it.
+
+The number keeps its comparability with the 117.47 ESB published for 2024, which
+is the whole reason the tile exists and what the "How these numbers are worked
+out" disclosure argues about. Showing `cml_month` instead — the month's own
+figure, needing no annualisation — was rejected for that: it is honest but
+comparable to nothing a reader can look up.
+
+### `54 years` / `of customer time off supply`
+
+The question it drew was "54 years since when?" — and the tile is one month.
+The unit was the problem: this is customer-time, customers multiplied by the
+hours they were off, and "years" beside a month's heading reads as calendar
+years, which is why 54 looked impossibly large. It is right — 2.5M customers at
+154 CML is about 61 customer-years a month.
+
+Now `54` / `customer-years off supply`. The unit moved into the label rather
+than staying beside the number because `.tile .v` is 24px in a 150px grid
+column: "54 customer-years" overflows it, "54" does not. `customerTime` returns
+`[value, unit]` for that, and its sub-year fallbacks are spelled the same way
+("customer-days", "customer-hours") instead of deferring to `fmtHours`, which
+has no way to say whose hours they are.
+
+The month is left to the heading directly above the tiles, as it is for the
+other three: "this month" on one tile would be wrong the moment a reader picks
+an earlier month tab.
+
+## What the footer stopped saying — 2026-08-28
+
+Two passages went, on the same read.
+
+**"The site is built twice daily from snapshots of ESB Networks' public
+PowerCheck feed, which keeps no history of its own."** The build cadence is
+already answered where a reader would ask it — the banner says how old the data
+is and warns when it goes stale. The sentence it was attached to is the page's
+statement of what the grade means, and this was operational trivia sitting at
+the end of it. The sentence "Planned works are excluded" went with it from that
+disclosure; the next one along still says it, with the reason attached.
+
+**"ESB opens a new record each time a fault's scope changes, so records sharing
+a location and start time are folded into one outage here. A fault that returns
+to the same spot is a separate interruption and stays a separate row, tagged as
+a repeat."** True, load-bearing, and not footer material: it explains the shape
+of ESB's feed to a reader who came to find out whether the power is back. It is
+already written down where it belongs — `notes/grading.md` § One ESB event is
+one row and § Repeat faults are not splits, with the counts and the rejected
+merge rules. The "Repeat fault - outage 2 of 3 at this location in quick
+succession" tag on the row explains itself in place.
