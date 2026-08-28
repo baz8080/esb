@@ -152,7 +152,10 @@ link would point at the page it is on. That is the whole of what
 No `title` attribute naming the destination: 876 of them is 39 KB of hover text
 no phone can read (measured — the page went 208.6 → 246.5 KB with it). **One
 line carries it instead, under the jump nav where the rows begin:** *"Around …
-areas have no page of their own — those links go to the county page."* Same
+and Elsewhere in … areas have no page of their own — those links go to the
+county page."* Both prefixes, because `area_has_page` excludes the city
+remainders as well as the EDs: 874 of the 876 fallback rows are "Around …" and
+the other two are Cork's and Galway's "Elsewhere in …" buckets. Same
 sentence for every reader, once, at the moment there are links to click; the
 header was the other candidate and lost because this is about what a click
 does, not about what the page is. Guarded by
