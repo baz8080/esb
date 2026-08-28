@@ -955,17 +955,23 @@ def national_caidi(outages, until):
     return sum(o.customer_minutes(lo, hi) for o in faults) / interrupted
 
 
-def national_cml(outages, until, ym=None):
-    """Annualised unplanned CML across the whole network.
+def national_cml(outages, until, ym=None, annualised=True):
+    """Unplanned CML across the whole network.
 
-    This is the number that anchors the site's credibility: it is directly
-    comparable to the figure ESB Networks publishes each year, and the test
-    suite holds it to that comparison.
+    Annualised, this is the number that anchors the site's credibility: it is
+    directly comparable to the figure ESB Networks publishes each year, and the
+    test suite holds it to that comparison. `annualised=False` returns the
+    window's own minutes per customer, which is what a surface showing one
+    month has to print - a yearly rate beside a month's counts is a second
+    clock on the same line, and nothing on the page says which is which.
     """
     if ym:
         lo, hi = observed_window(ym, until)
     else:
         lo, hi = COLLECTION_START, until
-    minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
     total = sum(o.customer_minutes(lo, hi) for o in outages if not o.planned)
-    return total / NATIONAL_CUSTOMERS * MINUTES_PER_YEAR / minutes
+    cml = total / NATIONAL_CUSTOMERS
+    if not annualised:
+        return cml
+    minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
+    return cml * MINUTES_PER_YEAR / minutes

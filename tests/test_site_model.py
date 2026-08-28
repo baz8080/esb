@@ -582,6 +582,24 @@ class TestCountyMonth(SiteModelCase):
         )
         self.assertEqual(set(s["cells"][:30]), {str(model.DAY_NO_DATA)})
 
+    def test_the_row_shows_the_month_and_not_the_year(self):
+        """Every number on a month's row is that month's, CML included.
+
+        `cml` is the same figure annualised - a year's clock - and the page has
+        no room to say which of the two a reader is looking at, so the payload
+        carries the month's own minutes per customer.
+        """
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        self.observe(detail("1", numCustAffected=50000), t)
+        outages, _, index = self.load()
+        s = model.county_month(
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
+        )
+        self.assertGreater(s["cml_month"], 0)
+        self.assertGreater(s["cml"], s["cml_month"])
+        row = render.build(outages, index, NOW, self.until)[0]["stats"]["Dublin"]
+        self.assertEqual(row["2026-08"][3], round(s["cml_month"], 1))
+
     def test_a_month_too_short_to_judge_is_left_ungraded(self):
         outages, _, index = self.load()
         s = model.county_month(

@@ -158,13 +158,25 @@ class NationalCase(unittest.TestCase):
             self.outages, self.index, self.now, self.until
         )[0]["stats"]["Dublin"]["2026-08"]
         cells, grade, within, cml, faults, planned, hit, over = row
+        month = model.county_month(
+            self.outages,
+            "Dublin",
+            self.index.customers["Dublin"],
+            "2026-08",
+            self.now,
+            self.until,
+        )
+        # A month's row is on a month's clock: `cml_month`, not the annualised
+        # rate, which the page only quotes where it names ESB's yearly figure.
+        self.assertEqual(cml, round(month["cml_month"], 1))
+        self.assertGreater(month["cml"], cml)
         self.assertEqual(len(cells), 31)
         self.assertIn(grade, set("ABCDF") | {None})
         self.assertTrue(within is None or 0 <= within <= 100)
         self.assertGreater(faults, 0)
 
     def test_the_page_quotes_the_figures_this_suite_derives(self):
-        """The CML explainer argues from three numbers; they have to be true.
+        """The CML explainer argues from four numbers; they have to be true.
 
         This class computes CI and CAIDI independently of the model, which is
         the point: if the paragraph and this suite ever disagree, the page is
@@ -175,6 +187,9 @@ class NationalCase(unittest.TestCase):
         ]
         customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.faults)
         caidi = customer_minutes / sum(o.customers for o in self.started)
+        window = (self.hi - self.lo).total_seconds() / 60.0
+        cml = customer_minutes / model.NATIONAL_CUSTOMERS * model.MINUTES_PER_YEAR / window
+        self.assertEqual(compare["cml"], round(cml, 1))
         self.assertEqual(compare["caidi"], round(caidi))
         self.assertEqual(compare["esb_caidi"], round(ESB_CAIDI))
         self.assertEqual(

@@ -114,7 +114,10 @@ def build(outages, sa_index, now, until):
                 s["cells"],
                 s["grade"],
                 None if s["within"] is None else round(s["within"], 1),
-                round(s["cml"], 1),
+                # The row is one month, so it carries that month's own minutes
+                # per customer; `cml` is the annualised rate, which belongs to
+                # the year-scale comparison in the footer and nowhere else.
+                round(s["cml_month"], 1),
                 s["faults"],
                 s["planned"],
                 s["customers_hit"],
@@ -136,7 +139,7 @@ def build(outages, sa_index, now, until):
             if o.minutes / 60.0 <= model.CHARTER_TARGET_HOURS
         )
         national[ym] = [
-            round(model.national_cml(outages, until, ym), 1),
+            round(model.national_cml(outages, until, ym, annualised=False), 1),
             len(faults),
             len(live) - len(faults),
             sum(o.customers for o in faults),
@@ -190,6 +193,10 @@ def build(outages, sa_index, now, until):
         # with every rebuild, and hard-coding them into the prose meant the
         # paragraph making the site's credibility argument quietly went wrong.
         "compare": {
+            # The one annualised figure the site still shows, and the only
+            # place it makes sense: the paragraph arguing about ESB's own
+            # yearly number. Everything else on the page is a month.
+            "cml": round(model.national_cml(outages, until), 1),
             "caidi": round(model.national_caidi(outages, until) or 0),
             "esb_caidi": round(model.ESB_NATIONAL_CML / model.ESB_NATIONAL_CI),
             "bias": round(
@@ -480,8 +487,8 @@ def _county_months_html(county, data, months, until):
         '<th scope="col">Restored in 4h</th>'
         '<th scope="col">Faults</th><th scope="col">Planned</th>'
         '<th scope="col">Customers hit</th>'
-        '<th scope="col" title="Customer minutes lost per customer, annualised, '
-        'unplanned">CML</th>'
+        '<th scope="col" title="Customer Minutes Lost: minutes off supply for '
+        'the average customer that month, faults only">Minutes lost</th>'
         f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>'
     )
 

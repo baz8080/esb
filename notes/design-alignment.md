@@ -128,22 +128,42 @@ construction — planned works are excluded everywhere on this site, and the til
 sits beside another that says "customers hit by faults". **Annualised** is the
 word a reader has no way to decode.
 
-Now `154` / `customer minutes lost a year`.
+The first pass kept the annualisation and said it in plain words — "customer
+minutes lost a year" — because dropping it made the tile false: 154 is a
+month's rate stretched to twelve months, and under a heading reading "The
+national picture in August 2026" a bare "customer minutes lost" claims the
+average customer lost 154 minutes *in August*, about twelve times the truth.
 
-"A year" was kept against the instruction to say only "customer minutes lost",
-because dropping it makes the tile false rather than merely terse: the figure is
-`national_cml`, a month's rate stretched to twelve months, so under a heading
-that reads "The national picture in August 2026" a bare "customer minutes lost"
-claims the average customer lost 154 minutes *in August*. The August figure is
-about a twelfth of that. Two words are cheaper than an order of magnitude, and
-they are plain English where "annualised" was not — they say what annualised
-means instead of naming it.
+That fix was wrong at a level the wording could not reach, and the owner named
+it: **why is a yearly figure sitting among monthly ones at all?** The other
+three tiles, the day bar, the counts, the county rows and every month row on
+`c/<slug>.html` are a month. One tile on a year's clock is a second clock on the
+same surface, and no label short enough for a 150px tile can carry that without
+"monthly"/"annually" headings the owner ruled out.
 
-The number keeps its comparability with the 117.47 ESB published for 2024, which
-is the whole reason the tile exists and what the "How these numbers are worked
-out" disclosure argues about. Showing `cml_month` instead — the month's own
-figure, needing no annualisation — was rejected for that: it is honest but
-comparable to nothing a reader can look up.
+So the tile shows **the month's own minutes per customer**: `12.8` / `customer
+minutes lost`. Same measure, same window as everything beside it. `national_cml`
+takes `annualised=False` for it, and `county_month` already computed both —
+`c/<slug>.html`'s month table moved to `cml_month` in the same change, and its
+column is headed "Minutes lost" rather than "CML" for the same reason as the
+tile.
+
+**The annualised rate did not disappear; it moved to the one place it can be
+read.** The "How these numbers are worked out" disclosure is where the page
+argues about ESB's published 117.47 for 2024, so it now carries this site's own
+whole-corpus rate as `cmp-cml`, alongside the CI bias and CAIDI figures already
+filled from the build: *"the comparable figure is this site's rate across
+everything collected, about N a year."* A year's number in a paragraph about a
+year, and nowhere else.
+
+Dropping the tile outright — the owner's other option — was rejected because
+what it measures is the site's whole subject: minutes off supply for the average
+customer. It was the annualisation that made it unreadable, not the measure.
+
+Guarded twice: `tests/test_site_model.py::TestCountyMonth` holds the payload row
+to `cml_month` and asserts the annualised figure is the larger, different number
+it is; `tests/test_site_national.py` derives `compare["cml"]` independently, as
+it already did for CAIDI and the bias.
 
 ### `54 years` / `of customer time off supply`
 

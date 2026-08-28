@@ -77,7 +77,10 @@
     href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">Distribution
     Annual Performance Report 2024</a>; targets set under the CRU's <a
     href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
-    framework</a>). It is shown for comparison but does not set the grade: the
+    framework</a>). The figure shown against a month on this page is the same
+    measure over that month, so it is not the one to hold against those two;
+    the comparable figure is this site's rate across everything collected,
+    about <b id="cmp-cml">–</b> a year. It does not set the grade: the
     feed counts about <b id="cmp-bias">–</b> more interrupted customers than ESB
     finally settles on, though the durations agree - an implied
     <b id="cmp-caidi">–</b> minutes per interrupted customer against ESB's
@@ -274,10 +277,11 @@ function renderOverview() {
     [num(n[3]), "customers hit by faults"],
     [ct[0], ct[1] + " off supply"],
     // "CML" is only ever expanded in the footer, and it already means faults
-    // only, so the initials and "unplanned" both went. "A year" stays: the
-    // figure is a month's rate stretched to twelve, and without those two
-    // words it reads as minutes lost in the month, which is ~12x smaller.
-    [fmtCml(n[0]), "customer minutes lost a year"]
+    // only, so the initials and "unplanned" both went. The figure itself is
+    // the month's own minutes per customer rather than the annualised rate:
+    // every other number under this heading is a month, and a yearly one
+    // among them can only be read by someone who knows it is there.
+    [fmtCml(n[0]), "customer minutes lost"]
   ].map(function (t) {
     return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
   }).join("");
@@ -441,6 +445,7 @@ function boot() {
   // Filled from the build, not written into the prose: these three drift every
   // time the corpus grows, and the paragraph they sit in is the page's argument
   // for why its CML is not ESB's.
+  document.getElementById("cmp-cml").textContent = D.compare.cml;
   document.getElementById("cmp-caidi").textContent = D.compare.caidi;
   document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
   document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
