@@ -323,3 +323,61 @@ is a depot, not a purpose. Those rows say `Planned` and stop; inferring
 distinction the feed does not draw.
 
 Guarded by `tests/test_site_model.py::TestCaseCopy`, one test per shape.
+
+## The county page became an archive and nothing else — 2026-08-28
+
+Owner read of `c/<slug>.html`. Two things on it belonged to a different page.
+
+### The header's age line is gone
+
+`Updated 11 hours ago · Data to 27 Aug, 23:02 UTC` sat under the county name.
+It was the last survivor of the horizon's retreat (2026-08-26: out of the
+footer, kept here because a county page is entered cold from a search result).
+It is out of the header now too, and with it the `#stamp` span, its
+`data-observed`/`data-stale-hours` attributes and the `freshness()` call.
+
+**The cost, stated plainly: a county page no longer warns that collection has
+stopped.** What is left is static and still true — the month table's newest row
+carries `to 27 Aug` under its own name, so a record that stops advancing shows
+as a month table that stops advancing. The index keeps the live banner. If the
+warning is wanted back here, it is a `freshness()` call and the 15 KB of script
+that went with it.
+
+### The newest month's card is gone
+
+The page opened with a card for the latest month alone: heading, legend, day
+bar, four tiles. Two objections, and the second is the fatal one.
+
+- **Wrong scale.** One month's day-by-day detail on the page whose whole reason
+  for existing is *every* month. The interactive view is where a month is the
+  unit; this page is the record.
+- **It was a duplicate.** Every figure in those four tiles — restored within
+  4 hours, faults, planned, customers hit — is the first row of the
+  month-by-month table immediately below it. The page led with a copy of its
+  own next section, and the section that matters was pushed below the fold.
+
+`c/cork.html` now opens: back link, grade chip and county name, the customer
+count, then **Month by month**. 127.4 KB → 106.3 KB.
+
+### The county page ships no JavaScript at all
+
+With no day bar to caption and no age to compute, `bindDayCaption()` and the
+stamp script were the page's only behaviour, and statusui's `ui.js` was inlined
+for them alone. Both `<script>` blocks are gone: **county pages 1,840 KB →
+1,349 KB across 26 files**, a 15 KB saving per page on pages that are, by
+design, entered cold from a search result. The only `<script>` left is the
+analytics beacon, which is not ours.
+
+`render._legend_html`, `render._day_cells`, `DAY_LABELS` and `LEGEND_ITEMS`
+went with the card — nothing else rendered a bar from Python. The app keeps its
+own copies (`legendHtml`, `dayCells` in `ui.js`), which is where day bars now
+live exclusively. Guarded by
+`tests/test_ui_globals.py::test_the_county_page_ships_no_script_at_all`.
+
+### Already done, on this branch
+
+Two items in the same review were fixed earlier and are visible only after a
+rebuild: the month table's `CML` column became **Minutes lost** carrying the
+month's own figure (3451f8f), and the case rows got the sentence treatment
+(73be525) — the static county page renders through the same `_case_html` as
+every other page, so it was never a separate fix.

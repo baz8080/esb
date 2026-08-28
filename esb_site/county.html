@@ -31,17 +31,5 @@
   <p id="gen"><a href="https://github.com/baz8080/esb">Source code</a> · not affiliated with ESB Networks or the CRU.</p>
 </footer>
 </div>
-<script>
-<!--UI-JS-->
-</script>
-<script>
-bindDayCaption();
-// the span already holds "Data to ...", so a page whose script never ran still
-// reads; with script the age goes in front of it
-var stamp = document.getElementById("stamp");
-stamp.innerHTML = freshness(stamp.getAttribute("data-observed"),
-  +stamp.getAttribute("data-stale-hours"), "collection has stopped") +
-  " · " + stamp.textContent;
-</script>
 </body>
 </html>

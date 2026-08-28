@@ -13,8 +13,6 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import statusui
-
 from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
 from esb_site import model, render
@@ -842,22 +840,6 @@ class TestPartialDays(SiteModelCase):
         until = datetime(2026, 8, 13, 0, 0, tzinfo=UTC)
         self.assertEqual(model.partial_days(until)[-1], "2026-08-12")
 
-    def test_the_short_days_are_the_ones_the_page_qualifies(self):
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=1)
-        outages, _, index = self.load()
-        cells = model.county_month(
-            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
-        )["cells"]
-        html = render._day_cells(cells, "2026-08", model.partial_days(self.until))
-        self.assertIn(f"Wed 12 Aug: no significant fault{statusui.PARTIAL_NOTE}", html)
-        # The full days beside it say nothing extra, and neither does a day
-        # with no data to qualify.
-        self.assertIn('data-cap="Tue 11 Aug: no significant fault"', html)
-        self.assertIn('data-cap="Thu 13 Aug: no data collected for this day"', html)
-        # The caption is shown by the page's readout, not a tooltip.
-        self.assertNotIn("title=", html)
-
 
 class TestEstimatePlumbing(SiteModelCase):
     """ESB's restore estimate reaches the page beside the actual restore."""
@@ -1065,13 +1047,6 @@ class TestCaseCopy(unittest.TestCase):
         self.assertEqual(render._span_hm(0.1, about=True), "under 30 min")
         self.assertEqual(render._span_hm(0.4, about=True), "about 30 min")
         self.assertEqual(render._span_hm(72), "3 days")
-
-    def test_the_legend_swatches_use_the_cell_classes(self):
-        html = render._legend_html()
-        self.assertIn('<span><i class="b5"></i>planned works</span>', html)
-        self.assertIn('<i class="b0"></i>no significant fault', html)
-        # inline styles would be a second copy of the site.css colour map
-        self.assertNotIn("style=", html)
 
     def test_customer_figures_round_to_their_real_precision(self):
         self.assertEqual(render._approx(32069), 32000)

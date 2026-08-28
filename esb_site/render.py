@@ -410,43 +410,6 @@ def _updates_html(rows, planned=False):
     )
 
 
-DAY_LABELS = {
-    "0": "no significant fault",
-    "1": "minor fault disruption",
-    "2": "moderate fault disruption",
-    "3": "major fault disruption",
-    "4": "severe fault disruption",
-    "5": "planned works only",
-    "8": "no data collected for this day",
-    "9": "still to come",
-}
-
-# What each day-cell colour means. The swatches take their colours from the
-# same site.css rules that colour the cells, so the two cannot drift.
-# Mirrored in site.html (legendHtml).
-LEGEND_ITEMS = (
-    ("b0", "no significant fault"),
-    ("b1", "minor"),
-    ("b2", "moderate"),
-    ("b3", "major"),
-    ("b4", "severe"),
-    ("b5", "planned works"),
-    ("b8", "no data"),
-)
-
-
-def _legend_html():
-    spans = "".join(
-        f'<span><i class="{cls}"></i>{label}</span>' for cls, label in LEGEND_ITEMS
-    )
-    return f'<div class="legend">{spans}</div>'
-
-
-def _day_cells(cells, ym, partial):
-    # nothing to qualify on a day with no data or no colour yet
-    return statusui.day_cells(cells, ym, partial, DAY_LABELS, qualify=lambda ch: ch not in "89")
-
-
 def _county_cases(by_month, months):
     """Every outage in one county, newest first, once each.
 
@@ -522,10 +485,7 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     subject - and its title - change under the same URL every time the month
     rolled over.
     """
-    latest = months[-1]
-    m = data["stats"][county][latest]
-    grade = m[1]
-    label = month_label(latest)
+    grade = data["stats"][county][months[-1]][1]
     cases = _county_cases(by_month, months)
     faults = sum(1 for k in cases if not k[2])
     planned = len(cases) - faults
@@ -539,34 +499,17 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
         f"{data['start']}. Month-by-month totals and every outage recorded, "
         f"from ESB Networks' PowerCheck feed."
     )
-    tiles = [
-        ("–" if m[2] is None else f"{m[2]:g}%", "restored within 4 hours"),
-        (m[4], "faults"),
-        (m[5], "planned outages"),
-        (f"{m[6]:,}", "customers hit by faults"),
-    ]
     body = [
         '<a class="back" href="../index.html">← All counties</a>',
         f'<div class="chead"><span class="gradechip g-{grade or "none"}">{grade or "–"}</span>',
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">About {data["customers"][county]:,} homes '
-        "and businesses · estimated from Census 2022<br>"
-        # Entered cold from a search result, so it carries the same caveat the
-        # app does: the day bar ends where the data does. The page prefixes the
-        # age; without script this still reads on its own.
-        f'<span id="stamp" data-observed="{data["observed_iso"]}"'
-        f' data-stale-hours="{data["stale_hours"]}">'
-        f'Data to {html.escape(data["observed"])}</span></div>',
-        f'<div class="card"><h2>{label}</h2>{_legend_html()}<div class="bar tall">'
-        f'{_day_cells(m[0], latest, data["partial"])}</div>'
-        '<div class="daycap"></div><div class="tiles">',
-        "".join(
-            f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>'
-            for v, k in tiles
-        ),
-        "</div>",
-        "</div>",
+        "and businesses · estimated from Census 2022</div>",
     ]
+    # Straight to the months. The page carried a card for the newest month
+    # alone - legend, day bar and four tiles - and it was both the wrong scale
+    # for an archive and a duplicate: every figure in it is the first row of
+    # the table below, which is the thing this page exists to publish.
     body.append(_county_months_html(county, data, months, until))
     if cases:
         body.append(
