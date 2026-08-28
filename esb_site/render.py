@@ -577,20 +577,30 @@ def area_index(outages, sa_index):
     ]
 
 
-def _area_items(county, areas, prefix=""):
+def _area_items(county, areas, prefix="", county_fallback=False):
     """The <li> rows for one county's areas, shared by areas.html and c/*.html
-    so the two cannot disagree about a count; `prefix` hops up from c/. A
-    pageless "Around ..." row is plain text - this app has no area route to
-    fall back on, and the section heading already links the county's record.
+    so the two cannot disagree about a count; `prefix` hops up from c/.
+
+    `county_fallback` sends a row with no page of its own to the county's
+    record instead. 876 of the directory's 1,270 rows are "Around ..." EDs and
+    city remainders, so leaving them as plain text left two thirds of a
+    directory unclickable - and the county page is where those outages are in
+    fact listed, which is where the search already sends the same names. The
+    county page passes it off: there, the link would point at itself.
+
+    No title attribute saying where it goes: at 876 rows that is 39 KB of
+    hover text no phone can read, and the page's own sub line makes the same
+    promise once, to everyone.
     """
     items = []
     for code, name, pop, events in areas:
         n = len(events)
-        where = (
-            f'<a href="{prefix}{area_path(county, name)}">{html.escape(name)}</a>'
-            if model.area_has_page(code)
-            else html.escape(name)
-        )
+        if model.area_has_page(code):
+            where = f'<a href="{prefix}{area_path(county, name)}">{html.escape(name)}</a>'
+        elif county_fallback:
+            where = f'<a href="{prefix}c/{slug(county)}.html">{html.escape(name)}</a>'
+        else:
+            where = html.escape(name)
         # units on every row, not a column heading that scrolls away
         items.append(
             f"<li>{where}"
@@ -615,7 +625,8 @@ def _areas_index_html(index):
             f"<h2>County {html.escape(county)} <span>· {len(areas)} "
             f'area{"" if len(areas) == 1 else "s"} · '
             f'<a href="c/{slug(county)}.html">county page</a></span></h2>'
-            f'<ul class="areas">{_area_items(county, areas)}</ul></section>'
+            f'<ul class="areas">{_area_items(county, areas, county_fallback=True)}'
+            "</ul></section>"
         )
     return f"<nav>{nav}</nav>\n{''.join(sections)}"
 

@@ -123,6 +123,66 @@ No 404 is possible by construction rather than by check: `build` and `area_index
 the same outage list, so a name only carries a slug when a page was written from the same
 events. The test asserts it anyway, since that is the one thing this index must not do.
 
+## The directory stopped being two-thirds unclickable — 2026-08-28
+
+Owner read of `areas.html`. **876 of its 1,270 rows were plain text** — every
+"Around ..." ED and every city remainder — because they have no page of their
+own, and the footer explained that at the bottom of a very long page:
+
+> *Around …* areas are countryside rather than places, so their history lives on
+> the county page instead of a page of their own.
+
+Contradictory as written (the directory does list them), and buried where only a
+reader who had already scrolled past all 1,270 rows would find it. The owner's
+question answers itself: if their history lives on the county page, link them to
+the county page. `_area_items` takes `county_fallback`, and every row in the
+directory is now a link — to `a/<county>/<area>.html` where there is a page, to
+`c/<county>.html` where there is not.
+
+This is the rule search already follows (§ Search reaches them): a name that
+reaches no area page still carries its county's page in the href. The directory
+was the one surface that stopped at the plain name. It does not change what gets
+a page — `area_has_page` is untouched, and hundreds of near-identical "Around
+..." pages is still scaled thin content.
+
+**The county page's own copy of the list keeps them plain**, since there the
+link would point at the page it is on. That is the whole of what
+`county_fallback` decides.
+
+No `title` attribute naming the destination: 876 of them is 39 KB of hover text
+no phone can read (measured — the page went 208.6 → 246.5 KB with it), and the
+header now makes the same promise once, to everyone.
+
+### The footer was three paragraphs and is now one line
+
+- **The definition of an area** (CSO settlement / city LEA / ED countryside) went
+  entirely. It is vocabulary for someone building the site, not for someone
+  looking up their town, and the rows say "Around ..." in plain sight.
+- **The attribution caveat moved to the top**, as `header .sub2`, where the
+  index already carries its own caveat in that slot: *"Counts are outages pinned
+  to the area nearest each fault ESB reported, not necessarily every outage that
+  cut power there."* It is the one thing in the old paragraph a reader needed,
+  and the bottom of a 1,270-row page is not where a caveat works.
+- **"Areas with no outage at all are not listed: a page of them would say
+  nothing"** — dropped on the owner's call. It answers a question nobody asks.
+
+What is left is the shared `Source code · not affiliated` line, as on every
+other page.
+
+### Header and spacing
+
+`Every Census 2022 area an ESB Networks outage has been recorded near. Pick one
+for its full outage history.` named the CSO's product and buried the instruction
+behind a subordinate clause. Now `Search for a place, or jump to a county —
+every name links to where its outages are listed`, which is true of all 1,270
+rows for the first time.
+
+The gap between the search field and the jump nav measured **42px**: an empty
+`#qcount` reserving 1.45em against layout shift, plus the nav's own 18px top
+margin. The reserve is right — a count appearing under the field must not shove
+the page down mid-search — but one line is enough, and the nav closes up behind
+it: 1.2em and a 6px margin, **25px** measured.
+
 ## Residue to watch
 
 - Merge requires an *identical* location string: a fault ESB re-publishes under a varied

@@ -263,12 +263,18 @@ class TestTheRestOfTheSite(AreaSiteCase):
         self.assertIn('href="a/dublin/skerries.html"', page)
         self.assertIn("1 outage<", page)
 
-    def test_an_ed_gets_a_row_but_no_page_and_no_link(self):
-        """The countryside is real and the directory says so; a link would
-        need somewhere to go, and there is deliberately nowhere - hundreds of
-        near-identical "Around ..." pages is scaled thin content."""
+    def test_an_ed_gets_a_row_and_no_page_but_still_goes_somewhere(self):
+        """The countryside is real and the directory says so. It gets no page -
+        hundreds of near-identical "Around ..." pages is scaled thin content -
+        but the row is a link to the county's record, which is where those
+        outages are actually listed. Two thirds of the directory is these."""
         self.assertFalse((self.out / "a" / "sligo").exists())
         page = self.page("areas.html")
+        self.assertIn('<a href="c/sligo.html">Around Ballynashee</a>', page)
+
+    def test_the_county_page_leaves_its_own_rows_unlinked(self):
+        """The same row one directory up would link at the page it is on."""
+        page = self.page("c/sligo.html")
         self.assertIn("<li>Around Ballynashee", page)
         self.assertNotRegex(page, r"<a[^>]*>Around Ballynashee")
 
