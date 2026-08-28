@@ -272,6 +272,14 @@ class TestTheRestOfTheSite(AreaSiteCase):
         page = self.page("areas.html")
         self.assertIn('<a href="c/sligo.html">Around Ballynashee</a>', page)
 
+    def test_the_directory_says_where_an_around_row_lands(self):
+        """The fallback link is a surprise without it: the row looks like every
+        other row and goes somewhere else. Placed with the rows rather than in
+        the header, and in the page rather than in a title attribute."""
+        page = self.page("areas.html")
+        self.assertIn("those links go to the county page", page)
+        self.assertLess(page.index("those links go"), page.index("<section"))
+
     def test_the_county_page_leaves_its_own_rows_unlinked(self):
         """The same row one directory up would link at the page it is on."""
         page = self.page("c/sligo.html")

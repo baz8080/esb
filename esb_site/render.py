@@ -628,7 +628,14 @@ def _areas_index_html(index):
             f'<ul class="areas">{_area_items(county, areas, county_fallback=True)}'
             "</ul></section>"
         )
-    return f"<nav>{nav}</nav>\n{''.join(sections)}"
+    # Said once, under the nav, where the first rows are: an "Around ..." row
+    # is a link like every other and lands somewhere else, which is a surprise
+    # worth spending a line on rather than a tooltip nobody on a phone sees.
+    note = (
+        '<p class="note"><em>Around&nbsp;…</em> areas have no page of their own '
+        "— those links go to the county page.</p>"
+    )
+    return f"<nav>{nav}</nav>\n{note}\n{''.join(sections)}"
 
 
 def _km_label(d):
