@@ -28,21 +28,39 @@ def declares(script, name):
     """Does this script declare `name` at the top level?
 
     Asked per name rather than by listing what the script declares, because
-    listing misses the second name in `var a = 1, b = 2;` - a form this site's
-    own script already uses - and a guard that misses a name fails open.
+    listing misses the second name in `var a = 1, esc = 2;` - a form this
+    site's own script uses - and a guard that misses a name fails open.
 
-    Column zero only, which is what top level means in these files: a `const`
-    inside a function body is scoped to that function and shadows nothing.
-    (uisce's copy of this guard fails on two such lines if you allow indenting.)
+    Column zero only, which is what top level means in these files: a
+    declaration inside a function body is scoped to it and shadows nothing.
+    The `=` in the second branch is what makes a name a declaration rather
+    than a mention: a shared helper passed by reference reads as `, esc]`.
     """
     n = re.escape(name)
-    if re.search(rf"^(?:function|var|let|const)\s+{n}\b", script, re.M):
-        return True
-    # a later declarator in one statement: `var a = 1, name = 2;`
-    return any(
-        re.search(rf",\s*{n}\s*(?:=|[,;]|$)", statement)
-        for statement in re.findall(r"^(?:var|let|const)\b[^;]*", script, re.M)
+    return bool(
+        re.search(rf"^(?:async\s+)?(?:function|var|let|const|class)\s+{n}\b", script, re.M)
+        or re.search(rf"^(?:var|let|const)\b[^\n]*,\s*{n}\s*=", script, re.M)
     )
+
+
+def unreadable_declarations(script):
+    """Top-level declarations this guard cannot read, so it can say so.
+
+    It reads a line at a time, which covers every form these pages use - a
+    multi-line object literal still declares its one name on the first line.
+    What it cannot follow is a declarator list continued onto the next line,
+    or a destructuring pattern. Neither appears in any of the three sites
+    today; the point is that the day one does, this stops rather than quietly
+    missing whatever the second name was.
+    """
+    for line in re.findall(r"^(?:var|let|const)\b[^\n]*", script, re.M):
+        # A trailing comma inside an open bracket is a literal continuing, not
+        # a second name: `var CELL = { 0: "nothing listed",` is one declaration.
+        open_brackets = sum(line.count(c) for c in "{[(") - sum(line.count(c) for c in "}])")
+        if (line.rstrip().endswith(",") and open_brackets <= 0) or re.match(
+            r"^(?:var|let|const)\s*[\[{]", line
+        ):
+            yield line.strip()
 
 
 class TestUiGlobals(unittest.TestCase):
@@ -54,6 +72,7 @@ class TestUiGlobals(unittest.TestCase):
         marker = next(m for m in MARKERS if m in text)
         # everything after the shared script is the site's own
         own = text.split(marker, 1)[1]
+        self.assertEqual(list(unreadable_declarations(own)), [], f"{page}: see the docstring")
         clashes = sorted(name for name in shared if declares(own, name))
         self.assertFalse(clashes, f"{page} redeclares {clashes}")
 
