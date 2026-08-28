@@ -218,8 +218,12 @@ What was worth keeping was the way out to the method, and it is now a clause on
 a line that was already there: *"Every area with an outage - the full directory.
 Method and sources are on the main page."*
 
-The county page keeps its own disclosure: its footer carries the grade
-explanation, so the details block sits in a footer that is already prose.
+The county page's identical disclosure went the same way on the owner's call —
+the two sentences were redundant there for exactly the same reason, and its
+footer now carries the same "Method and sources are on the main page" clause.
+What it keeps is the paragraph the area page never had: the grade explanation,
+which is that page's own vocabulary, and the footer rule above it, which still
+has prose under it to divide.
 
 ### The rule above the footer went with it
 
