@@ -30,14 +30,18 @@ def declares(script, name):
     Asked per name rather than by listing what the script declares, because
     listing misses the second name in `var a = 1, b = 2;` - a form this site's
     own script already uses - and a guard that misses a name fails open.
+
+    Column zero only, which is what top level means in these files: a `const`
+    inside a function body is scoped to that function and shadows nothing.
+    (uisce's copy of this guard fails on two such lines if you allow indenting.)
     """
     n = re.escape(name)
-    if re.search(rf"^\s*(?:function|var|let|const)\s+{n}\b", script, re.M):
+    if re.search(rf"^(?:function|var|let|const)\s+{n}\b", script, re.M):
         return True
     # a later declarator in one statement: `var a = 1, name = 2;`
     return any(
         re.search(rf",\s*{n}\s*(?:=|[,;]|$)", statement)
-        for statement in re.findall(r"^\s*(?:var|let|const)\b[^;]*", script, re.M)
+        for statement in re.findall(r"^(?:var|let|const)\b[^;]*", script, re.M)
     )
 
 
