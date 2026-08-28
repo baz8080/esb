@@ -218,7 +218,8 @@ function gradeChip(g, big) {
 }
 
 // What each day-cell colour means; the swatches take their colours from the
-// same site.css rules that colour the cells. Mirrored in render.py.
+// same site.css rules that colour the cells, so the key cannot drift from the
+// bars. The only copy since the county page stopped rendering a bar.
 function legendHtml() {
   return [["b0", "no significant fault"], ["b1", "minor"], ["b2", "moderate"],
           ["b3", "major"], ["b4", "severe"], ["b5", "planned works"], ["b8", "no data"]]

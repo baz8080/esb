@@ -359,6 +359,12 @@ bar, four tiles. Two objections, and the second is the fatal one.
 `c/cork.html` now opens: back link, grade chip and county name, the customer
 count, then **Month by month**. 127.4 KB → 106.3 KB.
 
+The grade chip stays on the owner's call, but it is still the newest month's
+letter and the card that used to name that month is gone — so its hover title
+names it: *"Grade B in August 2026: 90% or more restored within 4 hours"*.
+Without that a bare "B" reads as the county's standing for all time, which is
+the one thing an archive page must not imply.
+
 ### The county page ships no JavaScript at all
 
 With no day bar to caption and no age to compute, `bindDayCaption()` and the

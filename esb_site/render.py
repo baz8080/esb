@@ -409,16 +409,19 @@ GRADES = {
 }
 
 
-def _grade_chip(grade):
+def _grade_chip(grade, month=None):
     """The letter, with the band it stands for on hover.
 
-    The county page's footer used to spell the bands out. Mirrored in
-    site.html (GRADES, gradeChip).
+    The county page's footer used to spell the bands out. `month` names the
+    month the letter is for: on the heading the card that used to scope it is
+    gone, so a bare "F" would read as the county's standing for all time.
+    Mirrored in site.html (GRADES, gradeChip).
     """
+    when = f" in {month}" if month else ""
     title = (
-        f"Grade {grade}: {GRADES[grade]}"
+        f"Grade {grade}{when}: {GRADES[grade]}"
         if grade
-        else "Too few faults this month to grade fairly"
+        else f"Too few faults{when or ' this month'} to grade fairly"
     )
     return (
         f'<span class="gradechip g-{grade or "none"}" title="{html.escape(title)}">'
@@ -517,7 +520,7 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     )
     body = [
         '<a class="back" href="../index.html">← All counties</a>',
-        f'<div class="chead">{_grade_chip(grade)}',
+        f'<div class="chead">{_grade_chip(grade, month_label(months[-1]))}',
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022</div>",
@@ -635,11 +638,12 @@ def _areas_index_html(index):
             f'<ul class="areas">{_area_items(county, areas, county_fallback=True)}'
             "</ul></section>"
         )
-    # Once, where the rows start: an "Around ..." row looks like every other
-    # and lands somewhere else.
+    # Once, where the rows start: a fallback row looks like every other and
+    # lands somewhere else. "Around ..." is 874 of the 876; the other two are
+    # the city remainders, which the wording has to cover as well.
     note = (
-        '<p class="note"><em>Around&nbsp;…</em> areas have no page of their own '
-        "— those links go to the county page.</p>"
+        '<p class="note"><em>Around&nbsp;…</em> and <em>Elsewhere&nbsp;in&nbsp;…</em> '
+        "areas have no page of their own — those links go to the county page.</p>"
     )
     return f"<nav>{nav}</nav>\n{note}\n{''.join(sections)}"
 

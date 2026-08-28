@@ -127,6 +127,12 @@ class TestTheMonthTable(CountyPageCase):
         # page can show; the lettered ones come off the helper
         self.assertIn("Too few faults this month to grade fairly", self.page)
         self.assertIn('title="Grade A: meets ESB', render._grade_chip("A"))
+        # the heading chip is one month's letter and the card that named that
+        # month is gone, so the title has to name it
+        self.assertIn("Grade A in August 2026:", render._grade_chip("A", "August 2026"))
+        self.assertRegex(
+            self.page, r'<div class="chead"><span[^>]*title="Too few faults in \w+ 2026'
+        )
         app = render.SITE_HTML.read_text()
         for grade, band in render.GRADES.items():
             self.assertIn(band, app, f"site.html has drifted from GRADES[{grade}]")
