@@ -234,13 +234,7 @@ function renderOverview() {
   var rows = D.counties.map(function (name) {
     return { name: name, m: (D.stats[name] || {})[curMonth] };
   });
-  // Worst first: a status page's job is to put the bad news at the top. A
-  // county with nothing to judge sorts to the bottom rather than the top.
-  rows.sort(function (a, b) {
-    var x = a.m && a.m[2] != null ? a.m[2] : 1e9;
-    var y = b.m && b.m[2] != null ? b.m[2] : 1e9;
-    return x - y || a.name.localeCompare(b.name);
-  });
+  rows.sort(function (a, b) { return a.name.localeCompare(b.name); });
 
   document.getElementById("list").innerHTML = rows.map(function (r) {
     var m = r.m, g = m ? m[1] : null;
