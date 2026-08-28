@@ -693,11 +693,10 @@ def area_page(county, name, pop, events, nearby, data):
         f'<span class="n">· {len(cases):,} outage'
         f'{"" if len(cases) == 1 else "s"}</span></h2>',
         # the one thing this page must not overclaim
-        '<p class="note">An outage is filed under the Census area nearest the '
-        "fault ESB reported, not under every area it cut power to. A fault that "
-        f"affected {html.escape(name)} may therefore be listed under a nearby "
-        "area, and a fault listed here may have cut power well beyond it - "
-        "which is how an outage can count more customers than "
+        '<p class="note">Outages are filed under the Census area nearest the '
+        f"fault ESB reported. A cut that hit {html.escape(name)} may be listed "
+        "under a neighbouring area, and one listed here may reach far beyond "
+        f"it - which is why a row can count more customers than "
         f"{html.escape(name)} has people.</p>",
         "".join(_case_html(k) for k in cases),
         "</div>",

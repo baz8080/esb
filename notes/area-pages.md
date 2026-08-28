@@ -189,6 +189,47 @@ margin. The reserve is right — a count appearing under the field must not shov
 the page down mid-search — but one line is enough, and the nav closes up behind
 it: 1.2em and a 6px margin, **25px** measured.
 
+## The area page's tail — 2026-08-28
+
+### The attribution note lost a third of its words
+
+It ran to 65 words across two sentences and said the same thing twice. Now 45:
+
+> Outages are filed under the Census area nearest the fault ESB reported. A cut
+> that hit Borris may be listed under a neighbouring area, and one listed here
+> may reach far beyond it — which is why a row can count more customers than
+> Borris has people.
+
+All three facts survive — the rule, that it cuts both ways, and the customer
+count that looks impossible without it. `test_it_says_the_pin_is_the_fault_not_the_footprint`
+still holds the page to the rule being stated.
+
+### "How to read this page" is gone
+
+It explained that an outage shows a start and a restore, that an unconfirmed end
+is marked as an estimate or a last sighting, and that there is no grade at this
+level. The first two stopped being news the day the case row started explaining
+itself (design-alignment.md § The outage row stopped reading like a database
+row): "restored 07:07 (2 h 2 min)" and "no restore time published" need no
+key. The third explains an absence — nothing on the page shows a grade, so
+nobody is looking for one.
+
+What was worth keeping was the way out to the method, and it is now a clause on
+a line that was already there: *"Every area with an outage - the full directory.
+Method and sources are on the main page."*
+
+The county page keeps its own disclosure: its footer carries the grade
+explanation, so the details block sits in a footer that is already prose.
+
+### The rule above the footer went with it
+
+With two grey lines under it, the shared `footer { margin-top: 40px;
+padding-top: 18px; border-top }` read as a horizontal rule stranded in
+whitespace rather than the top of anything. Overridden **in `area.html` alone**
+— `margin-top: 26px`, no border — the way `areas.html` already carries its own
+page rules. Not pushed to statusui and not put in `site.css`: every other
+page's footer carries paragraphs, where the rule does the job it is there for.
+
 ## Residue to watch
 
 - Merge requires an *identical* location string: a fault ESB re-publishes under a varied
