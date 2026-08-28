@@ -263,12 +263,26 @@ class TestTheRestOfTheSite(AreaSiteCase):
         self.assertIn('href="a/dublin/skerries.html"', page)
         self.assertIn("1 outage<", page)
 
-    def test_an_ed_gets_a_row_but_no_page_and_no_link(self):
-        """The countryside is real and the directory says so; a link would
-        need somewhere to go, and there is deliberately nowhere - hundreds of
-        near-identical "Around ..." pages is scaled thin content."""
+    def test_an_ed_gets_a_row_and_no_page_but_still_goes_somewhere(self):
+        """The countryside is real and the directory says so. It gets no page -
+        hundreds of near-identical "Around ..." pages is scaled thin content -
+        but the row is a link to the county's record, which is where those
+        outages are actually listed. Two thirds of the directory is these."""
         self.assertFalse((self.out / "a" / "sligo").exists())
         page = self.page("areas.html")
+        self.assertIn('<a href="c/sligo.html">Around Ballynashee</a>', page)
+
+    def test_the_directory_says_where_an_around_row_lands(self):
+        """The fallback link is a surprise without it: the row looks like every
+        other row and goes somewhere else. Placed with the rows rather than in
+        the header, and in the page rather than in a title attribute."""
+        page = self.page("areas.html")
+        self.assertIn("those links go to the county page", page)
+        self.assertLess(page.index("those links go"), page.index("<section"))
+
+    def test_the_county_page_leaves_its_own_rows_unlinked(self):
+        """The same row one directory up would link at the page it is on."""
+        page = self.page("c/sligo.html")
         self.assertIn("<li>Around Ballynashee", page)
         self.assertNotRegex(page, r"<a[^>]*>Around Ballynashee")
 

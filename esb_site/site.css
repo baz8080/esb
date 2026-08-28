@@ -60,3 +60,8 @@ ul.areas li .p { color: var(--muted); font-size: 12px; font-variant-numeric: tab
 
 /* the attribution caveat that sits under an area page's card headings */
 .card .note { color: var(--muted); font-size: 13px; margin: 4px 0 10px; }
+
+/* A footer of two grey links needs no rule announcing it: base.css's border
+   read as a stray horizontal rule above one. The index, whose footer is a
+   block of prose, opts back in at the bottom of site.html. */
+footer { margin-top: 26px; padding-top: 0; border-top: 0; }

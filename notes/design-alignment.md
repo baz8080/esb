@@ -113,3 +113,277 @@ the precondition for promoting them.
 The footers already read `Source code · not affiliated with ESB Networks or the CRU.` on
 every page, and the app is already called "the interactive view" rather than a map. uisce
 moved to this site's wording on both counts, not the other way round.
+
+## The tiles say what they mean — 2026-08-28
+
+Owner read of the national tiles, in a reader's voice. Two of the four were
+written for someone who already knows the domain.
+
+### `154 CML` / `annualised, unplanned`
+
+Three pieces of jargon in five words. **CML** is expanded exactly once on the
+page, in a footer disclosure most readers never open, so on the tile it is four
+letters that mean nothing. **Unplanned** is redundant: CML is a fault index by
+construction — planned works are excluded everywhere on this site, and the tile
+sits beside another that says "customers hit by faults". **Annualised** is the
+word a reader has no way to decode.
+
+The first pass kept the annualisation and said it in plain words — "customer
+minutes lost a year" — because dropping it made the tile false: 154 is a
+month's rate stretched to twelve months, and under a heading reading "The
+national picture in August 2026" a bare "customer minutes lost" claims the
+average customer lost 154 minutes *in August*, about twelve times the truth.
+
+That fix was wrong at a level the wording could not reach, and the owner named
+it: **why is a yearly figure sitting among monthly ones at all?** The other
+three tiles, the day bar, the counts, the county rows and every month row on
+`c/<slug>.html` are a month. One tile on a year's clock is a second clock on the
+same surface, and no label short enough for a 150px tile can carry that without
+"monthly"/"annually" headings the owner ruled out.
+
+So the tile shows **the month's own minutes per customer**: `12.8` / `customer
+minutes lost`. Same measure, same window as everything beside it. `national_cml`
+takes `annualised=False` for it, and `county_month` already computed both —
+`c/<slug>.html`'s month table moved to `cml_month` in the same change, and its
+column is headed "Minutes lost" rather than "CML" for the same reason as the
+tile.
+
+**The annualised rate did not disappear; it moved to the one place it can be
+read.** The "How these numbers are worked out" disclosure is where the page
+argues about ESB's published 117.47 for 2024, so it now carries this site's own
+whole-corpus rate as `cmp-cml`, alongside the CI bias and CAIDI figures already
+filled from the build: *"the comparable figure is this site's rate across
+everything collected, about N a year."* A year's number in a paragraph about a
+year, and nowhere else.
+
+Dropping the tile outright — the owner's other option — was rejected because
+what it measures is the site's whole subject: minutes off supply for the average
+customer. It was the annualisation that made it unreadable, not the measure.
+
+Guarded twice: `tests/test_site_model.py::TestCountyMonth` holds the payload row
+to `cml_month` and asserts the annualised figure is the larger, different number
+it is; `tests/test_site_national.py` derives `compare["cml"]` independently, as
+it already did for CAIDI and the bias.
+
+### `54 years` / `of customer time off supply`
+
+The question it drew was "54 years since when?" — and the tile is one month.
+This is customer-time, customers multiplied by the hours they were off, so the
+first pass put the "customer" into the unit: `54` / `customer-years off
+supply`, with a `customerTime` helper rolling hours up into days and then years
+so the number stayed small.
+
+**That was still wrong, and not subtly: the word "years" was printed on the
+tile.** Under a heading reading "The national picture in August 2026", beside
+three figures that are all August's, one tile said *years*. A reader does not
+have to misread anything to be stopped by that — the year is on the page, in
+plain sight, and the label is 12.5px under a 24px number with no room to say
+what it is doing there. "Not annual, it is a product unit" is a true answer and
+a useless one: it explains the tile instead of fixing it.
+
+The quantity was never annual: 311,321 customers off supply for their various
+spells during August add up to 473,067 customer-hours, which *is* 54
+customer-years, all of it accrued inside August. A product unit has no upper
+bound in calendar terms — 2.5M customers off for one hour is 285 customer-years
+in an hour — which is exactly why naming it after a calendar span is the wrong
+choice on a page organised by calendar months.
+
+So the unit is now always **customer-hours**: `473,067` / `customer-hours off
+supply`. Hours are the one time unit that cannot collide with the calendar —
+nobody reads 473,067 hours as a span of the month — and "customer-hours" is
+the standard industry form of exactly this quantity. `customerTime` is gone
+with its two rollup branches; the tile is `num(Math.round(n[4]))`, which is
+also the whole of what the payload already carried.
+
+The number is large, which was the original objection to printing hours
+("17215 days reads as nonsense") — but that objection was about *days*, a unit
+a reader will try to place in a 31-day month. A big number in an unambiguous
+unit beats a small one in an ambiguous unit, and `num()` gives it thousands
+separators; 7 characters at 24px fits the 150px column.
+
+The month is left to the heading directly above the tiles, as it is for the
+other three: "this month" on one tile would be wrong the moment a reader picks
+an earlier month tab.
+
+**This tile and the CML tile are the same quantity** — customer-hours ÷ 2.5M
+customers, in different units — which the annualisation used to disguise. Both
+stay: one is the national total, the other is what it meant for the average
+customer, and per-capita beside total is a pair a reader can use. Replacing
+this one with something independent (faults past the 24-hour compensation mark
+is the obvious candidate) was raised and declined by the owner.
+
+## What the footer stopped saying — 2026-08-28
+
+Two passages went, on the same read.
+
+**"The site is built twice daily from snapshots of ESB Networks' public
+PowerCheck feed, which keeps no history of its own."** The build cadence is
+already answered where a reader would ask it — the banner says how old the data
+is and warns when it goes stale. The sentence it was attached to is the page's
+statement of what the grade means, and this was operational trivia sitting at
+the end of it. The sentence "Planned works are excluded" went with it from that
+disclosure; the next one along still says it, with the reason attached.
+
+**"ESB opens a new record each time a fault's scope changes, so records sharing
+a location and start time are folded into one outage here. A fault that returns
+to the same spot is a separate interruption and stays a separate row, tagged as
+a repeat."** True, load-bearing, and not footer material: it explains the shape
+of ESB's feed to a reader who came to find out whether the power is back. It is
+already written down where it belongs — `notes/grading.md` § One ESB event is
+one row and § Repeat faults are not splits, with the counts and the rejected
+merge rules. The "Repeat fault - outage 2 of 3 at this location in quick
+succession" tag on the row explains itself in place.
+
+## The outage row stopped reading like a database row — 2026-08-28
+
+Owner read of `c/<slug>.html`: *"it's like reading a database row"*, with
+`span.when` — the right-aligned duration — named as the worst of it. Sometimes
+present, sometimes not, never adding clarity. Two options were put: build a card
+display, or make the row explain itself. The row is already a card; what it
+lacked was English, so the second.
+
+### `span.when` is gone
+
+It carried "off 3 h 46 min", "scheduled 4 h 34 min", or nothing at all — a
+number floating at the end of a line, disconnected from the timestamp it
+measured, and blank on 40% of rows (planned works that left the feed early).
+The span now sits inside the phrase that names the end it belongs to:
+`scheduled until 15:00 (4 h 34 min)`. `.case .when` stays in statusui's
+`base.css` for the other two sites; this one no longer emits it.
+
+### One phrase per shape, and the shapes are not evenly weighted
+
+Measured on 2,336 merged events:
+
+| shape | share | reads |
+|---|---:|---|
+| planned, delisted | 39.7% | `listed for about 7 h · no end time published` |
+| fault, restored | 36.6% | `restored 07:07 (2 h 2 min) · 2 h 8 min earlier than ESB estimated` |
+| planned, scheduled end | 15.0% | `scheduled until 15:00 (4 h 34 min)` |
+| fault, delisted | 6.0% | `off for under 30 min · no restore time published` |
+| fault, estimate only | 2.7% | `expected back by 04:15 (about 1 h) · no restore time published` |
+
+**"last seen out at 08:31" and "last listed at 15:00" are gone.** Both printed
+the clock time of a *sighting*, leaving the reader to subtract it from the start
+time to get the thing they wanted. The sighting's clock time was never the
+interesting half: what the data measured is a span, so the span is what it says
+— "off for" a fault, "listed for" scheduled works, since time on ESB's list is
+not a claim about time off supply.
+
+**"not confirmed" is gone.** It was ambiguous exactly where it needed not to be:
+unconfirmed *estimate*, or unresolved *outage*? It meant neither — it meant ESB
+published no restore time. That is what the row says now.
+
+**A restore is compared to the estimate, not printed beside it.** "ESB's
+estimate was 15:00" made the reader do the arithmetic. 69% of restored faults
+beat the estimate (median 58 min early) and 25% miss it (median 54 min late), so
+how it landed is the most interesting fact available: `2 h 8 min earlier than
+ESB estimated`. Inside five minutes either way (5% of them) the clause is
+dropped as noise.
+
+`N customers` became `N customers affected`, which is what the number means.
+
+### The reason moved into the tag, with a label
+
+`Tullow [Planned] … · divert an overhead line` put the row's most human fact in
+its least-read position, in ESB's own shouted phrasing. Now
+`Tullow [Planned · line diversion]`.
+
+ESB publishes a closed set of six reasons, all in block capitals, mapped in
+`model.PLANNED_REASONS`:
+
+| feed | shown | events |
+|---|---|---:|
+| IMPROVE QUALITY OF SUPPLY | supply quality | 518 |
+| UPGRADE THE NETWORK | network upgrade | 262 |
+| CONNECT NEW CUSTOMERS | new connections | 204 |
+| IMPROVE THE NETWORK | network improvement | 66 |
+| DIVERT AN OVERHEAD LINE | line diversion | 51 |
+| SUPPORT FIBER ROLLOUT | fibre rollout | 1 |
+
+An unmapped seventh falls back to its own text lower-cased, so a new reason
+renders as itself instead of vanishing until someone notices.
+
+**Why the site and not a column in `esb.db`.** The database is disposable and
+rebuilt from the logs; a label baked into it needs a rebuild to change, which is
+the wrong cost for a copy decision. The collector is also the half that has to
+keep running on a Raspberry Pi on the standard library, and its job is capture,
+not interpretation — nothing is parsed before it is written. A dict in
+`esb_site/model.py` is testable, changeable in a commit, and degrades to the raw
+text when the feed surprises it.
+
+### The 177 planned events with no reason: there is nothing to glean
+
+15% of planned records carry an empty `plannedOutageReason`. The only other free
+text on the record is `statusMessage`, and it is the same apology on 1,313 of
+the 1,322 planned records — *"we are carrying out essential improvement /
+maintenance works in your area"* — so it distinguishes nothing. `plannerGroup`
+is a depot, not a purpose. Those rows say `Planned` and stop; inferring
+"maintenance" from boilerplate every planned outage carries would be inventing a
+distinction the feed does not draw.
+
+Guarded by `tests/test_site_model.py::TestCaseCopy`, one test per shape.
+
+## The county page became an archive and nothing else — 2026-08-28
+
+Owner read of `c/<slug>.html`. Two things on it belonged to a different page.
+
+### The header's age line is gone
+
+`Updated 11 hours ago · Data to 27 Aug, 23:02 UTC` sat under the county name.
+It was the last survivor of the horizon's retreat (2026-08-26: out of the
+footer, kept here because a county page is entered cold from a search result).
+It is out of the header now too, and with it the `#stamp` span, its
+`data-observed`/`data-stale-hours` attributes and the `freshness()` call.
+
+**The cost, stated plainly: a county page no longer warns that collection has
+stopped.** What is left is static and still true — the month table's newest row
+carries `to 27 Aug` under its own name, so a record that stops advancing shows
+as a month table that stops advancing. The index keeps the live banner. If the
+warning is wanted back here, it is a `freshness()` call and the 15 KB of script
+that went with it.
+
+### The newest month's card is gone
+
+The page opened with a card for the latest month alone: heading, legend, day
+bar, four tiles. Two objections, and the second is the fatal one.
+
+- **Wrong scale.** One month's day-by-day detail on the page whose whole reason
+  for existing is *every* month. The interactive view is where a month is the
+  unit; this page is the record.
+- **It was a duplicate.** Every figure in those four tiles — restored within
+  4 hours, faults, planned, customers hit — is the first row of the
+  month-by-month table immediately below it. The page led with a copy of its
+  own next section, and the section that matters was pushed below the fold.
+
+`c/cork.html` now opens: back link, grade chip and county name, the customer
+count, then **Month by month**. 127.4 KB → 106.3 KB.
+
+The grade chip stays on the owner's call, but it is still the newest month's
+letter and the card that used to name that month is gone — so its hover title
+names it: *"Grade B in August 2026: 90% or more restored within 4 hours"*.
+Without that a bare "B" reads as the county's standing for all time, which is
+the one thing an archive page must not imply.
+
+### The county page ships no JavaScript at all
+
+With no day bar to caption and no age to compute, `bindDayCaption()` and the
+stamp script were the page's only behaviour, and statusui's `ui.js` was inlined
+for them alone. Both `<script>` blocks are gone: **county pages 1,840 KB →
+1,349 KB across 26 files**, a 15 KB saving per page on pages that are, by
+design, entered cold from a search result. The only `<script>` left is the
+analytics beacon, which is not ours.
+
+`render._legend_html`, `render._day_cells`, `DAY_LABELS` and `LEGEND_ITEMS`
+went with the card — nothing else rendered a bar from Python. The app keeps its
+own copies (`legendHtml`, `dayCells` in `ui.js`), which is where day bars now
+live exclusively. Guarded by
+`tests/test_ui_globals.py::test_the_county_page_ships_no_script_at_all`.
+
+### Already done, on this branch
+
+Two items in the same review were fixed earlier and are visible only after a
+rebuild: the month table's `CML` column became **Minutes lost** carrying the
+month's own figure (3451f8f), and the case rows got the sentence treatment
+(73be525) — the static county page renders through the same `_case_html` as
+every other page, so it was never a separate fix.

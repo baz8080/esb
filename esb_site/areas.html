@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Every area - Irish Electricity Outages</title>
-<meta name="description" content="Every Irish town, settlement and rural area an ESB Networks power outage has been recorded near, county by county, with the number of outages each has seen.">
+<meta name="description" content="Every Irish town, settlement and rural area with a recorded ESB Networks power outage, county by county, with the number of outages each has seen.">
 <link rel="canonical" href="<!--CANONICAL-->">
 <style>
 <!--UI-CSS-->
@@ -12,7 +12,7 @@
   /* The jump nav sticks, because the whole point of one long document is that
      you can Ctrl+F it — and having scrolled to Wicklow you still want Cork. */
   nav {
-    position: sticky; top: 0; z-index: 2; margin: 18px 0 8px;
+    position: sticky; top: 0; z-index: 2; margin: 6px 0 8px;
     padding: 10px 12px; border-radius: 8px; line-height: 2;
     background: var(--surface); border: 1px solid var(--border);
     font-size: 13px; color: var(--muted);
@@ -38,7 +38,9 @@
     background: var(--surface); color: var(--ink); border: 1px solid var(--border);
   }
   .find input:focus { outline: 2px solid var(--ink-2); outline-offset: -1px; }
-  .find p { color: var(--muted); font-size: 13px; margin-top: 6px; min-height: 1.45em; }
+  /* Still reserves its height, so a count appearing mid-search cannot shove
+     the page down - but one line, not one and a half. */
+  .find p { color: var(--muted); font-size: 13px; margin-top: 4px; min-height: 1.2em; }
   /* The nav holds the two lines the 104px scroll margin clears only when
      roughly 900px wide; narrower it wraps taller and hides the heading a jump
      link lands on — and on a phone it eats the screen — so below that it
@@ -48,7 +50,11 @@
     section { scroll-margin-top: 12px; }
   }
 
-  footer { margin-top: 40px; line-height: 1.6; }
+  /* One line where the rows begin: it is about what a click does, and two
+     thirds of the rows land on a county page. */
+  .note { color: var(--muted); font-size: 13px; margin: 0; }
+
+  footer { line-height: 1.6; }
   footer p + p { margin-top: 8px; }
 </style>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
@@ -58,7 +64,8 @@
   <a class="back" href="index.html">← Irish Electricity Outages</a>
   <header>
     <h1>Every area with an outage</h1>
-    <p class="sub">Every Census 2022 area an ESB Networks outage has been recorded near. Pick one for its full outage history.</p>
+    <p class="sub">Search for a place, or jump to a county — every name links to where its outages are listed.</p>
+    <p class="sub2">Counts are outages pinned to the area nearest each fault ESB reported, not necessarily every outage that cut power there.</p>
     <div class="find">
       <input id="q" type="search" placeholder="Search for your town or area" autocomplete="off" aria-label="Search for your town or area">
       <p id="qcount" role="status" aria-live="polite"></p>
@@ -68,8 +75,7 @@
   <!--AREAS-->
 
   <footer>
-    <p>An area is a CSO settlement, a Local Electoral Area of one of the five cities, or the countryside of an Electoral Division shown as <em>Around&nbsp;…</em>. An outage is filed under the area nearest the fault ESB reported, so the figure beside each name counts outages pinned near that area — not necessarily every one that cut its power. <em>Around&nbsp;…</em> areas are countryside rather than places, so their history lives on the county page instead of a page of their own.</p>
-    <p>Areas with no outage at all are not listed: a page of them would say nothing. <a href="https://github.com/baz8080/esb">Source code</a> · not affiliated with ESB Networks or the CRU.</p>
+    <p id="gen"><a href="https://github.com/baz8080/esb">Source code</a> · not affiliated with ESB Networks or the CRU.</p>
   </footer>
 </div>
 <script>

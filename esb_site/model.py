@@ -925,6 +925,29 @@ def county_month(outages, county, customers, ym, now, until):
     }
 
 
+# ESB publishes one of six, in block capitals. Labelled in the site and not in
+# esb.db, which is disposable: notes/design-alignment.md § The reason moved into
+# the tag.
+PLANNED_REASONS = {
+    "CONNECT NEW CUSTOMERS": "new connections",
+    "DIVERT AN OVERHEAD LINE": "line diversion",
+    "IMPROVE QUALITY OF SUPPLY": "supply quality",
+    "IMPROVE THE NETWORK": "network improvement",
+    "SUPPORT FIBER ROLLOUT": "fibre rollout",
+    "UPGRADE THE NETWORK": "network upgrade",
+}
+
+
+def reason_label(reason):
+    """ESB's shouted reason in a couple of readable words, or nothing at all.
+
+    15% carry no reason, and the only other free text on the record is the
+    apology every planned outage carries, so there is nothing to infer.
+    """
+    reason = (reason or "").strip()
+    return PLANNED_REASONS.get(reason.upper(), reason.lower())
+
+
 def national_ci(outages, until):
     """Fault interruptions per customer per year, ESB's other regulated index.
 
@@ -955,17 +978,23 @@ def national_caidi(outages, until):
     return sum(o.customer_minutes(lo, hi) for o in faults) / interrupted
 
 
-def national_cml(outages, until, ym=None):
-    """Annualised unplanned CML across the whole network.
+def national_cml(outages, until, ym=None, annualised=True):
+    """Unplanned CML across the whole network.
 
-    This is the number that anchors the site's credibility: it is directly
-    comparable to the figure ESB Networks publishes each year, and the test
-    suite holds it to that comparison.
+    Annualised, this is the number that anchors the site's credibility: it is
+    directly comparable to the figure ESB Networks publishes each year, and the
+    test suite holds it to that comparison. `annualised=False` returns the
+    window's own minutes per customer, which is what a surface showing one
+    month has to print - a yearly rate beside a month's counts is a second
+    clock on the same line, and nothing on the page says which is which.
     """
     if ym:
         lo, hi = observed_window(ym, until)
     else:
         lo, hi = COLLECTION_START, until
-    minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
     total = sum(o.customer_minutes(lo, hi) for o in outages if not o.planned)
-    return total / NATIONAL_CUSTOMERS * MINUTES_PER_YEAR / minutes
+    cml = total / NATIONAL_CUSTOMERS
+    if not annualised:
+        return cml
+    minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
+    return cml * MINUTES_PER_YEAR / minutes

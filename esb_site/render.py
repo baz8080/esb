@@ -114,7 +114,8 @@ def build(outages, sa_index, now, until):
                 s["cells"],
                 s["grade"],
                 None if s["within"] is None else round(s["within"], 1),
-                round(s["cml"], 1),
+                # a month's row on a month's clock; `cml` is the annual rate
+                round(s["cml_month"], 1),
                 s["faults"],
                 s["planned"],
                 s["customers_hit"],
@@ -136,7 +137,7 @@ def build(outages, sa_index, now, until):
             if o.minutes / 60.0 <= model.CHARTER_TARGET_HOURS
         )
         national[ym] = [
-            round(model.national_cml(outages, until, ym), 1),
+            round(model.national_cml(outages, until, ym, annualised=False), 1),
             len(faults),
             len(live) - len(faults),
             sum(o.customers for o in faults),
@@ -190,6 +191,9 @@ def build(outages, sa_index, now, until):
         # with every rebuild, and hard-coding them into the prose meant the
         # paragraph making the site's credibility argument quietly went wrong.
         "compare": {
+            # the one annual figure left, for the paragraph that argues with
+            # ESB's own yearly number; every other figure on the site is a month
+            "cml": round(model.national_cml(outages, until), 1),
             "caidi": round(model.national_caidi(outages, until) or 0),
             "esb_caidi": round(model.ESB_NATIONAL_CML / model.ESB_NATIONAL_CI),
             "bias": round(
@@ -222,7 +226,7 @@ def case_record(o):
         _short(o.start),
         _short(o.end),
         o.end_src,
-        o.reason.title() if o.reason else "",
+        model.reason_label(o.reason),
         list(o.chain),
         [
             [kind, _short(when), customers]
@@ -256,61 +260,75 @@ def shard(outages, months, until):
     return by_month
 
 
-def _end_bits(k):
-    """How the outage ended, per the source of the end time. Only a "restored"
-    end is something ESB confirmed; the wording keeps that visible, and the
-    estimate is shown beside the actual rather than silently replaced by it."""
-    if k[6] == "restored":
-        bits = [f"restored {_when_at(k[5], k[4])}"]
+def _vs_estimate(end, est):
+    """Restored earlier or later than ESB said, when the gap is worth saying.
+
+    69% of restored faults beat the estimate and 25% miss it, which is worth
+    more than the estimate's clock time. Inside five minutes it is noise.
+    """
+    delta = (
+        datetime.fromisoformat(end) - datetime.fromisoformat(est)
+    ).total_seconds() / 60.0
+    if abs(delta) < 5:
+        return ""
+    return (
+        f"{_span_hm(abs(delta) / 60.0)} "
+        f"{'later' if delta > 0 else 'earlier'} than ESB estimated"
+    )
+
+
+def _end_bits(k, hours):
+    """How the outage ended and how long it ran, as one phrase per shape.
+
+    Only a "restored" end is something ESB confirmed; the rest name the missing
+    record rather than hedging. Mirrored in site.html (endBits).
+    """
+    planned, src = k[2], k[6]
+    if src == "restored":
+        bits = [f"restored {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
         if k[10]:
-            # Dated against the end, not the start: the reader has just been
-            # handed the restore's day, so that is the day a bare clock time
-            # reads as.
-            bits.append(f"ESB's estimate was {_when_at(k[10], k[5])}")
-        return bits
-    if k[6] == "estimated":
-        # Planned works never report a restore, so "not confirmed" would tag
-        # every one of them; the estimate is simply the scheduled end.
-        if k[2]:
-            return [f"scheduled until {_when_at(k[5], k[4])}"]
-        return [f"ESB estimated restore by {_when_at(k[5], k[4])}, not confirmed"]
-    if k[2]:
-        # Most planned works leave the feed without reaching their estimate;
-        # "seen out" would put fault vocabulary on scheduled work.
-        return [f"last listed at {_when_at(k[5], k[4])}"]
-    return [f"last seen out at {_when_at(k[5], k[4])}"]
+            bits.append(_vs_estimate(k[5], k[10]))
+        return [b for b in bits if b]
+    if src == "estimated":
+        # Planned works never report a restore, so their estimate is simply
+        # the schedule and needs no caveat; a fault's is a guess nobody stood
+        # over, and the caveat says which guess.
+        if planned:
+            return [f"scheduled until {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
+        return [
+            f"expected back by {_when_at(k[5], k[4])} ({_span_hm(hours, about=True)})",
+            "no restore time published",
+        ]
+    # Delisted: state the span that was measured - time off, or time on ESB's
+    # list - rather than the sighting's clock time, which told a reader nothing.
+    if planned:
+        return [f"listed for {_span_hm(hours, about=True)}", "no end time published"]
+    return [f"off for {_span_hm(hours, about=True)}", "no restore time published"]
 
 
 def _case_html(k):
     planned = k[2]
     chain = k[8]
-    bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s")]
+    bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s") + " affected"]
     if k[4]:
         bits.append(f"began {_fmt_day(k[4])}, {k[4][11:16]}")
-    span = ""
     if k[4] and k[5]:
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
-        # A planned record's span is its schedule when it has one and unknown
-        # when it left the feed early; "off" would claim an observed outage
-        # duration the footer says this data cannot know.
-        if planned:
-            if k[6] == "estimated":
-                span = f"scheduled {_span_hm(hours)}"
-        else:
-            span = "off " + _span_hm(hours, about=k[6] != "restored")
-        bits.extend(_end_bits(k))
+        bits.extend(_end_bits(k, hours))
+    # in the chip rather than trailing the timings: it is the row's most human
+    # fact and it was in its least-read position
+    tag = "Planned" if planned else "Fault"
     if planned and k[7]:
-        bits.append(html.escape(k[7].lower()))
+        tag += f" · {k[7]}"
     return "".join(
         [
             # Anchored on the ESB outage id, so a single outage can be linked to.
             f'<div class="case" id="o{html.escape(k[0])}"><div class="top">',
             f'<span class="where">{html.escape(k[1])}</span>',
             f'<span class="tag {"tag-p" if planned else "tag-f"}">'
-            f'{"Planned" if planned else "Fault"}</span>',
-            f'<span class="when">{span}</span></div>',
+            f"{html.escape(tag)}</span></div>",
             f'<div class="sum">{" · ".join(bits)}</div>',
             _chain_html(chain),
             _updates_html(k[9], planned),
@@ -382,41 +400,33 @@ def _updates_html(rows, planned=False):
     )
 
 
-DAY_LABELS = {
-    "0": "no significant fault",
-    "1": "minor fault disruption",
-    "2": "moderate fault disruption",
-    "3": "major fault disruption",
-    "4": "severe fault disruption",
-    "5": "planned works only",
-    "8": "no data collected for this day",
-    "9": "still to come",
+GRADES = {
+    "A": "meets ESB's aim of 95% restored within 4 hours",
+    "B": "90% or more restored within 4 hours",
+    "C": "80% or more restored within 4 hours",
+    "D": "70% or more restored within 4 hours",
+    "F": "fewer than 70% restored within 4 hours",
 }
 
-# What each day-cell colour means. The swatches take their colours from the
-# same site.css rules that colour the cells, so the two cannot drift.
-# Mirrored in site.html (legendHtml).
-LEGEND_ITEMS = (
-    ("b0", "no significant fault"),
-    ("b1", "minor"),
-    ("b2", "moderate"),
-    ("b3", "major"),
-    ("b4", "severe"),
-    ("b5", "planned works"),
-    ("b8", "no data"),
-)
 
+def _grade_chip(grade, month=None):
+    """The letter, with the band it stands for on hover.
 
-def _legend_html():
-    spans = "".join(
-        f'<span><i class="{cls}"></i>{label}</span>' for cls, label in LEGEND_ITEMS
+    The county page's footer used to spell the bands out. `month` names the
+    month the letter is for: on the heading the card that used to scope it is
+    gone, so a bare "F" would read as the county's standing for all time.
+    Mirrored in site.html (GRADES, gradeChip).
+    """
+    when = f" in {month}" if month else ""
+    title = (
+        f"Grade {grade}{when}: {GRADES[grade]}"
+        if grade
+        else f"Too few faults{when or ' this month'} to grade fairly"
     )
-    return f'<div class="legend">{spans}</div>'
-
-
-def _day_cells(cells, ym, partial):
-    # nothing to qualify on a day with no data or no colour yet
-    return statusui.day_cells(cells, ym, partial, DAY_LABELS, qualify=lambda ch: ch not in "89")
+    return (
+        f'<span class="gradechip g-{grade or "none"}" title="{html.escape(title)}">'
+        f'{grade or "–"}</span>'
+    )
 
 
 def _county_cases(by_month, months):
@@ -468,7 +478,7 @@ def _county_months_html(county, data, months, until):
             f'<tr><th scope="row">{month_label(ym)}'
             + (f'<span class="part">{watched}</span>' if watched else "")
             + "</th>"
-            f'<td><span class="gradechip g-{m[1] or "none"}">{m[1] or "–"}</span></td>'
+            f"<td>{_grade_chip(m[1])}</td>"
             f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
             f"<td>{m[4]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
             f"<td>{m[3]:,.1f}</td></tr>"
@@ -480,8 +490,8 @@ def _county_months_html(county, data, months, until):
         '<th scope="col">Restored in 4h</th>'
         '<th scope="col">Faults</th><th scope="col">Planned</th>'
         '<th scope="col">Customers hit</th>'
-        '<th scope="col" title="Customer minutes lost per customer, annualised, '
-        'unplanned">CML</th>'
+        '<th scope="col" title="Customer Minutes Lost: minutes off supply for '
+        'the average customer that month, faults only">Minutes lost</th>'
         f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>'
     )
 
@@ -494,10 +504,7 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     subject - and its title - change under the same URL every time the month
     rolled over.
     """
-    latest = months[-1]
-    m = data["stats"][county][latest]
-    grade = m[1]
-    label = month_label(latest)
+    grade = data["stats"][county][months[-1]][1]
     cases = _county_cases(by_month, months)
     faults = sum(1 for k in cases if not k[2])
     planned = len(cases) - faults
@@ -511,34 +518,15 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
         f"{data['start']}. Month-by-month totals and every outage recorded, "
         f"from ESB Networks' PowerCheck feed."
     )
-    tiles = [
-        ("–" if m[2] is None else f"{m[2]:g}%", "restored within 4 hours"),
-        (m[4], "faults"),
-        (m[5], "planned outages"),
-        (f"{m[6]:,}", "customers hit by faults"),
-    ]
     body = [
         '<a class="back" href="../index.html">← All counties</a>',
-        f'<div class="chead"><span class="gradechip g-{grade or "none"}">{grade or "–"}</span>',
+        f'<div class="chead">{_grade_chip(grade, month_label(months[-1]))}',
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">About {data["customers"][county]:,} homes '
-        "and businesses · estimated from Census 2022<br>"
-        # Entered cold from a search result, so it carries the same caveat the
-        # app does: the day bar ends where the data does. The page prefixes the
-        # age; without script this still reads on its own.
-        f'<span id="stamp" data-observed="{data["observed_iso"]}"'
-        f' data-stale-hours="{data["stale_hours"]}">'
-        f'Data to {html.escape(data["observed"])}</span></div>',
-        f'<div class="card"><h2>{label}</h2>{_legend_html()}<div class="bar tall">'
-        f'{_day_cells(m[0], latest, data["partial"])}</div>'
-        '<div class="daycap"></div><div class="tiles">',
-        "".join(
-            f'<div class="tile"><div class="v">{v}</div><div class="k">{k}</div></div>'
-            for v, k in tiles
-        ),
-        "</div>",
-        "</div>",
+        "and businesses · estimated from Census 2022</div>",
     ]
+    # Straight to the months: the newest month's card duplicated the table's
+    # first row (notes/design-alignment.md § The county page became an archive).
     body.append(_county_months_html(county, data, months, until))
     if cases:
         body.append(
@@ -606,20 +594,23 @@ def area_index(outages, sa_index):
     ]
 
 
-def _area_items(county, areas, prefix=""):
+def _area_items(county, areas, prefix="", county_fallback=False):
     """The <li> rows for one county's areas, shared by areas.html and c/*.html
-    so the two cannot disagree about a count; `prefix` hops up from c/. A
-    pageless "Around ..." row is plain text - this app has no area route to
-    fall back on, and the section heading already links the county's record.
+    so the two cannot disagree about a count; `prefix` hops up from c/.
+
+    `county_fallback` sends a row with no page of its own to the county's
+    record, which is where those outages are listed - 876 of the directory's
+    1,270 rows. The county page passes it off: there it would link at itself.
     """
     items = []
     for code, name, pop, events in areas:
         n = len(events)
-        where = (
-            f'<a href="{prefix}{area_path(county, name)}">{html.escape(name)}</a>'
-            if model.area_has_page(code)
-            else html.escape(name)
-        )
+        if model.area_has_page(code):
+            where = f'<a href="{prefix}{area_path(county, name)}">{html.escape(name)}</a>'
+        elif county_fallback:
+            where = f'<a href="{prefix}c/{slug(county)}.html">{html.escape(name)}</a>'
+        else:
+            where = html.escape(name)
         # units on every row, not a column heading that scrolls away
         items.append(
             f"<li>{where}"
@@ -644,9 +635,17 @@ def _areas_index_html(index):
             f"<h2>County {html.escape(county)} <span>· {len(areas)} "
             f'area{"" if len(areas) == 1 else "s"} · '
             f'<a href="c/{slug(county)}.html">county page</a></span></h2>'
-            f'<ul class="areas">{_area_items(county, areas)}</ul></section>'
+            f'<ul class="areas">{_area_items(county, areas, county_fallback=True)}'
+            "</ul></section>"
         )
-    return f"<nav>{nav}</nav>\n{''.join(sections)}"
+    # Once, where the rows start: a fallback row looks like every other and
+    # lands somewhere else. "Around ..." is 874 of the 876; the other two are
+    # the city remainders, which the wording has to cover as well.
+    note = (
+        '<p class="note"><em>Around&nbsp;…</em> and <em>Elsewhere&nbsp;in&nbsp;…</em> '
+        "areas have no page of their own — those links go to the county page.</p>"
+    )
+    return f"<nav>{nav}</nav>\n{note}\n{''.join(sections)}"
 
 
 def _km_label(d):
@@ -704,11 +703,10 @@ def area_page(county, name, pop, events, nearby, data):
         f'<span class="n">· {len(cases):,} outage'
         f'{"" if len(cases) == 1 else "s"}</span></h2>',
         # the one thing this page must not overclaim
-        '<p class="note">An outage is filed under the Census area nearest the '
-        "fault ESB reported, not under every area it cut power to. A fault that "
-        f"affected {html.escape(name)} may therefore be listed under a nearby "
-        "area, and a fault listed here may have cut power well beyond it - "
-        "which is how an outage can count more customers than "
+        '<p class="note">Outages are filed under the Census area nearest the '
+        f"fault ESB reported. A cut that hit {html.escape(name)} may be listed "
+        "under a neighbouring area, and one listed here may reach far beyond "
+        f"it - which is why a row can count more customers than "
         f"{html.escape(name)} has people.</p>",
         "".join(_case_html(k) for k in cases),
         "</div>",

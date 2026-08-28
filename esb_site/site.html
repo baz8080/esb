@@ -12,7 +12,9 @@
 <style>
 <!--UI-CSS-->
 <!--SITE-CSS-->
-</style>
+  /* The one footer that is a block of prose, so it keeps base.css's rule
+     above it; site.css turns that off for the static pages. */
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); }</style>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
 <body>
@@ -58,9 +60,7 @@
     <p><b>The grade is ESB's own published aim:</b> supply restored within
     <b>4 hours in 95% of cases</b>. Each county is scored on the share of its
     fault-interrupted customers back within that window - A meets the 95% aim,
-    then B 90%, C 80%, D 70%, F below. Planned works are excluded. The site is
-    built twice daily from snapshots of ESB Networks' public PowerCheck feed,
-    which keeps no history of its own.</p>
+    then B 90%, C 80%, D 70%, F below.</p>
     </details>
 
     <details><summary>How these numbers are worked out</summary>
@@ -79,7 +79,10 @@
     href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">Distribution
     Annual Performance Report 2024</a>; targets set under the CRU's <a
     href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
-    framework</a>). It is shown for comparison but does not set the grade: the
+    framework</a>). The figure shown against a month on this page is the same
+    measure over that month, so it is not the one to hold against those two;
+    the comparable figure is this site's rate across everything collected,
+    about <b id="cmp-cml">–</b> a year. It does not set the grade: the
     feed counts about <b id="cmp-bias">–</b> more interrupted customers than ESB
     finally settles on, though the durations agree - an implied
     <b id="cmp-caidi">–</b> minutes per interrupted customer against ESB's
@@ -94,10 +97,6 @@
     began rather than when it was published, so the durations here measure the
     outage, not the notice. Where ESB never published a restore time the end is
     marked as an estimate or a last sighting, never presented as a measurement.</p>
-    <p>ESB opens a new record each time a fault's scope changes, so records
-    sharing a location and start time are folded into one outage here. A fault
-    that returns to the same spot is a separate interruption and stays a
-    separate row, tagged as a repeat.</p>
     </details>
 
     <details><summary>What it cannot tell you</summary>
@@ -143,14 +142,6 @@ var GRADES = {
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
-// The national total is customer-time, and "17215 days" reads as nonsense
-// against a 31-day month; once it passes a year, years are the honest unit.
-function customerTime(h) {
-  var years = h / 24 / 365.25;
-  if (years >= 1) return (years >= 10 ? Math.round(years) : years.toFixed(1)) + " years";
-  return fmtHours(h);
-}
-
 // a timestamp against the outage's start day: the clock time alone when it
 // falls on the same day, the full day otherwise. Mirrored in render.py.
 function whenAt(ts, ref) {
@@ -158,27 +149,36 @@ function whenAt(ts, ref) {
   return fmtDay(ts) + ", " + ts.slice(11, 16);
 }
 
-/* How the outage ended, per the source of the end time. Only a "restored" end
-   is something ESB confirmed; the wording keeps that visible, and the estimate
-   is shown beside the actual rather than silently replaced by it. */
-function endBits(k) {
+/* Restored earlier or later than ESB said, when the gap is worth saying: 69%
+   of restored faults beat the estimate, 25% miss it. Inside five minutes it is
+   noise. Mirrored in render.py (_vs_estimate). */
+function vsEstimate(end, est) {
+  var delta = (new Date(end + "Z") - new Date(est + "Z")) / 60000;
+  if (Math.abs(delta) < 5) return "";
+  return spanHM(Math.abs(delta) / 60) + (delta > 0 ? " later" : " earlier") +
+    " than ESB estimated";
+}
+
+/* How the outage ended and how long it ran, as one phrase per shape. Only a
+   "restored" end is something ESB confirmed; the rest name the missing record
+   rather than hedging. Mirrored in render.py. */
+function endBits(k, hours) {
   if (k[6] === "restored") {
-    var bits = ["restored " + whenAt(k[5], k[4])];
-    // Dated against the end, not the start: the reader has just been handed
-    // the restore's day, so that is the day a bare clock time reads as.
-    if (k[10]) bits.push("ESB's estimate was " + whenAt(k[10], k[5]));
-    return bits;
+    var bits = ["restored " + whenAt(k[5], k[4]) + " (" + spanHM(hours) + ")"];
+    if (k[10]) bits.push(vsEstimate(k[5], k[10]));
+    return bits.filter(Boolean);
   }
   if (k[6] === "estimated") {
-    // Planned works never report a restore, so "not confirmed" would tag
-    // every one of them; the estimate is simply the scheduled end.
-    if (k[2]) return ["scheduled until " + whenAt(k[5], k[4])];
-    return ["ESB estimated restore by " + whenAt(k[5], k[4]) + ", not confirmed"];
+    // A planned record's estimate is simply its schedule and needs no caveat;
+    // a fault's is a guess nobody stood over, and the caveat says which guess.
+    if (k[2]) return ["scheduled until " + whenAt(k[5], k[4]) + " (" + spanHM(hours) + ")"];
+    return ["expected back by " + whenAt(k[5], k[4]) + " (" + spanHM(hours, true) + ")",
+            "no restore time published"];
   }
-  // Most planned works leave the feed without reaching their estimate;
-  // "seen out" would put fault vocabulary on scheduled work.
-  if (k[2]) return ["last listed at " + whenAt(k[5], k[4])];
-  return ["last seen out at " + whenAt(k[5], k[4])];
+  // Delisted: state the span that was measured - time off, or time on ESB's
+  // list - rather than the sighting's clock time, which told a reader nothing.
+  if (k[2]) return ["listed for " + spanHM(hours, true), "no end time published"];
+  return ["off for " + spanHM(hours, true), "no restore time published"];
 }
 
 // a duration in hours and minutes, never a decimal a reader has to work out;
@@ -218,7 +218,8 @@ function gradeChip(g, big) {
 }
 
 // What each day-cell colour means; the swatches take their colours from the
-// same site.css rules that colour the cells. Mirrored in render.py.
+// same site.css rules that colour the cells, so the key cannot drift from the
+// bars. The only copy since the county page stopped rendering a bar.
 function legendHtml() {
   return [["b0", "no significant fault"], ["b1", "minor"], ["b2", "moderate"],
           ["b3", "major"], ["b4", "severe"], ["b5", "planned works"], ["b8", "no data"]]
@@ -273,8 +274,13 @@ function renderOverview() {
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "restored within 4 hours"],
     [num(n[3]), "customers hit by faults"],
-    [customerTime(n[4]), "of customer time off supply"],
-    [fmtCml(n[0]) + " CML", "annualised, unplanned"]
+    // Customers times the hours they were off. Always hours: rolled into
+    // years it printed "years" beside three figures that are all one month's.
+    [num(Math.round(n[4])), "customer-hours off supply"],
+    // The month's own minutes per customer, not the annualised rate: every
+    // other number under this heading is a month. "CML" is expanded only in
+    // the footer, and it already means faults alone.
+    [fmtCml(n[0]), "customer minutes lost"]
   ].map(function (t) {
     return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
   }).join("");
@@ -330,21 +336,15 @@ function caseHtml(k) {
   // [id, location, planned, customers, start, end, endSrc, reason, chain, updates, est]
   var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
-  var bits = [plural(k[3], "customer")];
+  var bits = [plural(k[3], "customer") + " affected"];
   if (k[4]) bits.push("began " + fmtDay(k[4]) + ", " + k[4].slice(11, 16));
-  if (k[4] && k[5]) bits = bits.concat(endBits(k));
-  if (planned && k[7]) bits.push(esc(k[7].toLowerCase()));
-  // A planned record's span is its schedule when it has one and unknown when
-  // it left the feed early; "off" would claim an observed outage duration.
-  var span = "";
-  if (dur != null) {
-    if (planned) { if (k[6] === "estimated") span = "scheduled " + spanHM(dur); }
-    else span = "off " + spanHM(dur, k[6] !== "restored");
-  }
+  if (dur != null) bits = bits.concat(endBits(k, dur));
+  // in the chip rather than trailing the timings: it is the row's most human
+  // fact and it was in its least-read position
+  var tag = planned ? "Planned" + (k[7] ? " · " + k[7] : "") : "Fault";
   return '<div class="case"><div class="top">' +
     '<span class="where">' + esc(k[1]) + "</span>" +
-    '<span class="tag ' + (planned ? "tag-p" : "tag-f") + '">' + (planned ? "Planned" : "Fault") + "</span>" +
-    '<span class="when">' + span + "</span></div>" +
+    '<span class="tag ' + (planned ? "tag-p" : "tag-f") + '">' + esc(tag) + "</span></div>" +
     '<div class="sum">' + bits.join(" · ") + "</div>" +
     (chain && chain.length
       ? '<div class="repeat">Repeat fault - outage ' + chain[0] + " of " + chain[1] +
@@ -438,6 +438,7 @@ function boot() {
   // Filled from the build, not written into the prose: these three drift every
   // time the corpus grows, and the paragraph they sit in is the page's argument
   // for why its CML is not ESB's.
+  document.getElementById("cmp-cml").textContent = D.compare.cml;
   document.getElementById("cmp-caidi").textContent = D.compare.caidi;
   document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
   document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
