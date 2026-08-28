@@ -402,6 +402,36 @@ CI there is per 100 customers, hence 1.3786. 1.75 against a CML of 117.47 would
 be comparing two different populations, and it would silently drag the measured
 bias down by a fifth.
 
+### Is half a million customer-hours in a month plausible? — 2026-08-28
+
+The national tile reads **473,067 customer-hours off supply** for 1–27 August
+2026, and it looks enormous. It decomposes three ways, and all three land where
+they should:
+
+- **As the product it is.** 311,321 customers interrupted × 1.52 h mean time off
+  = 473,067. That mean is 91 minutes, which is CAIDI — the one index the
+  customer-count bias divides out of, and the figure `test_site_national.py`
+  holds against ESB's own 85. The duration half of the multiplication is the
+  best-evidenced number on the site.
+- **Per customer.** 473,067 h ÷ 2.5M meters = **11.4 minutes each**, which is
+  exactly what the CML tile beside it says. The average customer lost eleven
+  minutes of supply in August. The two tiles are the same fact, and a reader
+  can check one against the other by eye — which they could not while one of
+  them was annualised.
+- **Against ESB's published figures.** 117.47 CML × 2.5M = 4,894,583
+  customer-hours a year, or **348,655** over a 26-day window. This site says
+  473,067: **1.36×**, while the interrupted-customer count is **1.27×** what
+  ESB's published CI implies over the same window. Durations agree, headcount
+  does not — the documented feed bias, plus ESB excluding storm days where this
+  site excludes nothing. Nothing new is wrong.
+
+**It is not one bad day.** 1,051 faults; median event 135 customer-hours, mean
+450; the top 10 events are 15.8% of the total, the top 50 are 43.5%. The largest
+single contributor is Whitehall, Dublin on 23 August — 8,730 customers for 1.8 h
+— at 2.4% of the month. A long tail of ordinary faults is exactly the shape this
+total should have; if it ever concentrates, suspect a merge failure or a
+duration blowing out, not a bad month.
+
 ### When to refresh
 
 DAPR 2024 was issued **September 2025** and is the newest published as of August
