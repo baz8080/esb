@@ -168,21 +168,49 @@ it already did for CAIDI and the bias.
 ### `54 years` / `of customer time off supply`
 
 The question it drew was "54 years since when?" — and the tile is one month.
-The unit was the problem: this is customer-time, customers multiplied by the
-hours they were off, and "years" beside a month's heading reads as calendar
-years, which is why 54 looked impossibly large. It is right — 2.5M customers at
-154 CML is about 61 customer-years a month.
+This is customer-time, customers multiplied by the hours they were off, so the
+first pass put the "customer" into the unit: `54` / `customer-years off
+supply`, with a `customerTime` helper rolling hours up into days and then years
+so the number stayed small.
 
-Now `54` / `customer-years off supply`. The unit moved into the label rather
-than staying beside the number because `.tile .v` is 24px in a 150px grid
-column: "54 customer-years" overflows it, "54" does not. `customerTime` returns
-`[value, unit]` for that, and its sub-year fallbacks are spelled the same way
-("customer-days", "customer-hours") instead of deferring to `fmtHours`, which
-has no way to say whose hours they are.
+**That was still wrong, and not subtly: the word "years" was printed on the
+tile.** Under a heading reading "The national picture in August 2026", beside
+three figures that are all August's, one tile said *years*. A reader does not
+have to misread anything to be stopped by that — the year is on the page, in
+plain sight, and the label is 12.5px under a 24px number with no room to say
+what it is doing there. "Not annual, it is a product unit" is a true answer and
+a useless one: it explains the tile instead of fixing it.
+
+The quantity was never annual: 311,321 customers off supply for their various
+spells during August add up to 473,067 customer-hours, which *is* 54
+customer-years, all of it accrued inside August. A product unit has no upper
+bound in calendar terms — 2.5M customers off for one hour is 285 customer-years
+in an hour — which is exactly why naming it after a calendar span is the wrong
+choice on a page organised by calendar months.
+
+So the unit is now always **customer-hours**: `473,067` / `customer-hours off
+supply`. Hours are the one time unit that cannot collide with the calendar —
+nobody reads 473,067 hours as a span of the month — and "customer-hours" is
+the standard industry form of exactly this quantity. `customerTime` is gone
+with its two rollup branches; the tile is `num(Math.round(n[4]))`, which is
+also the whole of what the payload already carried.
+
+The number is large, which was the original objection to printing hours
+("17215 days reads as nonsense") — but that objection was about *days*, a unit
+a reader will try to place in a 31-day month. A big number in an unambiguous
+unit beats a small one in an ambiguous unit, and `num()` gives it thousands
+separators; 7 characters at 24px fits the 150px column.
 
 The month is left to the heading directly above the tiles, as it is for the
 other three: "this month" on one tile would be wrong the moment a reader picks
 an earlier month tab.
+
+**This tile and the CML tile are the same quantity** — customer-hours ÷ 2.5M
+customers, in different units — which the annualisation used to disguise. Both
+stay: one is the national total, the other is what it meant for the average
+customer, and per-capita beside total is a pair a reader can use. Replacing
+this one with something independent (faults past the 24-hour compensation mark
+is the obvious candidate) was raised and declined by the owner.
 
 ## What the footer stopped saying — 2026-08-28
 

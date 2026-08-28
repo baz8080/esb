@@ -140,18 +140,6 @@ var GRADES = {
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
-// The national total is customers multiplied by the hours they were off, so
-// the unit has to carry the "customer": "54 years" against a 31-day month
-// reads as a claim about the calendar. Years once it passes one, for the same
-// reason - "17215 days". The unit rides in the tile's label rather than beside
-// the number, which has a 150px column to sit in at 24px.
-function customerTime(h) {
-  var years = h / 24 / 365.25, days = h / 24;
-  if (years >= 1) return [years >= 10 ? Math.round(years) : years.toFixed(1), "customer-years"];
-  if (days >= 1) return [days >= 10 ? Math.round(days) : days.toFixed(1), "customer-days"];
-  return [Math.round(h), "customer-hours"];
-}
-
 // a timestamp against the outage's start day: the clock time alone when it
 // falls on the same day, the full day otherwise. Mirrored in render.py.
 function whenAt(ts, ref) {
@@ -271,11 +259,14 @@ function renderOverview() {
 
   document.getElementById("natHeading").textContent =
     "The national picture in " + monthLabelLong(curMonth);
-  var ct = customerTime(n[4]);
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "restored within 4 hours"],
     [num(n[3]), "customers hit by faults"],
-    [ct[0], ct[1] + " off supply"],
+    // Customers multiplied by the hours they were off, and the unit is always
+    // hours: rolled up into years it printed the word "years" beside three
+    // figures that are all one month's, and no 12.5px label can explain that
+    // away. Hours are the one span nobody tries to place in the calendar.
+    [num(Math.round(n[4])), "customer-hours off supply"],
     // "CML" is only ever expanded in the footer, and it already means faults
     // only, so the initials and "unplanned" both went. The figure itself is
     // the month's own minutes per customer rather than the annualised rate:
