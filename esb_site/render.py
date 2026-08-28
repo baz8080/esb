@@ -114,9 +114,7 @@ def build(outages, sa_index, now, until):
                 s["cells"],
                 s["grade"],
                 None if s["within"] is None else round(s["within"], 1),
-                # The row is one month, so it carries that month's own minutes
-                # per customer; `cml` is the annualised rate, which belongs to
-                # the year-scale comparison in the footer and nowhere else.
+                # a month's row on a month's clock; `cml` is the annual rate
                 round(s["cml_month"], 1),
                 s["faults"],
                 s["planned"],
@@ -193,9 +191,8 @@ def build(outages, sa_index, now, until):
         # with every rebuild, and hard-coding them into the prose meant the
         # paragraph making the site's credibility argument quietly went wrong.
         "compare": {
-            # The one annualised figure the site still shows, and the only
-            # place it makes sense: the paragraph arguing about ESB's own
-            # yearly number. Everything else on the page is a month.
+            # the one annual figure left, for the paragraph that argues with
+            # ESB's own yearly number; every other figure on the site is a month
             "cml": round(model.national_cml(outages, until), 1),
             "caidi": round(model.national_caidi(outages, until) or 0),
             "esb_caidi": round(model.ESB_NATIONAL_CML / model.ESB_NATIONAL_CI),
@@ -266,10 +263,8 @@ def shard(outages, months, until):
 def _vs_estimate(end, est):
     """Restored earlier or later than ESB said, when the gap is worth saying.
 
-    69% of restored faults beat ESB's estimate and 25% miss it, so how it
-    landed against the estimate is the most interesting thing on the row - more
-    than the estimate's own clock time, which is what this replaced. Inside
-    five minutes it is noise and the clause is dropped.
+    69% of restored faults beat the estimate and 25% miss it, which is worth
+    more than the estimate's clock time. Inside five minutes it is noise.
     """
     delta = (
         datetime.fromisoformat(end) - datetime.fromisoformat(est)
@@ -285,11 +280,8 @@ def _vs_estimate(end, est):
 def _end_bits(k, hours):
     """How the outage ended and how long it ran, as one phrase per shape.
 
-    Only a "restored" end is something ESB confirmed. The rest say outright
-    that no end time was published, rather than leaving a reader to work out
-    what "not confirmed" was hedging, and the span sits inside the phrase it
-    belongs to instead of floating unlabelled at the end of the row.
-    Mirrored in site.html (endBits).
+    Only a "restored" end is something ESB confirmed; the rest name the missing
+    record rather than hedging. Mirrored in site.html (endBits).
     """
     planned, src = k[2], k[6]
     if src == "restored":
@@ -307,9 +299,8 @@ def _end_bits(k, hours):
             f"expected back by {_when_at(k[5], k[4])} ({_span_hm(hours, about=True)})",
             "no restore time published",
         ]
-    # Delisted: the last sighting is the whole of what the data knows, so the
-    # phrase states what was measured - time off, or time on ESB's list - and
-    # the clock time of that sighting is dropped. It told a reader nothing.
+    # Delisted: state the span that was measured - time off, or time on ESB's
+    # list - rather than the sighting's clock time, which told a reader nothing.
     if planned:
         return [f"listed for {_span_hm(hours, about=True)}", "no end time published"]
     return [f"off for {_span_hm(hours, about=True)}", "no restore time published"]
@@ -326,9 +317,8 @@ def _case_html(k):
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
         bits.extend(_end_bits(k, hours))
-    # What the works were for goes in the chip beside "Planned", where a
-    # reader takes in what kind of outage this is; trailing it after the
-    # timings left the row's most human fact in its least-read position.
+    # in the chip rather than trailing the timings: it is the row's most human
+    # fact and it was in its least-read position
     tag = "Planned" if planned else "Fault"
     if planned and k[7]:
         tag += f" · {k[7]}"
@@ -410,6 +400,32 @@ def _updates_html(rows, planned=False):
     )
 
 
+GRADES = {
+    "A": "meets ESB's aim of 95% restored within 4 hours",
+    "B": "90% or more restored within 4 hours",
+    "C": "80% or more restored within 4 hours",
+    "D": "70% or more restored within 4 hours",
+    "F": "fewer than 70% restored within 4 hours",
+}
+
+
+def _grade_chip(grade):
+    """The letter, with the band it stands for on hover.
+
+    The county page's footer used to spell the bands out. Mirrored in
+    site.html (GRADES, gradeChip).
+    """
+    title = (
+        f"Grade {grade}: {GRADES[grade]}"
+        if grade
+        else "Too few faults this month to grade fairly"
+    )
+    return (
+        f'<span class="gradechip g-{grade or "none"}" title="{html.escape(title)}">'
+        f'{grade or "–"}</span>'
+    )
+
+
 def _county_cases(by_month, months):
     """Every outage in one county, newest first, once each.
 
@@ -459,7 +475,7 @@ def _county_months_html(county, data, months, until):
             f'<tr><th scope="row">{month_label(ym)}'
             + (f'<span class="part">{watched}</span>' if watched else "")
             + "</th>"
-            f'<td><span class="gradechip g-{m[1] or "none"}">{m[1] or "–"}</span></td>'
+            f"<td>{_grade_chip(m[1])}</td>"
             f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
             f"<td>{m[4]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
             f"<td>{m[3]:,.1f}</td></tr>"
@@ -501,15 +517,13 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     )
     body = [
         '<a class="back" href="../index.html">← All counties</a>',
-        f'<div class="chead"><span class="gradechip g-{grade or "none"}">{grade or "–"}</span>',
+        f'<div class="chead">{_grade_chip(grade)}',
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022</div>",
     ]
-    # Straight to the months. The page carried a card for the newest month
-    # alone - legend, day bar and four tiles - and it was both the wrong scale
-    # for an archive and a duplicate: every figure in it is the first row of
-    # the table below, which is the thing this page exists to publish.
+    # Straight to the months: the newest month's card duplicated the table's
+    # first row (notes/design-alignment.md § The county page became an archive).
     body.append(_county_months_html(county, data, months, until))
     if cases:
         body.append(
@@ -582,15 +596,8 @@ def _area_items(county, areas, prefix="", county_fallback=False):
     so the two cannot disagree about a count; `prefix` hops up from c/.
 
     `county_fallback` sends a row with no page of its own to the county's
-    record instead. 876 of the directory's 1,270 rows are "Around ..." EDs and
-    city remainders, so leaving them as plain text left two thirds of a
-    directory unclickable - and the county page is where those outages are in
-    fact listed, which is where the search already sends the same names. The
-    county page passes it off: there, the link would point at itself.
-
-    No title attribute saying where it goes: at 876 rows that is 39 KB of
-    hover text no phone can read, and the page's own sub line makes the same
-    promise once, to everyone.
+    record, which is where those outages are listed - 876 of the directory's
+    1,270 rows. The county page passes it off: there it would link at itself.
     """
     items = []
     for code, name, pop, events in areas:
@@ -628,9 +635,8 @@ def _areas_index_html(index):
             f'<ul class="areas">{_area_items(county, areas, county_fallback=True)}'
             "</ul></section>"
         )
-    # Said once, under the nav, where the first rows are: an "Around ..." row
-    # is a link like every other and lands somewhere else, which is a surprise
-    # worth spending a line on rather than a tooltip nobody on a phone sees.
+    # Once, where the rows start: an "Around ..." row looks like every other
+    # and lands somewhere else.
     note = (
         '<p class="note"><em>Around&nbsp;…</em> areas have no page of their own '
         "— those links go to the county page.</p>"

@@ -12,9 +12,8 @@
 <style>
 <!--UI-CSS-->
 <!--SITE-CSS-->
-  /* The one footer on the site that is a block of prose - the grade, the
-     method, what the numbers cannot tell you - so it keeps base.css's rule
-     above it, which site.css turns off for the static pages. */
+  /* The one footer that is a block of prose, so it keeps base.css's rule
+     above it; site.css turns that off for the static pages. */
   footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); }</style>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
@@ -150,10 +149,9 @@ function whenAt(ts, ref) {
   return fmtDay(ts) + ", " + ts.slice(11, 16);
 }
 
-/* Restored earlier or later than ESB said, when the gap is worth saying. 69%
-   of restored faults beat the estimate and 25% miss it, so how it landed
-   against the estimate beats printing the estimate's own clock time. Inside
-   five minutes it is noise. Mirrored in render.py (_vs_estimate). */
+/* Restored earlier or later than ESB said, when the gap is worth saying: 69%
+   of restored faults beat the estimate, 25% miss it. Inside five minutes it is
+   noise. Mirrored in render.py (_vs_estimate). */
 function vsEstimate(end, est) {
   var delta = (new Date(end + "Z") - new Date(est + "Z")) / 60000;
   if (Math.abs(delta) < 5) return "";
@@ -162,9 +160,8 @@ function vsEstimate(end, est) {
 }
 
 /* How the outage ended and how long it ran, as one phrase per shape. Only a
-   "restored" end is something ESB confirmed; the rest say outright that no end
-   time was published rather than leaving a reader to decode "not confirmed",
-   and the span sits inside the phrase it belongs to. Mirrored in render.py. */
+   "restored" end is something ESB confirmed; the rest name the missing record
+   rather than hedging. Mirrored in render.py. */
 function endBits(k, hours) {
   if (k[6] === "restored") {
     var bits = ["restored " + whenAt(k[5], k[4]) + " (" + spanHM(hours) + ")"];
@@ -178,9 +175,8 @@ function endBits(k, hours) {
     return ["expected back by " + whenAt(k[5], k[4]) + " (" + spanHM(hours, true) + ")",
             "no restore time published"];
   }
-  // Delisted: the last sighting is the whole of what the data knows, so the
-  // phrase states what was measured - time off, or time on ESB's list - and
-  // that sighting's clock time is dropped. It told a reader nothing.
+  // Delisted: state the span that was measured - time off, or time on ESB's
+  // list - rather than the sighting's clock time, which told a reader nothing.
   if (k[2]) return ["listed for " + spanHM(hours, true), "no end time published"];
   return ["off for " + spanHM(hours, true), "no restore time published"];
 }
@@ -277,16 +273,12 @@ function renderOverview() {
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "restored within 4 hours"],
     [num(n[3]), "customers hit by faults"],
-    // Customers multiplied by the hours they were off, and the unit is always
-    // hours: rolled up into years it printed the word "years" beside three
-    // figures that are all one month's, and no 12.5px label can explain that
-    // away. Hours are the one span nobody tries to place in the calendar.
+    // Customers times the hours they were off. Always hours: rolled into
+    // years it printed "years" beside three figures that are all one month's.
     [num(Math.round(n[4])), "customer-hours off supply"],
-    // "CML" is only ever expanded in the footer, and it already means faults
-    // only, so the initials and "unplanned" both went. The figure itself is
-    // the month's own minutes per customer rather than the annualised rate:
-    // every other number under this heading is a month, and a yearly one
-    // among them can only be read by someone who knows it is there.
+    // The month's own minutes per customer, not the annualised rate: every
+    // other number under this heading is a month. "CML" is expanded only in
+    // the footer, and it already means faults alone.
     [fmtCml(n[0]), "customer minutes lost"]
   ].map(function (t) {
     return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
@@ -346,9 +338,8 @@ function caseHtml(k) {
   var bits = [plural(k[3], "customer") + " affected"];
   if (k[4]) bits.push("began " + fmtDay(k[4]) + ", " + k[4].slice(11, 16));
   if (dur != null) bits = bits.concat(endBits(k, dur));
-  // What the works were for goes in the chip beside "Planned", where a reader
-  // takes in what kind of outage this is; trailing it after the timings left
-  // the row's most human fact in its least-read position.
+  // in the chip rather than trailing the timings: it is the row's most human
+  // fact and it was in its least-read position
   var tag = planned ? "Planned" + (k[7] ? " · " + k[7] : "") : "Fault";
   return '<div class="case"><div class="top">' +
     '<span class="where">' + esc(k[1]) + "</span>" +

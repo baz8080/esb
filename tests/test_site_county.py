@@ -119,6 +119,18 @@ class TestTheMonthTable(CountyPageCase):
         self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
         self.page = self.render_county()
 
+    def test_a_grade_chip_carries_its_band(self):
+        """The footer used to spell the bands out. It does not any more, so the
+        chip has to, and the two copies of the wording - here and in the app's
+        JS - have to agree."""
+        # this fixture county is ungraded every month, which is the chip the
+        # page can show; the lettered ones come off the helper
+        self.assertIn("Too few faults this month to grade fairly", self.page)
+        self.assertIn('title="Grade A: meets ESB', render._grade_chip("A"))
+        app = render.SITE_HTML.read_text()
+        for grade, band in render.GRADES.items():
+            self.assertIn(band, app, f"site.html has drifted from GRADES[{grade}]")
+
     def test_every_month_gets_a_row_newest_first(self):
         rows = re.findall(r'<th scope="row">([A-Z][a-z]+ \d{4})', self.page)
         self.assertEqual(rows, [render.month_label(ym) for ym in reversed(self.months)])

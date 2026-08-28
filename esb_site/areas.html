@@ -38,9 +38,8 @@
     background: var(--surface); color: var(--ink); border: 1px solid var(--border);
   }
   .find input:focus { outline: 2px solid var(--ink-2); outline-offset: -1px; }
-  /* The empty line still reserves its height so a count appearing under the
-     field cannot shove the page down mid-search - but it reserves one line,
-     not one and a half, and the nav closes up behind it. */
+  /* Still reserves its height, so a count appearing mid-search cannot shove
+     the page down - but one line, not one and a half. */
   .find p { color: var(--muted); font-size: 13px; margin-top: 4px; min-height: 1.2em; }
   /* The nav holds the two lines the 104px scroll margin clears only when
      roughly 900px wide; narrower it wraps taller and hides the heading a jump
@@ -51,9 +50,8 @@
     section { scroll-margin-top: 12px; }
   }
 
-  /* One line where the rows begin, not in the header: it is about what a
-     click does, and it is read at the moment there are links to click. Two
-     thirds of them are "Around ..." rows that land on a county page. */
+  /* One line where the rows begin: it is about what a click does, and two
+     thirds of the rows land on a county page. */
   .note { color: var(--muted); font-size: 13px; margin: 0; }
 
   footer { line-height: 1.6; }

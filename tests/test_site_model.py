@@ -937,8 +937,7 @@ class TestCaseCopy(unittest.TestCase):
             "restored 14:32 (3 h 46 min) · 28 min earlier than ESB estimated",
             html,
         )
-        # The floating right-hand span is gone; the duration belongs to the
-        # phrase that names the end it measures.
+        # the duration belongs to the phrase naming the end it measures
         self.assertNotIn('class="when"', html)
 
     def test_a_restore_past_the_estimate_says_later(self):
@@ -968,9 +967,7 @@ class TestCaseCopy(unittest.TestCase):
         self.assertNotIn("not confirmed", html)
 
     def test_a_last_sighting_reads_as_a_span_not_a_timestamp(self):
-        # "last seen out at 14:32" made a reader work out the duration from
-        # two clock times on the same line. State the span; the sighting's
-        # own clock time was never the interesting half.
+        # "last seen out at 14:32" made a reader subtract two clock times
         html = render._case_html(
             self.record(end="2026-08-24T14:32", end_src="listed", est=None)
         )
@@ -999,9 +996,8 @@ class TestCaseCopy(unittest.TestCase):
         self.assertIn('<span class="tag tag-p">Planned</span>', html)
 
     def test_planned_works_delisted_early_are_not_seen_out(self):
-        # 928 of 1,318 planned events end as "listed". The fault vocabulary
-        # does not belong on scheduled work, and what was measured is time on
-        # ESB's list, not time off supply.
+        # 928 of 1,318 planned events end this way, and what was measured is
+        # time on ESB's list, not time off supply
         html = render._case_html(
             self.record(planned=1, end_src="listed", est=None)
         )
@@ -1021,8 +1017,7 @@ class TestCaseCopy(unittest.TestCase):
         self.assertEqual(model.reason_label("IMPROVE QUALITY OF SUPPLY"), "supply quality")
         self.assertEqual(model.reason_label("DIVERT AN OVERHEAD LINE"), "line diversion")
         self.assertEqual(model.reason_label(""), "")
-        # A seventh reason ESB starts publishing renders as itself rather than
-        # vanishing until someone notices.
+        # a seventh reason renders as itself rather than vanishing
         self.assertEqual(model.reason_label("REPLACE A POLE"), "replace a pole")
 
     def test_planned_timeline_rows_match_the_schedule_wording(self):

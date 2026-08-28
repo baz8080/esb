@@ -925,12 +925,9 @@ def county_month(outages, county, customers, ym, now, until):
     }
 
 
-# ESB publishes one of six reasons on a planned outage, in block capitals, and
-# nothing else that tells one apart: the status message is the same apology on
-# 1,313 of the 1,322 records that carry one. Labelled here rather than in the
-# collector because this is presentation - the database is disposable and the
-# labels would need a rebuild to change - and an unmapped seventh reason still
-# renders as itself instead of waiting for one.
+# ESB publishes one of six, in block capitals. Labelled in the site and not in
+# esb.db, which is disposable: notes/design-alignment.md § The reason moved into
+# the tag.
 PLANNED_REASONS = {
     "CONNECT NEW CUSTOMERS": "new connections",
     "DIVERT AN OVERHEAD LINE": "line diversion",
@@ -944,9 +941,8 @@ PLANNED_REASONS = {
 def reason_label(reason):
     """ESB's shouted reason in a couple of readable words, or nothing at all.
 
-    15% of planned records give no reason, and there is nothing to infer from:
-    the only other free text is the boilerplate every planned record carries.
-    Those say "Planned" and stop rather than guessing at "maintenance".
+    15% carry no reason, and the only other free text on the record is the
+    apology every planned outage carries, so there is nothing to infer.
     """
     reason = (reason or "").strip()
     return PLANNED_REASONS.get(reason.upper(), reason.lower())
