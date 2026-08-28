@@ -229,7 +229,7 @@ def case_record(o):
         _short(o.start),
         _short(o.end),
         o.end_src,
-        o.reason.title() if o.reason else "",
+        model.reason_label(o.reason),
         list(o.chain),
         [
             [kind, _short(when), customers]
@@ -263,61 +263,82 @@ def shard(outages, months, until):
     return by_month
 
 
-def _end_bits(k):
-    """How the outage ended, per the source of the end time. Only a "restored"
-    end is something ESB confirmed; the wording keeps that visible, and the
-    estimate is shown beside the actual rather than silently replaced by it."""
-    if k[6] == "restored":
-        bits = [f"restored {_when_at(k[5], k[4])}"]
+def _vs_estimate(end, est):
+    """Restored earlier or later than ESB said, when the gap is worth saying.
+
+    69% of restored faults beat ESB's estimate and 25% miss it, so how it
+    landed against the estimate is the most interesting thing on the row - more
+    than the estimate's own clock time, which is what this replaced. Inside
+    five minutes it is noise and the clause is dropped.
+    """
+    delta = (
+        datetime.fromisoformat(end) - datetime.fromisoformat(est)
+    ).total_seconds() / 60.0
+    if abs(delta) < 5:
+        return ""
+    return (
+        f"{_span_hm(abs(delta) / 60.0)} "
+        f"{'later' if delta > 0 else 'earlier'} than ESB estimated"
+    )
+
+
+def _end_bits(k, hours):
+    """How the outage ended and how long it ran, as one phrase per shape.
+
+    Only a "restored" end is something ESB confirmed. The rest say outright
+    that no end time was published, rather than leaving a reader to work out
+    what "not confirmed" was hedging, and the span sits inside the phrase it
+    belongs to instead of floating unlabelled at the end of the row.
+    Mirrored in site.html (endBits).
+    """
+    planned, src = k[2], k[6]
+    if src == "restored":
+        bits = [f"restored {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
         if k[10]:
-            # Dated against the end, not the start: the reader has just been
-            # handed the restore's day, so that is the day a bare clock time
-            # reads as.
-            bits.append(f"ESB's estimate was {_when_at(k[10], k[5])}")
-        return bits
-    if k[6] == "estimated":
-        # Planned works never report a restore, so "not confirmed" would tag
-        # every one of them; the estimate is simply the scheduled end.
-        if k[2]:
-            return [f"scheduled until {_when_at(k[5], k[4])}"]
-        return [f"ESB estimated restore by {_when_at(k[5], k[4])}, not confirmed"]
-    if k[2]:
-        # Most planned works leave the feed without reaching their estimate;
-        # "seen out" would put fault vocabulary on scheduled work.
-        return [f"last listed at {_when_at(k[5], k[4])}"]
-    return [f"last seen out at {_when_at(k[5], k[4])}"]
+            bits.append(_vs_estimate(k[5], k[10]))
+        return [b for b in bits if b]
+    if src == "estimated":
+        # Planned works never report a restore, so their estimate is simply
+        # the schedule and needs no caveat; a fault's is a guess nobody stood
+        # over, and the caveat says which guess.
+        if planned:
+            return [f"scheduled until {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
+        return [
+            f"expected back by {_when_at(k[5], k[4])} ({_span_hm(hours, about=True)})",
+            "no restore time published",
+        ]
+    # Delisted: the last sighting is the whole of what the data knows, so the
+    # phrase states what was measured - time off, or time on ESB's list - and
+    # the clock time of that sighting is dropped. It told a reader nothing.
+    if planned:
+        return [f"listed for {_span_hm(hours, about=True)}", "no end time published"]
+    return [f"off for {_span_hm(hours, about=True)}", "no restore time published"]
 
 
 def _case_html(k):
     planned = k[2]
     chain = k[8]
-    bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s")]
+    bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s") + " affected"]
     if k[4]:
         bits.append(f"began {_fmt_day(k[4])}, {k[4][11:16]}")
-    span = ""
     if k[4] and k[5]:
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
-        # A planned record's span is its schedule when it has one and unknown
-        # when it left the feed early; "off" would claim an observed outage
-        # duration the footer says this data cannot know.
-        if planned:
-            if k[6] == "estimated":
-                span = f"scheduled {_span_hm(hours)}"
-        else:
-            span = "off " + _span_hm(hours, about=k[6] != "restored")
-        bits.extend(_end_bits(k))
+        bits.extend(_end_bits(k, hours))
+    # What the works were for goes in the chip beside "Planned", where a
+    # reader takes in what kind of outage this is; trailing it after the
+    # timings left the row's most human fact in its least-read position.
+    tag = "Planned" if planned else "Fault"
     if planned and k[7]:
-        bits.append(html.escape(k[7].lower()))
+        tag += f" · {k[7]}"
     return "".join(
         [
             # Anchored on the ESB outage id, so a single outage can be linked to.
             f'<div class="case" id="o{html.escape(k[0])}"><div class="top">',
             f'<span class="where">{html.escape(k[1])}</span>',
             f'<span class="tag {"tag-p" if planned else "tag-f"}">'
-            f'{"Planned" if planned else "Fault"}</span>',
-            f'<span class="when">{span}</span></div>',
+            f"{html.escape(tag)}</span></div>",
             f'<div class="sum">{" · ".join(bits)}</div>',
             _chain_html(chain),
             _updates_html(k[9], planned),

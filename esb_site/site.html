@@ -147,27 +147,39 @@ function whenAt(ts, ref) {
   return fmtDay(ts) + ", " + ts.slice(11, 16);
 }
 
-/* How the outage ended, per the source of the end time. Only a "restored" end
-   is something ESB confirmed; the wording keeps that visible, and the estimate
-   is shown beside the actual rather than silently replaced by it. */
-function endBits(k) {
+/* Restored earlier or later than ESB said, when the gap is worth saying. 69%
+   of restored faults beat the estimate and 25% miss it, so how it landed
+   against the estimate beats printing the estimate's own clock time. Inside
+   five minutes it is noise. Mirrored in render.py (_vs_estimate). */
+function vsEstimate(end, est) {
+  var delta = (new Date(end + "Z") - new Date(est + "Z")) / 60000;
+  if (Math.abs(delta) < 5) return "";
+  return spanHM(Math.abs(delta) / 60) + (delta > 0 ? " later" : " earlier") +
+    " than ESB estimated";
+}
+
+/* How the outage ended and how long it ran, as one phrase per shape. Only a
+   "restored" end is something ESB confirmed; the rest say outright that no end
+   time was published rather than leaving a reader to decode "not confirmed",
+   and the span sits inside the phrase it belongs to. Mirrored in render.py. */
+function endBits(k, hours) {
   if (k[6] === "restored") {
-    var bits = ["restored " + whenAt(k[5], k[4])];
-    // Dated against the end, not the start: the reader has just been handed
-    // the restore's day, so that is the day a bare clock time reads as.
-    if (k[10]) bits.push("ESB's estimate was " + whenAt(k[10], k[5]));
-    return bits;
+    var bits = ["restored " + whenAt(k[5], k[4]) + " (" + spanHM(hours) + ")"];
+    if (k[10]) bits.push(vsEstimate(k[5], k[10]));
+    return bits.filter(Boolean);
   }
   if (k[6] === "estimated") {
-    // Planned works never report a restore, so "not confirmed" would tag
-    // every one of them; the estimate is simply the scheduled end.
-    if (k[2]) return ["scheduled until " + whenAt(k[5], k[4])];
-    return ["ESB estimated restore by " + whenAt(k[5], k[4]) + ", not confirmed"];
+    // A planned record's estimate is simply its schedule and needs no caveat;
+    // a fault's is a guess nobody stood over, and the caveat says which guess.
+    if (k[2]) return ["scheduled until " + whenAt(k[5], k[4]) + " (" + spanHM(hours) + ")"];
+    return ["expected back by " + whenAt(k[5], k[4]) + " (" + spanHM(hours, true) + ")",
+            "no restore time published"];
   }
-  // Most planned works leave the feed without reaching their estimate;
-  // "seen out" would put fault vocabulary on scheduled work.
-  if (k[2]) return ["last listed at " + whenAt(k[5], k[4])];
-  return ["last seen out at " + whenAt(k[5], k[4])];
+  // Delisted: the last sighting is the whole of what the data knows, so the
+  // phrase states what was measured - time off, or time on ESB's list - and
+  // that sighting's clock time is dropped. It told a reader nothing.
+  if (k[2]) return ["listed for " + spanHM(hours, true), "no end time published"];
+  return ["off for " + spanHM(hours, true), "no restore time published"];
 }
 
 // a duration in hours and minutes, never a decimal a reader has to work out;
@@ -328,21 +340,16 @@ function caseHtml(k) {
   // [id, location, planned, customers, start, end, endSrc, reason, chain, updates, est]
   var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
-  var bits = [plural(k[3], "customer")];
+  var bits = [plural(k[3], "customer") + " affected"];
   if (k[4]) bits.push("began " + fmtDay(k[4]) + ", " + k[4].slice(11, 16));
-  if (k[4] && k[5]) bits = bits.concat(endBits(k));
-  if (planned && k[7]) bits.push(esc(k[7].toLowerCase()));
-  // A planned record's span is its schedule when it has one and unknown when
-  // it left the feed early; "off" would claim an observed outage duration.
-  var span = "";
-  if (dur != null) {
-    if (planned) { if (k[6] === "estimated") span = "scheduled " + spanHM(dur); }
-    else span = "off " + spanHM(dur, k[6] !== "restored");
-  }
+  if (dur != null) bits = bits.concat(endBits(k, dur));
+  // What the works were for goes in the chip beside "Planned", where a reader
+  // takes in what kind of outage this is; trailing it after the timings left
+  // the row's most human fact in its least-read position.
+  var tag = planned ? "Planned" + (k[7] ? " · " + k[7] : "") : "Fault";
   return '<div class="case"><div class="top">' +
     '<span class="where">' + esc(k[1]) + "</span>" +
-    '<span class="tag ' + (planned ? "tag-p" : "tag-f") + '">' + (planned ? "Planned" : "Fault") + "</span>" +
-    '<span class="when">' + span + "</span></div>" +
+    '<span class="tag ' + (planned ? "tag-p" : "tag-f") + '">' + esc(tag) + "</span></div>" +
     '<div class="sum">' + bits.join(" · ") + "</div>" +
     (chain && chain.length
       ? '<div class="repeat">Repeat fault - outage ' + chain[0] + " of " + chain[1] +

@@ -948,44 +948,52 @@ class TestCaseCopy(unittest.TestCase):
             k[fields[name]] = value
         return k
 
-    def test_a_confirmed_restore_shows_the_estimate_beside_it(self):
+    def test_a_confirmed_restore_says_how_long_and_how_it_landed(self):
         html = render._case_html(self.record())
         self.assertIn(
-            "17 customers · began Mon 24 Aug, 10:46 · restored 14:32 · "
-            "ESB's estimate was 15:00",
+            "17 customers affected · began Mon 24 Aug, 10:46 · "
+            "restored 14:32 (3 h 46 min) · 28 min earlier than ESB estimated",
             html,
         )
-        self.assertIn('<span class="when">off 3 h 46 min</span>', html)
+        # The floating right-hand span is gone; the duration belongs to the
+        # phrase that names the end it measures.
+        self.assertNotIn('class="when"', html)
+
+    def test_a_restore_past_the_estimate_says_later(self):
+        html = render._case_html(self.record(est="2026-08-24T13:00"))
+        self.assertIn("restored 14:32 (3 h 46 min) · 1 h 32 min later than ESB estimated", html)
+
+    def test_an_estimate_all_but_met_is_not_worth_a_clause(self):
+        # Inside five minutes either way, "3 min earlier" is noise dressed as
+        # a finding. 5% of restored faults land there.
+        html = render._case_html(self.record(est="2026-08-24T14:35"))
+        self.assertIn("restored 14:32 (3 h 46 min)", html)
+        self.assertNotIn("than ESB estimated", html)
 
     def test_an_end_on_a_later_day_names_the_day(self):
         html = render._case_html(self.record(end="2026-08-25T01:10", est=None))
         self.assertIn("restored Tue 25 Aug, 01:10", html)
 
-    def test_a_cross_day_restore_dates_the_estimate(self):
-        # The estimate is dated against the end, not the start: after
-        # "restored Tue 25 Aug" a bare "20:15" would read as the 25th and
-        # place the estimate after the restore.
-        html = render._case_html(
-            self.record(end="2026-08-25T01:10", est="2026-08-24T20:15")
-        )
-        self.assertIn(
-            "restored Tue 25 Aug, 01:10 · ESB's estimate was Mon 24 Aug, 20:15",
-            html,
-        )
-
-    def test_an_unconfirmed_end_says_so_and_rounds_the_duration(self):
+    def test_an_unconfirmed_fault_end_says_what_is_missing(self):
+        # "not confirmed" left a reader guessing whether the estimate or the
+        # outage was the unconfirmed thing. Name the missing record instead.
         html = render._case_html(
             self.record(end="2026-08-24T15:00", end_src="estimated", est=None)
         )
-        self.assertIn("ESB estimated restore by 15:00, not confirmed", html)
-        # 4 h 14 min does not deserve minute precision on a guess.
-        self.assertIn('<span class="when">off about 4 h</span>', html)
+        self.assertIn(
+            "expected back by 15:00 (about 4 h) · no restore time published", html
+        )
+        self.assertNotIn("not confirmed", html)
 
-    def test_a_last_sighting_reads_as_one(self):
+    def test_a_last_sighting_reads_as_a_span_not_a_timestamp(self):
+        # "last seen out at 14:32" made a reader work out the duration from
+        # two clock times on the same line. State the span; the sighting's
+        # own clock time was never the interesting half.
         html = render._case_html(
             self.record(end="2026-08-24T14:32", end_src="listed", est=None)
         )
-        self.assertIn("last seen out at 14:32", html)
+        self.assertIn("off for about 4 h · no restore time published", html)
+        self.assertNotIn("last seen out", html)
 
     def test_a_very_short_unconfirmed_span_reads_as_a_bound(self):
         # A listed end 5 minutes after the start is a lower bound; "about
@@ -993,35 +1001,47 @@ class TestCaseCopy(unittest.TestCase):
         html = render._case_html(
             self.record(end="2026-08-24T10:51", end_src="listed", est=None)
         )
-        self.assertIn('<span class="when">off under 30 min</span>', html)
+        self.assertIn("off for under 30 min", html)
 
-    def test_a_planned_outage_carries_its_reason(self):
+    def test_a_planned_outage_wears_its_reason_in_the_tag(self):
         html = render._case_html(
             self.record(planned=1, end_src="listed", est=None,
-                        reason="Connect New Customers")
+                        reason="new connections")
         )
-        self.assertIn("· connect new customers", html)
+        self.assertIn('<span class="tag tag-p">Planned · new connections</span>', html)
+
+    def test_a_planned_outage_with_no_reason_just_says_planned(self):
+        # 15% of them, and nothing in the record distinguishes one: the status
+        # message is the same apology on every planned outage ESB publishes.
+        html = render._case_html(self.record(planned=1, end_src="listed", est=None))
+        self.assertIn('<span class="tag tag-p">Planned</span>', html)
 
     def test_planned_works_delisted_early_are_not_seen_out(self):
-        # 757 of 1,040 planned records end as "listed"; the fault vocabulary
-        # ("seen out", "off about") does not belong on scheduled work, and
-        # the observed listing span is not a duration this data knows.
+        # 928 of 1,318 planned events end as "listed". The fault vocabulary
+        # does not belong on scheduled work, and what was measured is time on
+        # ESB's list, not time off supply.
         html = render._case_html(
             self.record(planned=1, end_src="listed", est=None)
         )
-        self.assertIn("last listed at 14:32", html)
+        self.assertIn("listed for about 4 h · no end time published", html)
         self.assertNotIn("seen out", html)
-        self.assertIn('<span class="when"></span>', html)
+        self.assertNotIn("off for", html)
 
     def test_planned_works_read_as_a_schedule_not_a_failed_promise(self):
         html = render._case_html(
             self.record(planned=1, end="2026-08-24T15:00", end_src="estimated",
                         est=None)
         )
-        self.assertIn("scheduled until 15:00", html)
+        self.assertIn("scheduled until 15:00 (4 h 14 min)", html)
         self.assertNotIn("not confirmed", html)
-        # The span is the schedule, exact, and never claims time off supply.
-        self.assertIn('<span class="when">scheduled 4 h 14 min</span>', html)
+
+    def test_esbs_shouted_reasons_come_out_readable(self):
+        self.assertEqual(model.reason_label("IMPROVE QUALITY OF SUPPLY"), "supply quality")
+        self.assertEqual(model.reason_label("DIVERT AN OVERHEAD LINE"), "line diversion")
+        self.assertEqual(model.reason_label(""), "")
+        # A seventh reason ESB starts publishing renders as itself rather than
+        # vanishing until someone notices.
+        self.assertEqual(model.reason_label("REPLACE A POLE"), "replace a pole")
 
     def test_planned_timeline_rows_match_the_schedule_wording(self):
         rows = [

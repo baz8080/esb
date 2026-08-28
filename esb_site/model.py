@@ -925,6 +925,33 @@ def county_month(outages, county, customers, ym, now, until):
     }
 
 
+# ESB publishes one of six reasons on a planned outage, in block capitals, and
+# nothing else that tells one apart: the status message is the same apology on
+# 1,313 of the 1,322 records that carry one. Labelled here rather than in the
+# collector because this is presentation - the database is disposable and the
+# labels would need a rebuild to change - and an unmapped seventh reason still
+# renders as itself instead of waiting for one.
+PLANNED_REASONS = {
+    "CONNECT NEW CUSTOMERS": "new connections",
+    "DIVERT AN OVERHEAD LINE": "line diversion",
+    "IMPROVE QUALITY OF SUPPLY": "supply quality",
+    "IMPROVE THE NETWORK": "network improvement",
+    "SUPPORT FIBER ROLLOUT": "fibre rollout",
+    "UPGRADE THE NETWORK": "network upgrade",
+}
+
+
+def reason_label(reason):
+    """ESB's shouted reason in a couple of readable words, or nothing at all.
+
+    15% of planned records give no reason, and there is nothing to infer from:
+    the only other free text is the boilerplate every planned record carries.
+    Those say "Planned" and stop rather than guessing at "maintenance".
+    """
+    reason = (reason or "").strip()
+    return PLANNED_REASONS.get(reason.upper(), reason.lower())
+
+
 def national_ci(outages, until):
     """Fault interruptions per customer per year, ESB's other regulated index.
 

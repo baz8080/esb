@@ -233,3 +233,93 @@ already written down where it belongs — `notes/grading.md` § One ESB event is
 one row and § Repeat faults are not splits, with the counts and the rejected
 merge rules. The "Repeat fault - outage 2 of 3 at this location in quick
 succession" tag on the row explains itself in place.
+
+## The outage row stopped reading like a database row — 2026-08-28
+
+Owner read of `c/<slug>.html`: *"it's like reading a database row"*, with
+`span.when` — the right-aligned duration — named as the worst of it. Sometimes
+present, sometimes not, never adding clarity. Two options were put: build a card
+display, or make the row explain itself. The row is already a card; what it
+lacked was English, so the second.
+
+### `span.when` is gone
+
+It carried "off 3 h 46 min", "scheduled 4 h 34 min", or nothing at all — a
+number floating at the end of a line, disconnected from the timestamp it
+measured, and blank on 40% of rows (planned works that left the feed early).
+The span now sits inside the phrase that names the end it belongs to:
+`scheduled until 15:00 (4 h 34 min)`. `.case .when` stays in statusui's
+`base.css` for the other two sites; this one no longer emits it.
+
+### One phrase per shape, and the shapes are not evenly weighted
+
+Measured on 2,336 merged events:
+
+| shape | share | reads |
+|---|---:|---|
+| planned, delisted | 39.7% | `listed for about 7 h · no end time published` |
+| fault, restored | 36.6% | `restored 07:07 (2 h 2 min) · 2 h 8 min earlier than ESB estimated` |
+| planned, scheduled end | 15.0% | `scheduled until 15:00 (4 h 34 min)` |
+| fault, delisted | 6.0% | `off for under 30 min · no restore time published` |
+| fault, estimate only | 2.7% | `expected back by 04:15 (about 1 h) · no restore time published` |
+
+**"last seen out at 08:31" and "last listed at 15:00" are gone.** Both printed
+the clock time of a *sighting*, leaving the reader to subtract it from the start
+time to get the thing they wanted. The sighting's clock time was never the
+interesting half: what the data measured is a span, so the span is what it says
+— "off for" a fault, "listed for" scheduled works, since time on ESB's list is
+not a claim about time off supply.
+
+**"not confirmed" is gone.** It was ambiguous exactly where it needed not to be:
+unconfirmed *estimate*, or unresolved *outage*? It meant neither — it meant ESB
+published no restore time. That is what the row says now.
+
+**A restore is compared to the estimate, not printed beside it.** "ESB's
+estimate was 15:00" made the reader do the arithmetic. 69% of restored faults
+beat the estimate (median 58 min early) and 25% miss it (median 54 min late), so
+how it landed is the most interesting fact available: `2 h 8 min earlier than
+ESB estimated`. Inside five minutes either way (5% of them) the clause is
+dropped as noise.
+
+`N customers` became `N customers affected`, which is what the number means.
+
+### The reason moved into the tag, with a label
+
+`Tullow [Planned] … · divert an overhead line` put the row's most human fact in
+its least-read position, in ESB's own shouted phrasing. Now
+`Tullow [Planned · line diversion]`.
+
+ESB publishes a closed set of six reasons, all in block capitals, mapped in
+`model.PLANNED_REASONS`:
+
+| feed | shown | events |
+|---|---|---:|
+| IMPROVE QUALITY OF SUPPLY | supply quality | 518 |
+| UPGRADE THE NETWORK | network upgrade | 262 |
+| CONNECT NEW CUSTOMERS | new connections | 204 |
+| IMPROVE THE NETWORK | network improvement | 66 |
+| DIVERT AN OVERHEAD LINE | line diversion | 51 |
+| SUPPORT FIBER ROLLOUT | fibre rollout | 1 |
+
+An unmapped seventh falls back to its own text lower-cased, so a new reason
+renders as itself instead of vanishing until someone notices.
+
+**Why the site and not a column in `esb.db`.** The database is disposable and
+rebuilt from the logs; a label baked into it needs a rebuild to change, which is
+the wrong cost for a copy decision. The collector is also the half that has to
+keep running on a Raspberry Pi on the standard library, and its job is capture,
+not interpretation — nothing is parsed before it is written. A dict in
+`esb_site/model.py` is testable, changeable in a commit, and degrades to the raw
+text when the feed surprises it.
+
+### The 177 planned events with no reason: there is nothing to glean
+
+15% of planned records carry an empty `plannedOutageReason`. The only other free
+text on the record is `statusMessage`, and it is the same apology on 1,313 of
+the 1,322 planned records — *"we are carrying out essential improvement /
+maintenance works in your area"* — so it distinguishes nothing. `plannerGroup`
+is a depot, not a purpose. Those rows say `Planned` and stop; inferring
+"maintenance" from boilerplate every planned outage carries would be inventing a
+distinction the feed does not draw.
+
+Guarded by `tests/test_site_model.py::TestCaseCopy`, one test per shape.
