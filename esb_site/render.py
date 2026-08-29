@@ -405,7 +405,8 @@ GRADES = {
     "B": "90% or more restored within 4 hours",
     "C": "80% or more restored within 4 hours",
     "D": "70% or more restored within 4 hours",
-    "F": "fewer than 70% restored within 4 hours",
+    "E": "60% or more restored within 4 hours",
+    "F": "fewer than 60% restored within 4 hours",
 }
 
 

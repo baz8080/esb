@@ -50,15 +50,27 @@ counts only low and medium).
 
 **A county is scored on the share of its fault-interrupted customers who had
 supply back within 4 hours.** A ≥ 95% (ESB's published aim), B ≥ 90%, C ≥ 80%,
-D ≥ 70%, F below. A county-month with fewer than five faults, or fewer than five
-observed days, is left ungraded.
+D ≥ 70%, E ≥ 60%, F below. A county-month with fewer than five faults, or fewer
+than five observed days, is left ungraded.
 
 Nationally in the first month: **88.4%**, against the 95% aim. One outage in the
 whole corpus passed the 24-hour compensation mark.
 
-| | A | B | C | D | F |
-|---|---:|---:|---:|---:|---:|
-| Counties, August 2026 | 9 | 6 | 4 | 4 | 3 |
+| | A | B | C | D | E | F |
+|---|---:|---:|---:|---:|---:|---:|
+| Counties, August 2026, on the five-band scale | 9 | 6 | 4 | 4 | n/a | 3 |
+| Graded county-months, 2026-08-29 rebuild | 8 | 6 | 9 | 1 | 1 | 1 |
+
+The first row was measured before E existed, so its F column counts what would
+now be split between E and F.
+
+### The scale grew an E (2026-08-29)
+
+The scale ran A, B, C, D, F. Skipping E is an American-ism and ESB is not American, so the letter was added. It splits the old F band and moves nothing else: A stays on ESB's own 95% aim and every cut down to 70 sits where it did, so no county-month graded A to D changes letter.
+
+**The cut is 60%**, which continues the 10-point step the scale already uses below B. Measured over the 26 graded county-months in the 2026-08-29 rebuild, the F band held exactly two: Sligo at 68.0% and Longford at 59.3%. A cut at 60 puts one in each, which is the outcome that makes the split worth having. Cuts at 55 and 50 were rejected for emptying F outright, and 65 gives the same split as 60 while breaking the step for no gain.
+
+Unlike uisce's, this cut needed no fitting: the bands are anchored to an absolute published standard rather than calibrated against this dataset, so the arithmetic sets them and the distribution only has to be checked for a band nobody can reach.
 
 ### Why not Customer Minutes Lost
 

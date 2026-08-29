@@ -171,7 +171,7 @@ class NationalCase(unittest.TestCase):
         self.assertEqual(cml, round(month["cml_month"], 1))
         self.assertGreater(month["cml"], cml)
         self.assertEqual(len(cells), 31)
-        self.assertIn(grade, set("ABCDF") | {None})
+        self.assertIn(grade, set("ABCDEF") | {None})
         self.assertTrue(within is None or 0 <= within <= 100)
         self.assertGreater(faults, 0)
 

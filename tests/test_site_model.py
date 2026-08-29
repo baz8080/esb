@@ -89,8 +89,15 @@ class TestGrade(unittest.TestCase):
         self.assertEqual(model.grade(80.0), "C")
         self.assertEqual(model.grade(79.9), "D")
         self.assertEqual(model.grade(70.0), "D")
-        self.assertEqual(model.grade(69.9), "F")
+        self.assertEqual(model.grade(69.9), "E")
+        self.assertEqual(model.grade(60.0), "E")
+        self.assertEqual(model.grade(59.9), "F")
         self.assertEqual(model.grade(0.0), "F")
+
+    def test_the_scale_runs_a_to_f_inclusive(self):
+        """A scale that skips E is an American-ism, and ESB is not American."""
+        letters = [letter for letter, _ in model.GRADE_BANDS] + ["F"]
+        self.assertEqual(letters, list("ABCDEF"))
 
     def test_nothing_to_judge_means_no_grade(self):
         self.assertIsNone(model.grade(None))
