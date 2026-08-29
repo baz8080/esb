@@ -131,6 +131,19 @@ rejected, a dependency nothing else records, a constraint from outside the code.
 One line where one will do. If the reasoning needs a paragraph it belongs in the
 commit message, the PR, or `notes/` — not above the line.
 
+## Punctuation
+
+**No em dashes.** Not in the site's prose, the code comments, `notes/`, commit
+messages, PR bodies, issue bodies or the replies in a session. The house dash is
+a spaced hyphen - like this one. Where a sentence reads better without one,
+write it out: "which is", "because", a colon, or two sentences. En dashes go the
+same way outside a numeric range.
+
+This binds new prose. It is not a licence for a bulk rewrite: as of 2026-08-29
+this repo carries 199 em dashes and 21 en dashes across 11 files, most of them
+in settled notes, and re-punctuating those is a large diff over text nobody is
+reading again. Fix them on lines you are already editing.
+
 ## Before changing anything the site publishes
 
 `tests/test_site_national.py` compares this pipeline against ESB's own published
