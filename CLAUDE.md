@@ -77,6 +77,7 @@ Every one of these has already cost someone an hour:
 | Decision | Where |
 |---|---|
 | The grade is ESB's own 4-hour/95% charter aim, not Customer Minutes Lost | `notes/grading.md` § The grade |
+| The scale runs A to F inclusive. E splits the old F band at **60%**, continuing the 10-point step; every A-D cut is unmoved. The bands are anchored to a published standard, so arithmetic sets the cut and the distribution is only checked for a band nobody can reach | `notes/grading.md` § The scale grew an E (2026-08-29) |
 | Why CML was rejected as the basis (scale bias, and a relative scale mislabels a good network) | `notes/grading.md` § Why not Customer Minutes Lost |
 | One ESB event is one row: ids sharing a location and start time are merged | `notes/grading.md` § Settled |
 | Planned works are excluded from the grade | `notes/grading.md` § Settled |

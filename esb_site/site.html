@@ -60,7 +60,7 @@
     <p><b>The grade is ESB's own published aim:</b> supply restored within
     <b>4 hours in 95% of cases</b>. Each county is scored on the share of its
     fault-interrupted customers back within that window - A meets the 95% aim,
-    then B 90%, C 80%, D 70%, F below.</p>
+    then B 90%, C 80%, D 70%, E 60%, F below.</p>
     </details>
 
     <details><summary>How these numbers are worked out</summary>
@@ -137,7 +137,8 @@ var GRADES = {
   B: "90% or more restored within 4 hours",
   C: "80% or more restored within 4 hours",
   D: "70% or more restored within 4 hours",
-  F: "fewer than 70% restored within 4 hours"
+  E: "60% or more restored within 4 hours",
+  F: "fewer than 60% restored within 4 hours"
 };
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }

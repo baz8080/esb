@@ -86,7 +86,7 @@ CHARTER_TARGET_SHARE = 95.0
 # point at which an outage stops being an inconvenience.
 CHARTER_COMPENSATION_HOURS = 24.0
 
-GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0))
+GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0), ("E", 60.0))
 
 # A month needs this many observed days, and this many faults, before its grade
 # means anything: a county with three outages can swing two bands on one of them.

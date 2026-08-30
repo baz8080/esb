@@ -137,6 +137,13 @@ class TestTheMonthTable(CountyPageCase):
         for grade, band in render.GRADES.items():
             self.assertIn(band, app, f"site.html has drifted from GRADES[{grade}]")
 
+    def test_every_band_the_model_grades_has_wording(self):
+        """The wording is what a chip's title says, so a band with none is a
+        letter a reader meets with no way to find out what it means."""
+        self.assertEqual(
+            list(render.GRADES), [letter for letter, _ in model.GRADE_BANDS] + ["F"]
+        )
+
     def test_every_month_gets_a_row_newest_first(self):
         rows = re.findall(r'<th scope="row">([A-Z][a-z]+ \d{4})', self.page)
         self.assertEqual(rows, [render.month_label(ym) for ym in reversed(self.months)])
