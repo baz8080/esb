@@ -7,7 +7,7 @@
   <!-- envelope: stepped top edge, decaying as sections come back -->
   <path d="M 80 55 H 220 V 95 H 320 V 130 H 410 V 165 H 480 V 195" fill="none" stroke="#1f3a5a" stroke-width="3"/>
   <line x1="60" y1="55" x2="80" y2="55" stroke="#1f3a5a" stroke-width="1" stroke-dasharray="4 3"/>
-  <text x="86" y="48" fill="#1f3a5a" font-weight="600">peak 5,623 — the most off at one instant</text>
+  <text x="86" y="48" fill="#1f3a5a" font-weight="600">peak 5,623 - the most off at one instant</text>
   <!-- the individual records, as bars below: each covers part of the story -->
   <g fill="#3b6ea5" opacity="0.5">
     <rect x="80" y="70" width="140" height="10"/>
@@ -20,5 +20,5 @@
   <text x="420" y="144" fill="#1f3a5a">restored 1,118</text>
   <text x="488" y="179" fill="#1f3a5a">restored 880</text>
   <!-- the wrong reading -->
-  <text x="60" y="30" fill="#7a3e00" font-weight="600">adding the records: 1,118 + 2,078 + 1,547 + 880 — the same customers, once per section</text>
+  <text x="60" y="30" fill="#7a3e00" font-weight="600">adding the records: 1,118 + 2,078 + 1,547 + 880 - the same customers, once per section</text>
 </svg>

@@ -6,17 +6,18 @@ writing session). Chapters quote from here rather than re-deriving. Figures are 
 measured on their stated date; where the corpus moved between measurements (the CI ratio, the
 CML), the chapter quotes one snapshot and names it.
 
-## Verified against the working tree, 27 Aug 2026 (Session 0)
+## Verified against the working tree, 27 Aug 2026 (Session 0), re-verified 31 Aug (Session 1)
 
 | Figure | Value | How | Verified |
 |---|---|---|---|
-| Commits on `main` | 98 | `git log --oneline \| wc -l` | Y |
-| Commits with a `Co-Authored-By` trailer | 60 (36 Claude Opus 5, 24 Claude Fable 5) | `git log --format='%b' \| grep -o 'Co-Authored-By: [^<]*' \| sort \| uniq -c` | Y |
-| Merged pull requests | 20 | GitHub, `baz8080/esb` | Y |
-| Test count | 189 (`Ran 189 tests`; 16 skipped without `../esb-data`) | `uv run python -m unittest discover -s tests -t .` | Y |
+| Commits on `main` | 138 (98 at Session 0) | `git log --oneline \| wc -l` | Y (31 Aug) |
+| Commits with a `Co-Authored-By` trailer | 93 (63 Claude Opus 5, 25 Claude Fable 5, 5 unversioned) | `git log --format='%b' \| grep -o 'Co-Authored-By: [^<]*' \| sort \| uniq -c` | Y (31 Aug) |
+| Merged pull requests | 29, numbered to #29 (#28 unused) | GitHub, `baz8080/esb` | Y (31 Aug) |
+| Test count | 221 (`Ran 221 tests`; 16 skipped without `../esb-data`) | `uv run python -m unittest discover -s tests -t .` | Y (31 Aug) |
 | `STALE_AFTER` | 16 hours | `esb_site/render.py:39` | Y |
 | `sort_keys=True` in the raw append | present | `esb_outages/store.py:201` | Y |
-| `notes/` word counts | grading 3,795 · polling 634 · design-alignment 999 | `wc -w notes/*.md` | Y |
+| `notes/` files | grading · polling · design-alignment · area-pages (added 27 Aug) | `ls notes/` | Y (31 Aug) |
+| Em dashes in `writing/` after the sweep | 0 (339 before it) | `grep` for U+2014 across `writing/`; house rule in CLAUDE.md § Punctuation | Y (31 Aug) |
 
 ## Lifted figures by chapter (source + date measured; not re-run)
 
@@ -130,6 +131,36 @@ CML), the chapter quotes one snapshot and names it.
 | Meta description | 155–160 chars across 26 counties; truncation-safe ordering | PR #19 / `notes/design-alignment.md` |
 | Applies-tests | 4 guards, mutation-verified; 189 tests | PR #20, 26 Aug 2026 |
 
-### Ch 7 (closing)
-Aggregates of the above; no new figures except the CAIDI restatement (92.2 vs 85.1, ch 4b)
-and the 0.65 h median of coarse-poll-lost ids restated as 39 minutes (ch 2).
+### Ch 7a
+| Figure | Value | Source |
+|---|---|---|
+| Area pages | 384 at `a/<county>/<area>.html`; `areas.html` 179 KB; initial load 56 KB | PR #21, 27 Aug 2026 |
+| Codes that get a page | 904 of 3,717 | same (`model.area_has_page`, guarded against the CSV) |
+| Nearby-areas card | 5 nearest by population-weighted centroid, crossing counties (Balbriggan to Stamullen, Co. Meath, 5 km) | same |
+| Site size | sitemap 27 to 412 URLs; 208 tests | same |
+| Search | 213 tests; 14 settlements sharing their county's name excluded from the index (follow-up) | PR #22, 27 Aug 2026 |
+| County page cap removed | Cork 100.7 to 127.4 KB; 26 pages 1,767 to 1,825 KB | PR #23, 27 Aug 2026 |
+| Directory rows that were plain text | 876 of 1,270 | PR #25 / `notes/area-pages.md` |
+
+### Ch 7b
+| Figure | Value | Source |
+|---|---|---|
+| CML tile | annualised 154 to `cml_month` 12.8 minutes per customer | PR #25, 28 Aug 2026 |
+| Customer-time tile | 473,067 customer-hours (1 to 27 Aug) | same |
+| The plausibility decomposition | 311,321 customers × 1.52 h mean (91 min = CAIDI); 11.4 min per customer; ESB's implied 348,655 over the window, so 1.36×, headcount 1.27× | `notes/grading.md` "Is half a million customer-hours in a month plausible?", 28 Aug 2026 |
+| Concentration | 1,051 faults; median event 135 customer-hours, mean 450; top 10 = 15.8%, top 50 = 43.5%; Whitehall 23 Aug = 2.4% | same |
+| Outage-row shapes | planned delisted 39.7% · fault restored 36.6% · planned scheduled 15.0% · fault delisted 6.0% · fault estimate-only 2.7% | `notes/design-alignment.md` "The outage row stopped reading like a database row", 28 Aug 2026 |
+| Restore vs estimate | 69% early (median 58 min), 25% late (median 54 min), 5-minute noise floor | same |
+| Planned reasons | closed set of 6 in `model.PLANNED_REASONS`; 15% carry none | same |
+| County pages without JavaScript | 1,840 to 1,349 KB across 26 files (~15 KB each) | `notes/design-alignment.md` "The county page became an archive" |
+| The punctuation rule | 199 em dashes and 21 en dashes across 11 files at the time it landed | PR #27, 29 Aug 2026 |
+| The E band | cut at 60%; old F band held Sligo 68.0% and Longford 59.3%; 55/50/65 rejected | `notes/grading.md` "The scale grew an E", 29 Aug 2026 |
+| Grade distribution, 29 Aug rebuild | A 8, B 6, C 9, D 1, E 1, F 1 (26 graded county-months) | same |
+| Chip contrast upstream | B measured Lc 38.6 on dark ink against 69.2 on white | PR #29 / statusui #11 |
+| At the end of the stretch | 221 tests; initial load 60.0 KB against the 500 KB budget | PR #29, 30 Aug 2026 |
+
+### Ch 8 (closing)
+Aggregates of the above; no new figures except the CAIDI restatement (92.2 vs 85.1, ch 4b),
+the 0.65 h median of coarse-poll-lost ids restated as 39 minutes (ch 2), and the six-band
+distribution restated from ch 7b. The August 2026 five-band split (A 9 · B 6 · C 4 · D 4 ·
+F 3) is kept where it is quoted and marked as pre-E, as `notes/grading.md` does.

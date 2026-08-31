@@ -1,10 +1,10 @@
-# The esb series — brief and style guide
+# The esb series - brief and style guide
 
 A chapter-by-chapter account of how this repo grew from a script polling ESB Networks'
 PowerCheck feed on a Raspberry Pi into a status site graded on ESB's own published service
 standard. It is the companion to the water site's series
 ([uisce PR #43](https://github.com/baz8080/uisce/pull/43)): the same author, the same kind of
-site, built second — and where the same problem got a different answer here, saying *why* is
+site, built second - and where the same problem got a different answer here, saying *why* is
 this series' particular job.
 
 Nothing in `writing/` is imported by the package. It is prose and diagrams only.
@@ -22,8 +22,8 @@ a sentence before contrasting it.
 
 - First person, "I". The AI-assisted process is named once, in the intro, and not re-litigated
   chapter by chapter.
-- Candid. The wrong turns — the grade that handed out an F for ordinary service, the grid that
-  filed every centroid one bin east, the denominator carrying a citation it did not have — are
+- Candid. The wrong turns - the grade that handed out an F for ordinary service, the grid that
+  filed every centroid one bin east, the denominator carrying a citation it did not have - are
   the story, not embarrassments to skim past. Tell what was believed, what was measured, what
   changed.
 - Chronological within a chapter. The reader should feel the order the problems arrived in.
@@ -48,12 +48,16 @@ Identical to the uisce series' rules; restated so this file stands alone.
 5. **Diagrams earn their place.** Mermaid fences for flows; small hand-written SVG in
    `diagrams/` for anything spatial or temporal. ≤ 40 lines, no polish.
 6. **Length: target ~1,500–2,000 words, hard ceiling 3,000.** This series is deliberately
-   shorter than uisce's — the repo is four weeks old, not eight — so do not pad a light
+   shorter than uisce's - the repo is a month old, not eight weeks - so do not pad a light
    chapter. Each post carries a "~N min read" line (≈ 230 words/min).
 7. **Standalone.** Each chapter opens with a two-line *Where we are* so it works as a single
    blog post.
 8. **Vocabulary is fixed** (below); do not drift between synonyms.
 9. **Missing number → `[verify: what]`** and move on; collected in the final pass.
+10. **No em dashes**, per this repo's own rule (CLAUDE.md § Punctuation, 29 Aug 2026): the
+    house dash is a spaced hyphen, and en dashes survive only in numeric ranges. The rule
+    binds new prose, and every word here is new prose. The uisce series is written the other
+    way; that is the one house-style difference between the two, and it is deliberate.
 
 ## Fixed vocabulary
 
@@ -71,8 +75,8 @@ Identical to the uisce series' rules; restated so this file stands alone.
 | **peak customers** | affected, total | the most customers off at any instant the event was live |
 | **chain** | cluster, repeat group | consecutive faults at one spot, tagged, never merged |
 | **charter share** | restore rate, SLA | % of fault-interrupted customers back inside 4 hours |
-| **CML / CI / CAIDI** | — | the regulator's units: minutes lost, interruptions, minutes per interruption |
-| **grade** | score, rating | the A–F letter, county-month only |
+| **CML / CI / CAIDI** | - | the regulator's units: minutes lost, interruptions, minutes per interruption |
+| **grade** | score, rating | the A to F letter, county-month only |
 | **the water site** | uisce (except as the repo name) | the sibling site this series compares against |
 
 ## Chapter template
@@ -90,7 +94,7 @@ Same as the uisce series:
 ## What changed
 (narrative, chronological within the chapter)
 
-> **Concept: <name>** — plain-English box, ≤ 200 words.
+> **Concept: <name>** - plain-English box, ≤ 200 words.
 
 ### Worked example: <place>
 (real numbers, arithmetic shown, source + date)
@@ -106,8 +110,13 @@ PRs, commit subjects, `notes/` sections and code functions used; each figure's s
 
 ## Working method
 
-This series was drafted in one pass on 27 August 2026, from the repository's own history —
-the 98 commit messages, the 20 pull request bodies, the three `notes/` files and the README —
-with the water series' chapters 14 and 16 open beside it, since they narrate the same days
-from the other bank. Figures were registered in `figures.md` as quoted; the few re-run against
-the working tree say so. `PROGRESS.md` is the ledger for any later session.
+Session 0 (27 August 2026) drafted chapters 0 to 6b and the closing in one pass, from the
+repository's own history - the commit messages, the pull request bodies, the `notes/` files
+and the README - with the water series' chapters 14 and 16 open beside it, since they narrate
+the same days from the other bank.
+
+Session 1 (31 August 2026) merged `main`, swept the series to the new punctuation rule, added
+chapters 7a and 7b for pull requests #21 to #29, renumbered the closing to 8, and corrected
+the figures those days moved (the grade scale, the county-page cap, the commit and test
+counts). Figures are registered in `figures.md` as quoted; the few re-run against the working
+tree say so, with the date. `PROGRESS.md` is the ledger for any later session.
