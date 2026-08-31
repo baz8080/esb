@@ -86,7 +86,7 @@ CHARTER_TARGET_SHARE = 95.0
 # point at which an outage stops being an inconvenience.
 CHARTER_COMPENSATION_HOURS = 24.0
 
-GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0))
+GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0), ("E", 60.0))
 
 # A month needs this many observed days, and this many faults, before its grade
 # means anything: a county with three outages can swing two bands on one of them.
@@ -164,6 +164,15 @@ def month_list(start, end):
     return months
 
 
+def km(lat1, lon1, lat2, lon2):
+    """The one statement of the 111-km-per-degree arithmetic, so placement,
+    repeat chains and the nearby-areas card cannot disagree about "near"."""
+    return math.hypot(
+        (lat1 - lat2) * 111.0,
+        (lon1 - lon2) * 111.0 * math.cos(math.radians(lat1)),
+    )
+
+
 def merge(intervals):
     """Union overlapping [start, end) pairs. Lifted from the uisce generator."""
     merged = []
@@ -202,7 +211,7 @@ def day_bucket(fault_minutes_per_customer, has_planned):
 
 
 class SmallAreaIndex:
-    """Census Small Area centroids, grid-hashed, for point -> county lookups.
+    """Census Small Area centroids, grid-hashed, for point -> area lookups.
 
     Ported from the uisce site generator, with the radius-and-footprint logic
     dropped. ESB publishes a point per outage rather than a service area, so the
@@ -217,14 +226,31 @@ class SmallAreaIndex:
         self._bins = defaultdict(list)
         self._cache = {}
         self.county_pop = defaultdict(int)
-        for lat, lon, county, town, pop in rows:
+        self.town_pop = defaultdict(int)
+        sums = defaultdict(lambda: [0.0, 0.0, 0.0, 0.0, 0])
+        for lat, lon, county, code, town, pop in rows:
             # math.floor, not int: Irish longitudes are negative and int()
             # truncates towards zero, so int() here against the floor() in
             # `place` files every centroid one bin east of where it is sought.
             self._bins[
                 (math.floor(lat / self.BIN), math.floor(lon / self.BIN))
-            ].append((lat, lon, county, town))
+            ].append((lat, lon, county, code, town))
             self.county_pop[county] += pop
+            self.town_pop[code] += pop
+            s = sums[code]
+            s[0] += lat * pop
+            s[1] += lon * pop
+            s[2] += lat
+            s[3] += lon
+            s[4] += 1
+        # Pop-weighted: "near" means near an area's people. A zero-pop code
+        # (none in the shipped CSV) falls back to the plain mean, not a crash.
+        self.centroids = {}
+        for code, (wlat, wlon, plat, plon, n) in sums.items():
+            pop = self.town_pop[code]
+            self.centroids[code] = (
+                (wlat / pop, wlon / pop) if pop else (plat / n, plon / n)
+            )
         self.counties = sorted(self.county_pop)
         national = sum(self.county_pop.values())
         # ESB publishes no per-county customer count, so customers are
@@ -240,19 +266,19 @@ class SmallAreaIndex:
         places = {}
         with open(towns_path, encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
-                places[r["guid"]] = (r["town_county"], r["town_name"])
+                places[r["guid"]] = (r["town_county"], r["town_code"], r["town_name"])
         rows = []
         with open(pop_path, encoding="utf-8") as fh:
             for r in csv.DictReader(fh):
                 place = places.get(r["guid"])
                 if place:
                     rows.append(
-                        (float(r["lat"]), float(r["lon"]), place[0], place[1], int(r["pop"]))
+                        (float(r["lat"]), float(r["lon"]), *place, int(r["pop"]))
                     )
         return cls(rows)
 
     def place(self, lat, lon):
-        """Nearest Small Area's (county, town), or None if implausibly far."""
+        """Nearest Small Area's (county, area code, town), or None if implausibly far."""
         key = (round(lat, 4), round(lon, 4))
         if key in self._cache:
             return self._cache[key]
@@ -264,13 +290,12 @@ class SmallAreaIndex:
                 for dx in range(-ring, ring + 1):
                     if max(abs(dy), abs(dx)) != ring:
                         continue  # only the cells this ring adds
-                    for slat, slon, county, town in self._bins.get((by + dy, bx + dx), ()):
-                        d = math.hypot(
-                            (slat - lat) * 111.0,
-                            (slon - lon) * 111.0 * math.cos(math.radians(lat)),
-                        )
+                    for slat, slon, county, code, town in self._bins.get(
+                        (by + dy, bx + dx), ()
+                    ):
+                        d = km(lat, lon, slat, slon)
                         if d < best_d:
-                            best, best_d = (county, town), d
+                            best, best_d = (county, code, town), d
             # Every bin within `ring` of the target has now been read, so any
             # centroid still unseen is at least that many bins away. Once the
             # best hit is closer than that floor, no further ring can beat it -
@@ -284,6 +309,17 @@ class SmallAreaIndex:
         result = best if best_d <= 25.0 else None
         self._cache[key] = result
         return result
+
+
+def area_has_page(code):
+    """Whether an area names a place a reader could search for.
+
+    uisce's rule: "Around ..." EDs and city "-rest" remainders are buckets,
+    not places, and near-identical pages for them is scaled thin content.
+    Deliberately no outage-count floor - a permalink that comes and goes is
+    worse than a short one. Rationale and numbers in notes/area-pages.md.
+    """
+    return not code.startswith("ed:") and not code.endswith("-rest")
 
 
 class Update(NamedTuple):
@@ -361,13 +397,7 @@ def label_repeats(events):
 def _near(a, b):
     if None in (a.lat, a.lon, b.lat, b.lon):
         return True
-    return (
-        math.hypot(
-            (a.lat - b.lat) * 111.0,
-            (a.lon - b.lon) * 111.0 * math.cos(math.radians(a.lat)),
-        )
-        <= REPEAT_RADIUS_KM
-    )
+    return km(a.lat, a.lon, b.lat, b.lon) <= REPEAT_RADIUS_KM
 
 
 def _tag(run, chains):
@@ -501,6 +531,8 @@ class Outage(NamedTuple):
     ids: list  # every ESB outage id folded into this event
     county: str
     town: str
+    # the town's stable census key, which the per-area pages group on
+    town_code: str
     location: str
     planned: bool
     customers: int  # peak reported, which is what an interruption count wants
@@ -665,7 +697,7 @@ def load_outages(db_path, sa_index, now):
             if place is None:
                 unplaced += 1
                 continue
-            county, town = place
+            county, town_code, town = place
             updates = _build_updates(row, changes.get(row["outage_id"], []))
 
             # `Restored` overwrites whatever the outage was, so the earliest
@@ -737,6 +769,7 @@ def load_outages(db_path, sa_index, now):
                     ids=[row["outage_id"]],
                     county=county,
                     town=town,
+                    town_code=town_code,
                     location=row["location"] or town,
                     planned=planned,
                     customers=max([n for _, _, n in segments] or [0]),
@@ -892,6 +925,29 @@ def county_month(outages, county, customers, ym, now, until):
     }
 
 
+# ESB publishes one of six, in block capitals. Labelled in the site and not in
+# esb.db, which is disposable: notes/design-alignment.md § The reason moved into
+# the tag.
+PLANNED_REASONS = {
+    "CONNECT NEW CUSTOMERS": "new connections",
+    "DIVERT AN OVERHEAD LINE": "line diversion",
+    "IMPROVE QUALITY OF SUPPLY": "supply quality",
+    "IMPROVE THE NETWORK": "network improvement",
+    "SUPPORT FIBER ROLLOUT": "fibre rollout",
+    "UPGRADE THE NETWORK": "network upgrade",
+}
+
+
+def reason_label(reason):
+    """ESB's shouted reason in a couple of readable words, or nothing at all.
+
+    15% carry no reason, and the only other free text on the record is the
+    apology every planned outage carries, so there is nothing to infer.
+    """
+    reason = (reason or "").strip()
+    return PLANNED_REASONS.get(reason.upper(), reason.lower())
+
+
 def national_ci(outages, until):
     """Fault interruptions per customer per year, ESB's other regulated index.
 
@@ -922,17 +978,23 @@ def national_caidi(outages, until):
     return sum(o.customer_minutes(lo, hi) for o in faults) / interrupted
 
 
-def national_cml(outages, until, ym=None):
-    """Annualised unplanned CML across the whole network.
+def national_cml(outages, until, ym=None, annualised=True):
+    """Unplanned CML across the whole network.
 
-    This is the number that anchors the site's credibility: it is directly
-    comparable to the figure ESB Networks publishes each year, and the test
-    suite holds it to that comparison.
+    Annualised, this is the number that anchors the site's credibility: it is
+    directly comparable to the figure ESB Networks publishes each year, and the
+    test suite holds it to that comparison. `annualised=False` returns the
+    window's own minutes per customer, which is what a surface showing one
+    month has to print - a yearly rate beside a month's counts is a second
+    clock on the same line, and nothing on the page says which is which.
     """
     if ym:
         lo, hi = observed_window(ym, until)
     else:
         lo, hi = COLLECTION_START, until
-    minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
     total = sum(o.customer_minutes(lo, hi) for o in outages if not o.planned)
-    return total / NATIONAL_CUSTOMERS * MINUTES_PER_YEAR / minutes
+    cml = total / NATIONAL_CUSTOMERS
+    if not annualised:
+        return cml
+    minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
+    return cml * MINUTES_PER_YEAR / minutes

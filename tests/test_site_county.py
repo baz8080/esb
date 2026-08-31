@@ -119,6 +119,31 @@ class TestTheMonthTable(CountyPageCase):
         self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
         self.page = self.render_county()
 
+    def test_a_grade_chip_carries_its_band(self):
+        """The footer used to spell the bands out. It does not any more, so the
+        chip has to, and the two copies of the wording - here and in the app's
+        JS - have to agree."""
+        # this fixture county is ungraded every month, which is the chip the
+        # page can show; the lettered ones come off the helper
+        self.assertIn("Too few faults this month to grade fairly", self.page)
+        self.assertIn('title="Grade A: meets ESB', render._grade_chip("A"))
+        # the heading chip is one month's letter and the card that named that
+        # month is gone, so the title has to name it
+        self.assertIn("Grade A in August 2026:", render._grade_chip("A", "August 2026"))
+        self.assertRegex(
+            self.page, r'<div class="chead"><span[^>]*title="Too few faults in \w+ 2026'
+        )
+        app = render.SITE_HTML.read_text()
+        for grade, band in render.GRADES.items():
+            self.assertIn(band, app, f"site.html has drifted from GRADES[{grade}]")
+
+    def test_every_band_the_model_grades_has_wording(self):
+        """The wording is what a chip's title says, so a band with none is a
+        letter a reader meets with no way to find out what it means."""
+        self.assertEqual(
+            list(render.GRADES), [letter for letter, _ in model.GRADE_BANDS] + ["F"]
+        )
+
     def test_every_month_gets_a_row_newest_first(self):
         rows = re.findall(r'<th scope="row">([A-Z][a-z]+ \d{4})', self.page)
         self.assertEqual(rows, [render.month_label(ym) for ym in reversed(self.months)])
@@ -164,7 +189,7 @@ class TestThePageStandsAlone(CountyPageCase):
         )
 
 
-class TestTheCap(unittest.TestCase):
+class TestTheHistoryListing(unittest.TestCase):
     """A hand-made shard: the rule under test is a count, and building a
     thousand outages through the store would say nothing extra about it."""
 
@@ -193,15 +218,15 @@ class TestTheCap(unittest.TestCase):
         self.assertEqual(page.count('<div class="case"'), 3)
         self.assertNotIn("older outages not shown", page)
 
-    def test_a_long_county_stops_at_the_cap_and_says_what_it_held_back(self):
-        """Unbounded, the busiest county's page would grow with the archive for
-        as long as the site runs."""
-        over = render.COUNTY_PAGE_CASES + 17
-        page = self.page_for(over)
-        self.assertEqual(page.count('<div class="case"'), render.COUNTY_PAGE_CASES)
-        self.assertIn("17 older outages not shown here", page)
+    def test_a_long_county_is_listed_in_full(self):
+        """The cap came off on 2026-08-27: this page presents itself as the
+        county's whole record, and a "167 older outages not shown here" line
+        underneath said otherwise."""
+        page = self.page_for(167)
+        self.assertEqual(page.count('<div class="case"'), 167)
+        self.assertNotIn("not shown here", page)
         self.assertIn("Outage history", page)
-        self.assertIn(f"{over:,}", page)
+        self.assertIn("· 167 outages", page)
 
 
 if __name__ == "__main__":

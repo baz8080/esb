@@ -1,7 +1,7 @@
 """The shared drill-down sub line, asserted to apply rather than to exist.
 
 `.chead + .sub` styles the line under a county heading — here, the customer
-count and the data stamp on every `c/<slug>.html`. It lives in statusui's
+count on every `c/<slug>.html`. It lives in statusui's
 base.css and reaches this repo only through the pin in `uv.lock`.
 
 This repo carried a byte-identical copy in its own site.css until 2026-08-26,

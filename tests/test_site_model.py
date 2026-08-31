@@ -13,8 +13,6 @@ import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import statusui
-
 from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
 from esb_site import model, render
@@ -91,8 +89,15 @@ class TestGrade(unittest.TestCase):
         self.assertEqual(model.grade(80.0), "C")
         self.assertEqual(model.grade(79.9), "D")
         self.assertEqual(model.grade(70.0), "D")
-        self.assertEqual(model.grade(69.9), "F")
+        self.assertEqual(model.grade(69.9), "E")
+        self.assertEqual(model.grade(60.0), "E")
+        self.assertEqual(model.grade(59.9), "F")
         self.assertEqual(model.grade(0.0), "F")
+
+    def test_the_scale_runs_a_to_f_inclusive(self):
+        """A scale that skips E is an American-ism, and ESB is not American."""
+        letters = [letter for letter, _ in model.GRADE_BANDS] + ["F"]
+        self.assertEqual(letters, list("ABCDEF"))
 
     def test_nothing_to_judge_means_no_grade(self):
         self.assertIsNone(model.grade(None))
@@ -582,6 +587,24 @@ class TestCountyMonth(SiteModelCase):
         )
         self.assertEqual(set(s["cells"][:30]), {str(model.DAY_NO_DATA)})
 
+    def test_the_row_shows_the_month_and_not_the_year(self):
+        """Every number on a month's row is that month's, CML included.
+
+        `cml` is the same figure annualised - a year's clock - and the page has
+        no room to say which of the two a reader is looking at, so the payload
+        carries the month's own minutes per customer.
+        """
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        self.observe(detail("1", numCustAffected=50000), t)
+        outages, _, index = self.load()
+        s = model.county_month(
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
+        )
+        self.assertGreater(s["cml_month"], 0)
+        self.assertGreater(s["cml"], s["cml_month"])
+        row = render.build(outages, index, NOW, self.until)[0]["stats"]["Dublin"]
+        self.assertEqual(row["2026-08"][3], round(s["cml_month"], 1))
+
     def test_a_month_too_short_to_judge_is_left_ungraded(self):
         outages, _, index = self.load()
         s = model.county_month(
@@ -608,9 +631,9 @@ class TestPlacementGrid(unittest.TestCase):
         """
         index = model.SmallAreaIndex.load()
         rows = [
-            (lat, lon, county, town)
+            (lat, lon, county, code, town)
             for cell in index._bins.values()
-            for (lat, lon, county, town) in cell
+            for (lat, lon, county, code, town) in cell
         ]
 
         def nearest(lat, lon):
@@ -824,22 +847,6 @@ class TestPartialDays(SiteModelCase):
         until = datetime(2026, 8, 13, 0, 0, tzinfo=UTC)
         self.assertEqual(model.partial_days(until)[-1], "2026-08-12")
 
-    def test_the_short_days_are_the_ones_the_page_qualifies(self):
-        self.observe(detail("1"), datetime(2026, 8, 10, 9, tzinfo=UTC))
-        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=1)
-        outages, _, index = self.load()
-        cells = model.county_month(
-            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
-        )["cells"]
-        html = render._day_cells(cells, "2026-08", model.partial_days(self.until))
-        self.assertIn(f"Wed 12 Aug: no significant fault{statusui.PARTIAL_NOTE}", html)
-        # The full days beside it say nothing extra, and neither does a day
-        # with no data to qualify.
-        self.assertIn('data-cap="Tue 11 Aug: no significant fault"', html)
-        self.assertIn('data-cap="Thu 13 Aug: no data collected for this day"', html)
-        # The caption is shown by the page's readout, not a tooltip.
-        self.assertNotIn("title=", html)
-
 
 class TestEstimatePlumbing(SiteModelCase):
     """ESB's restore estimate reaches the page beside the actual restore."""
@@ -930,44 +937,49 @@ class TestCaseCopy(unittest.TestCase):
             k[fields[name]] = value
         return k
 
-    def test_a_confirmed_restore_shows_the_estimate_beside_it(self):
+    def test_a_confirmed_restore_says_how_long_and_how_it_landed(self):
         html = render._case_html(self.record())
         self.assertIn(
-            "17 customers · began Mon 24 Aug, 10:46 · restored 14:32 · "
-            "ESB's estimate was 15:00",
+            "17 customers affected · began Mon 24 Aug, 10:46 · "
+            "restored 14:32 (3 h 46 min) · 28 min earlier than ESB estimated",
             html,
         )
-        self.assertIn('<span class="when">off 3 h 46 min</span>', html)
+        # the duration belongs to the phrase naming the end it measures
+        self.assertNotIn('class="when"', html)
+
+    def test_a_restore_past_the_estimate_says_later(self):
+        html = render._case_html(self.record(est="2026-08-24T13:00"))
+        self.assertIn("restored 14:32 (3 h 46 min) · 1 h 32 min later than ESB estimated", html)
+
+    def test_an_estimate_all_but_met_is_not_worth_a_clause(self):
+        # Inside five minutes either way, "3 min earlier" is noise dressed as
+        # a finding. 5% of restored faults land there.
+        html = render._case_html(self.record(est="2026-08-24T14:35"))
+        self.assertIn("restored 14:32 (3 h 46 min)", html)
+        self.assertNotIn("than ESB estimated", html)
 
     def test_an_end_on_a_later_day_names_the_day(self):
         html = render._case_html(self.record(end="2026-08-25T01:10", est=None))
         self.assertIn("restored Tue 25 Aug, 01:10", html)
 
-    def test_a_cross_day_restore_dates_the_estimate(self):
-        # The estimate is dated against the end, not the start: after
-        # "restored Tue 25 Aug" a bare "20:15" would read as the 25th and
-        # place the estimate after the restore.
-        html = render._case_html(
-            self.record(end="2026-08-25T01:10", est="2026-08-24T20:15")
-        )
-        self.assertIn(
-            "restored Tue 25 Aug, 01:10 · ESB's estimate was Mon 24 Aug, 20:15",
-            html,
-        )
-
-    def test_an_unconfirmed_end_says_so_and_rounds_the_duration(self):
+    def test_an_unconfirmed_fault_end_says_what_is_missing(self):
+        # "not confirmed" left a reader guessing whether the estimate or the
+        # outage was the unconfirmed thing. Name the missing record instead.
         html = render._case_html(
             self.record(end="2026-08-24T15:00", end_src="estimated", est=None)
         )
-        self.assertIn("ESB estimated restore by 15:00, not confirmed", html)
-        # 4 h 14 min does not deserve minute precision on a guess.
-        self.assertIn('<span class="when">off about 4 h</span>', html)
+        self.assertIn(
+            "expected back by 15:00 (about 4 h) · no restore time published", html
+        )
+        self.assertNotIn("not confirmed", html)
 
-    def test_a_last_sighting_reads_as_one(self):
+    def test_a_last_sighting_reads_as_a_span_not_a_timestamp(self):
+        # "last seen out at 14:32" made a reader subtract two clock times
         html = render._case_html(
             self.record(end="2026-08-24T14:32", end_src="listed", est=None)
         )
-        self.assertIn("last seen out at 14:32", html)
+        self.assertIn("off for about 4 h · no restore time published", html)
+        self.assertNotIn("last seen out", html)
 
     def test_a_very_short_unconfirmed_span_reads_as_a_bound(self):
         # A listed end 5 minutes after the start is a lower bound; "about
@@ -975,35 +987,45 @@ class TestCaseCopy(unittest.TestCase):
         html = render._case_html(
             self.record(end="2026-08-24T10:51", end_src="listed", est=None)
         )
-        self.assertIn('<span class="when">off under 30 min</span>', html)
+        self.assertIn("off for under 30 min", html)
 
-    def test_a_planned_outage_carries_its_reason(self):
+    def test_a_planned_outage_wears_its_reason_in_the_tag(self):
         html = render._case_html(
             self.record(planned=1, end_src="listed", est=None,
-                        reason="Connect New Customers")
+                        reason="new connections")
         )
-        self.assertIn("· connect new customers", html)
+        self.assertIn('<span class="tag tag-p">Planned · new connections</span>', html)
+
+    def test_a_planned_outage_with_no_reason_just_says_planned(self):
+        # 15% of them, and nothing in the record distinguishes one: the status
+        # message is the same apology on every planned outage ESB publishes.
+        html = render._case_html(self.record(planned=1, end_src="listed", est=None))
+        self.assertIn('<span class="tag tag-p">Planned</span>', html)
 
     def test_planned_works_delisted_early_are_not_seen_out(self):
-        # 757 of 1,040 planned records end as "listed"; the fault vocabulary
-        # ("seen out", "off about") does not belong on scheduled work, and
-        # the observed listing span is not a duration this data knows.
+        # 928 of 1,318 planned events end this way, and what was measured is
+        # time on ESB's list, not time off supply
         html = render._case_html(
             self.record(planned=1, end_src="listed", est=None)
         )
-        self.assertIn("last listed at 14:32", html)
+        self.assertIn("listed for about 4 h · no end time published", html)
         self.assertNotIn("seen out", html)
-        self.assertIn('<span class="when"></span>', html)
+        self.assertNotIn("off for", html)
 
     def test_planned_works_read_as_a_schedule_not_a_failed_promise(self):
         html = render._case_html(
             self.record(planned=1, end="2026-08-24T15:00", end_src="estimated",
                         est=None)
         )
-        self.assertIn("scheduled until 15:00", html)
+        self.assertIn("scheduled until 15:00 (4 h 14 min)", html)
         self.assertNotIn("not confirmed", html)
-        # The span is the schedule, exact, and never claims time off supply.
-        self.assertIn('<span class="when">scheduled 4 h 14 min</span>', html)
+
+    def test_esbs_shouted_reasons_come_out_readable(self):
+        self.assertEqual(model.reason_label("IMPROVE QUALITY OF SUPPLY"), "supply quality")
+        self.assertEqual(model.reason_label("DIVERT AN OVERHEAD LINE"), "line diversion")
+        self.assertEqual(model.reason_label(""), "")
+        # a seventh reason renders as itself rather than vanishing
+        self.assertEqual(model.reason_label("REPLACE A POLE"), "replace a pole")
 
     def test_planned_timeline_rows_match_the_schedule_wording(self):
         rows = [
@@ -1027,13 +1049,6 @@ class TestCaseCopy(unittest.TestCase):
         self.assertEqual(render._span_hm(0.1, about=True), "under 30 min")
         self.assertEqual(render._span_hm(0.4, about=True), "about 30 min")
         self.assertEqual(render._span_hm(72), "3 days")
-
-    def test_the_legend_swatches_use_the_cell_classes(self):
-        html = render._legend_html()
-        self.assertIn('<span><i class="b5"></i>planned works</span>', html)
-        self.assertIn('<i class="b0"></i>no significant fault', html)
-        # inline styles would be a second copy of the site.css colour map
-        self.assertNotIn("style=", html)
 
     def test_customer_figures_round_to_their_real_precision(self):
         self.assertEqual(render._approx(32069), 32000)

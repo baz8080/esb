@@ -77,9 +77,19 @@ Every one of these has already cost someone an hour:
 | Decision | Where |
 |---|---|
 | The grade is ESB's own 4-hour/95% charter aim, not Customer Minutes Lost | `notes/grading.md` § The grade |
+| The scale runs A to F inclusive. E splits the old F band at **60%**, continuing the 10-point step; every A-D cut is unmoved. The bands are anchored to a published standard, so arithmetic sets the cut and the distribution is only checked for a band nobody can reach | `notes/grading.md` § The scale grew an E (2026-08-29) |
 | Why CML was rejected as the basis (scale bias, and a relative scale mislabels a good network) | `notes/grading.md` § Why not Customer Minutes Lost |
 | One ESB event is one row: ids sharing a location and start time are merged | `notes/grading.md` § Settled |
 | Planned works are excluded from the grade | `notes/grading.md` § Settled |
+| The county page lists **every** outage; `COUNTY_PAGE_CASES` is gone (largest page 100.7 → 127.4 KB). A count was always a proxy for bytes — if a bound is needed again, make it a byte budget | `notes/design-alignment.md` § The copy and consistency pass (2026-08-27) |
+| One name per thing: the directory is "every area with an outage", the app is "County X's interactive view", heading counts read `· N outages` (row counts stay bare) | `notes/design-alignment.md` § One name per thing (2026-08-27) |
+| `base.css` resets margin, not padding, so a bare `<ul>` keeps the UA's 40px indent — `ul.areas` resets its own | `notes/design-alignment.md` § `ul.areas` was indented 40px (2026-08-27) |
+| Every figure beside a month is on that month's clock: the CML tile and the county month table show `cml_month`, not the annualised rate, and say "customer minutes lost" / "Minutes lost". The annualised rate survives only in the footer paragraph that names ESB's yearly 117.47 (`compare.cml`) | `notes/design-alignment.md` § The tiles say what they mean (2026-08-28) |
+| The national tiles carry no jargon — no "CML", "annualised" or "unplanned" — and the customer-time total is always in **customer-hours**: rolled into days or years, a unit named after a calendar span collides with a page organised by months, whether or not a given reader misreads it | `notes/design-alignment.md` § The tiles say what they mean (2026-08-28) |
+| `c/<slug>.html` is an archive: no single-month card (its tiles duplicated the table's first row), and **no JavaScript** — 1,840 → 1,349 KB across 26 pages. Day bars are the app's alone | `notes/design-alignment.md` § The county page became an archive (2026-08-28) |
+| The outage row explains itself: no floating `span.when`, the span inside the phrase it measures, "no restore time published" instead of "not confirmed", a restore compared against ESB's estimate rather than printed beside it, and the planned reason in the tag as a label (`Planned · line diversion`) | `notes/design-alignment.md` § The outage row stopped reading like a database row (2026-08-28) |
+| ESB's six planned reasons are labelled in `model.PLANNED_REASONS`, in the site and **not** as a column in `esb.db` — the database is disposable, the collector captures rather than interprets, and an unmapped reason must still render. 15% carry no reason and nothing in the record distinguishes them | `notes/design-alignment.md` § The reason moved into the tag |
+| The footer explains the grade, not the pipeline: the build cadence and the merge/repeat rule are out of it. The merge rule lives in `notes/grading.md`, not on the page | `notes/design-alignment.md` § What the footer stopped saying (2026-08-28) |
 | Storm days are *not* excluded, and the page says so | `notes/grading.md` § Settled |
 | Ending an outage on ESB's estimate rather than its last sighting | `notes/grading.md` § Settled (measured: 1.18× vs 2.26×) |
 | Customer-minutes integrated over the count, not multiplied | `notes/grading.md` § Settled |
@@ -97,11 +107,16 @@ Every one of these has already cost someone an hour:
 | 2.5M customer denominator, and which DAPR figures are comparable | `notes/grading.md` § The customer denominator |
 | The Pi pushes twice daily (midnight and noon local) and the site builds after each slot; the stale banner trips at 16h — above the widest legitimate push gap (~14h), below a missed midnight push (17h+) | `STALE_AFTER` in `esb_site/render.py` |
 | The banner states the data's *age* ("Updated 17 hours ago"), not its timestamp. A healthy overnight gap is a big number, so the warning, not the wording, carries it | `freshness()` in statusui's `ui.js` |
-| The exact horizon left the footer (owner call, 2026-08-26); it survives as the age chip's hover title and the county pages' sub line | `notes/design-alignment.md` |
+| The exact horizon left the footer (owner call, 2026-08-26) and then the county page's header (2026-08-28); it survives only as the age chip's hover title on the index. A county page's currency signal is the month table's `to 27 Aug` caveat | `notes/design-alignment.md` § The county page became an archive |
 | Banner, national heading and footer formats are aligned with uisce; the merged "How these numbers are worked out" disclosure and the "Source code · not affiliated" line are the shared shape | `notes/design-alignment.md` |
 | The app's county view links to `c/<slug>.html` from its own line under the heading; the wording names the difference (one month here, every month there) rather than calling itself a permalink, and uisce says the same sentence because its page stands in the same relation to its view | `notes/design-alignment.md` § The county page got a way in from the app |
 | The county page's meta description states the county's record, then names what the page holds, in that order — the page caps its list, and a snippet truncated mid-sentence must not read as an inventory | `notes/design-alignment.md` § The meta description had the same shape as the link |
 | The design layer is shared with uisce and lifts via `../statusui`, a uv git dependency pinned in `uv.lock` — edit upstream, then `../statusui/rollout.sh` bumps all three sites. Vendored copies were tried first and drifted within a day. `esb_site/site.css` is this site's own | `notes/grading.md` § The vendored copy became a pinned dependency; statusui's README |
+| Named areas get pages at `a/<county>/<area>.html` plus the `areas.html` directory, counting merged events, with no grade, day bar or CML at that level and no outage-count floor; "Around …" EDs and city `-rest` buckets get rows, not pages | `notes/area-pages.md` |
+| No page carries a "How to read this page" disclosure any more — the case row explains itself. The rule above the footer is off in `site.css` for the three static templates and re-enabled at the bottom of `site.html`, whose footer is the site's one block of prose | `notes/area-pages.md` § The area page's tail (2026-08-28) |
+| Every row in `areas.html` is a link: to the area's page where it has one, to `c/<county>.html` where it does not (876 of 1,270 rows). The county page's own copy leaves them plain — there it would link at itself | `notes/area-pages.md` § The directory stopped being two-thirds unclickable |
+| A search hit is an entry point, so it is a real link: an area hit goes to `a/<county>/<area>.html`, a county hit carries `c/<county>.html` in its `href` but keeps the click in the app. ESB location strings and "Around …" EDs reach no area and say "· county". The app area view was reconsidered for convergence with uisce and still declined — both sites converge on the page | `notes/area-pages.md` § Search reaches them |
+| The pin is where the fault is, not who is off — area pages say "pinned near", carry the attribution disclaimer, and list the 5 nearest paged areas (pop-weighted centroids, crossing county lines) instead of pretending the attribution is exact | `notes/area-pages.md` § The pin is where the fault is |
 
 Decisions go in `notes/`, dated, with the rejected alternatives and their
 numbers. Add a row here when one closes something off — this file carries
@@ -116,6 +131,19 @@ rejected, a dependency nothing else records, a constraint from outside the code.
 
 One line where one will do. If the reasoning needs a paragraph it belongs in the
 commit message, the PR, or `notes/` — not above the line.
+
+## Punctuation
+
+**No em dashes.** Not in the site's prose, the code comments, `notes/`, commit
+messages, PR bodies, issue bodies or the replies in a session. The house dash is
+a spaced hyphen - like this one. Where a sentence reads better without one,
+write it out: "which is", "because", a colon, or two sentences. En dashes go the
+same way outside a numeric range.
+
+This binds new prose. It is not a licence for a bulk rewrite: as of 2026-08-29
+this repo carries 199 em dashes and 21 en dashes across 11 files, most of them
+in settled notes, and re-punctuating those is a large diff over text nobody is
+reading again. Fix them on lines you are already editing.
 
 ## Before changing anything the site publishes
 
