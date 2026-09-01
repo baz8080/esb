@@ -157,10 +157,17 @@ def month_bounds(ym):
 
 
 def month_list(start, end):
-    months, cur = [], start.replace(day=1)
-    while cur <= end:
-        months.append(f"{cur.year:04d}-{cur.month:02d}")
-        cur = (cur + timedelta(days=32)).replace(day=1)
+    """Every month from start's to end's, inclusive.
+
+    Walked as (year, month) rather than as datetimes: COLLECTION_START is the
+    first poll's exact instant, and a cursor carrying its 21:02 clock time hid
+    each new month until its first evening.
+    """
+    months = []
+    year, month = start.year, start.month
+    while (year, month) <= (end.year, end.month):
+        months.append(f"{year:04d}-{month:02d}")
+        year, month = year + (month == 12), month % 12 + 1
     return months
 
 
