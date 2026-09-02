@@ -34,10 +34,10 @@ SITE_CSS = TEMPLATES / "site.css"
 # covers a plausible substation catchment without becoming a gazetteer.
 NEARBY_AREAS = 5
 
-# How far the data may lag the build before the page says so. Pushes land at
-# local midnight and noon, so with jitter and DST a build can legitimately see
-# ~14h-old data, while a dead collector shows 17h+ by the next morning cron.
-STALE_AFTER = timedelta(hours=16)
+# How far the data may lag the build before the page says so. Pushes land every
+# six hours, so with the timer's jitter and one poll interval the newest data can
+# legitimately be ~7h old; a single missed push shows 13h+.
+STALE_AFTER = timedelta(hours=10)
 
 slug = statusui.slug
 month_label = statusui.month_label
