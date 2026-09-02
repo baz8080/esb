@@ -118,5 +118,12 @@ the same days from the other bank.
 Session 1 (31 August 2026) merged `main`, swept the series to the new punctuation rule, added
 chapters 7a and 7b for pull requests #21 to #29, renumbered the closing to 8, and corrected
 the figures those days moved (the grade scale, the county-page cap, the commit and test
-counts). Figures are registered in `figures.md` as quoted; the few re-run against the working
-tree say so, with the date. `PROGRESS.md` is the ledger for any later session.
+counts).
+
+Session 2 (2 September 2026) merged `main` again for pull request #31 and added chapter 8,
+renumbering the closing to 9. The trigger was a scheduled check on the open pull request
+finding `main` had moved; the rule the series runs on is that a chapter is owed whenever a
+merged change contradicts or extends what an existing chapter says.
+
+Figures are registered in `figures.md` as quoted; the few re-run against the working tree say
+so, with the date. `PROGRESS.md` is the ledger for any later session.

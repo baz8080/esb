@@ -1,8 +1,9 @@
-# Outline - 10 posts plus intro and closing, chronological
+# Outline - 11 posts plus intro and closing, chronological
 
 Each entry: PRs/commits · thesis · concepts boxed · worked example · the uisce contrast the
-chapter must state. The repo's history is small enough to read directly - 98 commits, 20 PRs,
-three `notes/` files - so there is no `sources/` extraction; `figures.md` is the registry.
+chapter must state. The repo's history is small enough to read directly - its commits, pull
+request bodies and four `notes/` files - so there is no `sources/` extraction as the uisce
+series needed; `figures.md` is the registry.
 
 The series' standing mandate, on top of the uisce series' rules: **every fork from the water
 site is stated as (their approach, our approach, the data fact that forced it).**
@@ -115,7 +116,19 @@ the scale grows an E at 60%. **Concepts.** A guard that shrinks silently (+ the 
 prose). **Example.** Is half a million customer-hours plausible? **Contrast.** uisce had to
 *fit* a new band against its distribution; anchored bands mean arithmetic sets the cut.
 
-## Ch 8 - Closing
+## Ch 8 - The month that would not start · PR #31 · 1 Sep
+
+**Thesis.** `month_list` walked datetimes seeded with `start.replace(day=1)`, which replaces
+the day and keeps the time, so `COLLECTION_START`'s 21:02:11 rode the cursor and a month could
+not appear until its first evening; builds run 05:40 and 12:40 UTC. Not cosmetic: the same
+list drives per-county stats, national stats and `render.shard`'s month filing, so a fault on
+the 1st reached no shard and no table. Fixed by walking `(year, month)`, the shape uisce
+already uses. **Concept.** A date comparison that is secretly a time comparison (and its tie
+back to ch 5: both failures make the site look calmer than the data). **Example.** The
+twenty-one hours, with the two build times. **Contrast.** Third borrowing from the water site,
+and the first that is a loop rather than a component.
+
+## Ch 9 - Closing
 
 What the site can/cannot say (including the attribution limit and what an area page adds); the
 full side-by-side table, the series' deliverable, now 15 rows; the settled-decisions table in

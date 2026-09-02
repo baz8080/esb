@@ -1,8 +1,8 @@
-# 8. Closing: two feeds, two sites, one discipline
+# 9. Closing: two feeds, two sites, one discipline
 *~12 min read · with the side-by-side table and a glossary*
 
-*Where we are:* the end of the account, on 31 August 2026, with the repository at pull
-request #29 - 138 commits, 221 tests, and a month of continuously collected data.
+*Where we are:* the end of the account, on 2 September 2026, with the repository at pull
+request #31 - 144 commits, 225 tests, and a month and a day of continuously collected data.
 
 ## The question, answered as far as it can be
 
@@ -128,6 +128,7 @@ it - the convention inherited unchanged from the water site. In plain language:
 | Report customer time in days or years | A unit named after a calendar span collides with a page organised by months, however the arithmetic goes; customer-hours (chapter 7b). |
 | Build the shared-name guard by parsing the shared file | A guard reading a shorter list passes by checking less, silently; ask the package instead, and assert what must be in the answer (chapter 7b). |
 | Keep a house rule in a personal config file | It never reaches a session that clones only the repository, so it applied only when its author was in the room (chapter 7b). |
+| Seed a month walk with `replace(day=1)` on a timestamp | It replaces the day and keeps the clock time, so a month could not appear until its first evening, and the 1st reached no shard or table (chapter 8). |
 
 If the water series' summary lesson was *measure before you build, and write down what you
 rejected*, this series adds the corollary that made this repository cheap to build: **collect
@@ -181,3 +182,6 @@ are the water series' boxes, borrowed and marked (→ u14, u16).
 - **A guard that shrinks silently** - a check that builds its own list of things to check can
   pass by finding fewer of them; ask the source for the list, and assert what must be in it
   (7b).
+- **A date comparison that is secretly a time comparison** - values that look and print like
+  dates can still be compared as instants, and the symptom is absence rather than error: the
+  page reads as quiet instead of as broken (8).

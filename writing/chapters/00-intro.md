@@ -67,12 +67,13 @@ read alone.
 | **6b** | *Reading like one product* | The plain-reader pass, a staleness threshold sized to a push schedule, and the county pages becoming a durable archive. |
 | **7a** | *A page for every place* | A page for every named town, and the honest answer to the one thing this feed cannot tell you: who an outage actually hit. |
 | **7b** | *The units a reader thinks in* | Figures put on the month's own clock, outage rows written as sentences, a guard that would have passed by checking less, and the letter E. |
-| **8** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
+| **8** | *The month that would not start* | A stray clock time inside a date, and twenty-one hours of September that reached no page. |
+| **9** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
 
 ## How it was built, said once
 
 Like the water site, this project was written with an AI assistant - Claude, in Anthropic's
-Claude Code - from the first commit. Ninety-three of the repository's 138 commits carry a
+Claude Code - from the first commit. Most of the repository's 144 commits carry a
 `Co-Authored-By` trailer naming the model that wrote them: Opus 5 for the collector and the
 first site, Fable 5 for the later passes - and Fable 5 also drafted this series from the
 repository's own history under my direction, as it did the water series. I chose what to
