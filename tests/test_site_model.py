@@ -848,6 +848,42 @@ class TestPartialDays(SiteModelCase):
         self.assertEqual(model.partial_days(until)[-1], "2026-08-12")
 
 
+class TestMonthList(unittest.TestCase):
+    """A month reaches the strip on its first day, not on its first evening."""
+
+    # The site builds at 05:40 and 12:40 UTC (.github/workflows/pages.yml), so a
+    # month list that only turned over at COLLECTION_START's 21:02 clock time
+    # lost the whole of the 1st: no tab, no stats row, and the month's outages
+    # filed under no window at all in render.shard.
+    FIRST_BUILD_OF_SEPTEMBER = datetime(2026, 9, 1, 5, 40, tzinfo=UTC)
+
+    def test_the_new_month_is_listed_from_its_first_instant(self):
+        self.assertEqual(
+            model.month_list(model.COLLECTION_START, datetime(2026, 9, 1, tzinfo=UTC)),
+            ["2026-07", "2026-08", "2026-09"],
+        )
+
+    def test_the_first_build_of_the_month_already_has_it(self):
+        self.assertEqual(
+            model.month_list(model.COLLECTION_START, self.FIRST_BUILD_OF_SEPTEMBER)[-1],
+            "2026-09",
+        )
+
+    def test_the_payload_carries_the_month_the_build_runs_in(self):
+        now = self.FIRST_BUILD_OF_SEPTEMBER
+        data, _, months, _ = render.build([], model.SmallAreaIndex.load(), now, now)
+        self.assertEqual(data["months"][-1], "2026-09")
+        self.assertEqual(months, data["months"])
+
+    def test_the_list_spans_a_year_boundary(self):
+        self.assertEqual(
+            model.month_list(
+                datetime(2026, 12, 5, tzinfo=UTC), datetime(2027, 2, 1, tzinfo=UTC)
+            ),
+            ["2026-12", "2027-01", "2027-02"],
+        )
+
+
 class TestEstimatePlumbing(SiteModelCase):
     """ESB's restore estimate reaches the page beside the actual restore."""
 
