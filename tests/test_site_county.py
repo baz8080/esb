@@ -136,6 +136,12 @@ class TestTheMonthTable(CountyPageCase):
         app = render.SITE_HTML.read_text()
         for grade, band in render.GRADES.items():
             self.assertIn(band, app, f"site.html has drifted from GRADES[{grade}]")
+        # the JS half counts faults for itself, so it carries the threshold too
+        self.assertIn(
+            f"var MIN_FAULTS = {model.MIN_GRADED_FAULTS};",
+            app,
+            "site.html's MIN_FAULTS has drifted from model.MIN_GRADED_FAULTS",
+        )
 
     def test_every_band_the_model_grades_has_wording(self):
         """The wording is what a chip's title says, so a band with none is a
@@ -196,6 +202,40 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         page = self.render_county()
         self.assertIn("Only part of July 2026 was watched, so it is not graded", page)
         self.assertNotIn("Grades appear from 5 August", page)
+
+    def test_a_month_with_faults_but_nothing_judged_does_not_blame_the_count(self):
+        """Past both gates a county can still have no letter: every fault out at
+        the horizon, or begun before the month, leaves nothing to score. Saying
+        "too few faults" there contradicts the Faults column on the same row."""
+        horizon = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
+        for i in range(model.MIN_GRADED_FAULTS + 1):
+            self.observe(
+                detail(
+                    str(i),
+                    point={"c": f"53.3{i}858,-6.27098"},
+                    location=f"Place{i}",
+                    startTime=f"1{i}/08/2026 09:00",
+                    estRestoreTime=f"1{i}/08/2026 13:00",
+                ),
+                horizon,
+            )
+        self.poll(horizon, n_listed=model.MIN_GRADED_FAULTS + 1)
+        outages, _, index = self.load(horizon)
+        stats = model.county_month(
+            [o for o in outages if o.county == "Dublin"],
+            "Dublin",
+            index.customers["Dublin"],
+            "2026-08",
+            horizon,
+            self.until,
+        )
+        # the shape the bug needs: past both gates, ungraded anyway
+        self.assertIsNone(model.days_gate("2026-08", self.until))
+        self.assertGreaterEqual(stats["faults"], model.MIN_GRADED_FAULTS)
+        self.assertIsNone(stats["grade"])
+        said = render.ungraded_reason("2026-08", stats["faults"], self.until)
+        self.assertNotIn("Too few faults", said)
+        self.assertIn("both began and ended inside it", said)
 
     def test_a_watched_month_still_blames_its_faults(self):
         """The wording that was already right stays right: past five days, the

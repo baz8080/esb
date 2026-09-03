@@ -142,6 +142,8 @@ var GRADES = {
   E: "60% or more restored within 4 hours",
   F: "fewer than 60% restored within 4 hours"
 };
+// Mirrors model.MIN_GRADED_FAULTS, asserted by the same test that guards GRADES.
+var MIN_FAULTS = 5;
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
@@ -214,20 +216,29 @@ function describeCell(ch, date) {
 }
 function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 
-// Why a month carries no letter. The five-day gate is the calendar's and the
-// five-fault gate is the county's, and blaming faults for the first sends a
-// reader hunting outages that are not the reason. Mirrored in render.py
-// (ungraded_reason).
-function ungradedReason(ym) {
+// The national half of the answer, and "" once the month has five days. Split
+// out because the line above the county list has no county to count faults for.
+function dayGateReason(ym) {
   var from = D.daygate && D.daygate[ym];
-  if (from === undefined) return "Too few faults in " + monthLabelLong(ym) + " to grade fairly";
+  if (from === undefined) return "";
   if (!from) return "Only part of " + monthLabelLong(ym) + " was watched, so it is not graded";
   return monthLabelLong(ym) + " is too new to grade. Grades appear from " + from;
 }
 
-function gradeChip(g) {
+// Why a month carries no letter. Three things withhold it and naming the wrong
+// one sends a reader hunting outages that are not the reason: past both gates,
+// the count is not what is missing - a judged restoration is. Mirrored in
+// render.py (ungraded_reason).
+function ungradedReason(ym, faults) {
+  return dayGateReason(ym) || (faults < MIN_FAULTS
+    ? "Too few faults in " + monthLabelLong(ym) + " to grade fairly"
+    : "No fault in " + monthLabelLong(ym) +
+      " both began and ended inside it, so there is nothing to grade");
+}
+
+function gradeChip(g, faults) {
   return '<span class="gradechip g-' + (g || "none") + '" title="' +
-    esc(g ? "Grade " + g + ": " + GRADES[g] : ungradedReason(curMonth)) + '">' +
+    esc(g ? "Grade " + g + ": " + GRADES[g] : ungradedReason(curMonth, faults)) + '">' +
     (g || "–") + "</span>";
 }
 
@@ -254,7 +265,7 @@ function renderOverview() {
   document.getElementById("list").innerHTML = rows.map(function (r) {
     var m = r.m, g = m ? m[1] : null;
     return '<div class="place"><div class="row" onclick="go(\'' + esc(r.name) + '\')">' +
-      '<div class="cname">' + gradeChip(g) +
+      '<div class="cname">' + gradeChip(g, m ? m[4] : 0) +
         '<a href="c/' + slug(r.name) + '.html" onclick="event.preventDefault()">' + esc(r.name) + "</a></div>" +
       '<div class="bar">' + bar(m ? m[0] : "", curMonth) + "</div>" +
       '<div class="stats"><div class="counts">' +
@@ -283,8 +294,7 @@ function renderOverview() {
     // Said in the open rather than in 26 chips, because the five-day gate is
     // national and a chip's hover does not exist on a touch screen. Without it
     // a month of dashes reads as a verdict on every county at once.
-    (D.daygate && D.daygate[curMonth] !== undefined
-      ? " <b>" + esc(ungradedReason(curMonth)) + ".</b>" : "") +
+    (dayGateReason(curMonth) ? " <b>" + esc(dayGateReason(curMonth)) + ".</b>" : "") +
     // one hover cue above the list, not a placeholder in every strip
     ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
 
@@ -316,7 +326,7 @@ function renderCounty() {
 
   var head =
     '<a class="back" href="#" onclick="event.preventDefault();go(null)">← All counties</a>' +
-    '<div class="chead">' + gradeChip(m ? m[1] : null) + "<h2>" + esc(c) + "</h2>" +
+    '<div class="chead">' + gradeChip(m ? m[1] : null, m ? m[4] : 0) + "<h2>" + esc(c) + "</h2>" +
       '<span class="pop">About ' + num(D.customers[c]) +
       " homes and businesses · estimated from Census 2022</span></div>" +
     // Named for what is on the other side rather than for being a permalink:
@@ -327,8 +337,8 @@ function renderCounty() {
       esc(c) + " on one page</a></div>" +
     // The overview says this above the list; this view has no list to sit
     // above, and the dash is right beside the county's name.
-    (D.daygate && D.daygate[curMonth] !== undefined
-      ? '<div class="ungraded">' + esc(ungradedReason(curMonth)) + ".</div>" : "") +
+    (dayGateReason(curMonth)
+      ? '<div class="ungraded">' + esc(dayGateReason(curMonth)) + ".</div>" : "") +
     '<div class="controls"><div class="months">' + monthTabs(D.months, curMonth, "setMonth") + "</div></div>";
 
   var summary = '<div class="card">' +

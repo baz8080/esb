@@ -428,21 +428,30 @@ def _daygate(months, until):
 
 
 def ungraded_reason(ym, faults, until):
-    """Why a county-month carries no letter.
+    """Why a county-month carries no letter. Call only for an ungraded one.
 
-    Two gates leave a month ungraded and they are not interchangeable: the
-    five-day one is national and about the calendar, the five-fault one is the
-    county's own. Saying "too few faults" for the first sends a reader looking
-    for outages that are not the reason. Mirrored in site.html (ungradedReason).
+    Three things withhold the grade and none of them is interchangeable: the
+    five-day gate is national and about the calendar, the five-fault gate is
+    the county's own, and a month can clear both and still have nothing to
+    score. Naming the wrong one sends a reader looking for outages that are not
+    the reason. Mirrored in site.html (ungradedReason).
     """
     when = model.days_gate(ym, until)
-    if when is None:
+    if when is not None:
+        # A month the collector only caught the tail of never reaches five
+        # days, so there is no date to promise - only the reason.
+        if when >= model.month_bounds(ym)[1]:
+            return f"Only part of {month_label(ym)} was watched, so it is not graded"
+        return f"{month_label(ym)} is too new to grade. Grades appear from {when:%-d %B}"
+    if faults < model.MIN_GRADED_FAULTS:
         return f"Too few faults in {month_label(ym)} to grade fairly"
-    # A month the collector only caught the tail of never reaches five days, so
-    # there is no date to promise - only the reason the reader is owed.
-    if when >= model.month_bounds(ym)[1]:
-        return f"Only part of {month_label(ym)} was watched, so it is not graded"
-    return f"{month_label(ym)} is too new to grade. Grades appear from {when:%-d %B}"
+    # Past both gates and still no letter means nothing was judged: every fault
+    # was still out at the horizon, or began before the month. The count is not
+    # the reason here, and saying it is contradicts the Faults column beside it.
+    return (
+        f"No fault in {month_label(ym)} both began and ended inside it, "
+        "so there is nothing to grade"
+    )
 
 
 def _grade_chip(grade, month=None, reason=None):
@@ -502,6 +511,11 @@ def _month_watched(ym, until):
     return " ".join(bits)
 
 
+def _reason_for(m, ym, until):
+    """The ungraded sentence for a payload row, or None where it has a letter."""
+    return None if m[1] else ungraded_reason(ym, m[4], until)
+
+
 def _county_months_html(county, data, months, until):
     """One row per month, newest first.
 
@@ -516,7 +530,7 @@ def _county_months_html(county, data, months, until):
             f'<tr><th scope="row">{month_label(ym)}'
             + (f'<span class="part">{watched}</span>' if watched else "")
             + "</th>"
-            f"<td>{_grade_chip(m[1], reason=ungraded_reason(ym, m[4], until))}</td>"
+            f"<td>{_grade_chip(m[1], reason=_reason_for(m, ym, until))}</td>"
             f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
             f"<td>{m[4]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
             f"<td>{m[3]:,.1f}</td></tr>"
@@ -544,7 +558,7 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     """
     newest = data["stats"][county][months[-1]]
     grade = newest[1]
-    reason = ungraded_reason(months[-1], newest[4], until)
+    reason = _reason_for(newest, months[-1], until)
     cases = _county_cases(by_month, months)
     faults = sum(1 for k in cases if not k[2])
     planned = len(cases) - faults
