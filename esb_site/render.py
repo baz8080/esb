@@ -187,8 +187,6 @@ def build(outages, sa_index, now, until):
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
         "partial": model.partial_days(until),
-        # National, like `partial`, which is why the app can say it once above
-        # the list instead of in 26 chips a touch screen cannot open.
         "daygate": _daygate(months, until),
         # The three figures the CML explainer quotes about itself. They move
         # with every rebuild, and hard-coding them into the prose meant the
@@ -416,8 +414,7 @@ GRADES = {
 def _daygate(months, until):
     """Months the five-day gate still holds shut, against the date each opens.
 
-    A month absent from this has been graded on days; one mapped to "" was
-    caught too late to ever reach five days, so there is no date to name.
+    Absent means graded on days; "" means a month that can never reach five.
     """
     gates = ((ym, model.days_gate(ym, until)) for ym in months)
     return {
@@ -430,26 +427,20 @@ def _daygate(months, until):
 def ungraded_reason(ym, faults, until):
     """Why a county-month carries no letter. Call only for an ungraded one.
 
-    Three things withhold the grade and none of them is interchangeable: the
-    five-day gate is national and about the calendar, the five-fault gate is
-    the county's own, and a month can clear both and still have nothing to
-    score. Naming the wrong one sends a reader looking for outages that are not
-    the reason. Mirrored in site.html (ungradedReason).
+    Three gates withhold it and naming the wrong one sends a reader after
+    outages that are not the reason. Mirrored in site.html (ungradedReason).
     """
     when = model.days_gate(ym, until)
     if when is not None:
-        # A month the collector only caught the tail of never reaches five
-        # days, so there is no date to promise - only the reason.
+        # past the month's end: it can never reach five days, so promise no date
         if when >= model.month_bounds(ym)[1]:
             return f"Only part of {month_label(ym)} was watched, so it is not graded"
         return f"{month_label(ym)} is too new to grade. Grades appear from {when:%-d %B}"
     if faults < model.MIN_GRADED_FAULTS:
         return f"Too few faults in {month_label(ym)} to grade fairly"
-    # Past both gates and still no letter means nothing was judged: every fault
-    # was still out at the horizon, or began before the month. The count is not
-    # the reason here, and saying it is contradicts the Faults column beside it.
-    # "restored" rather than "ended" because that is the word the column beside
-    # this chip uses, and the grade is about restoration.
+    # Past both gates, nothing was judged: every fault still out at the horizon,
+    # or begun before the month. Blaming the count here would contradict the
+    # Faults column beside it.
     return (
         f"No fault in {month_label(ym)} was restored in the month it started, "
         "so there is nothing to grade"
@@ -468,8 +459,7 @@ def _grade_chip(grade, month=None, reason=None):
     title = (
         f"Grade {grade}{when}: {GRADES[grade]}"
         if grade
-        # A bare fallback, never the faults wording: guessing at a gate is how
-        # the chip came to blame faults for a month that was five days old.
+        # bare, never the faults wording: guessing at a gate is what went wrong
         else reason or f"Not graded{when or ' this month'}"
     )
     return (
@@ -581,10 +571,8 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
         f'<div class="sub">About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022</div>",
     ]
-    # The chip's hover is dead on a touch screen, and the dash it shows is the
-    # one thing on this page a reader is most likely to read as a verdict. The
-    # five-day gate is the same sentence for all 26 counties, so it is said in
-    # the open, once, under the chip it explains.
+    # A `title` does not open on a touch screen and a bare dash reads as a
+    # verdict, so the day gate - alone among the three - is said in the open.
     if grade is None and model.days_gate(months[-1], until) is not None:
         body.append(f'<div class="ungraded">{html.escape(reason)}.</div>')
     # Straight to the months: the newest month's card duplicated the table's

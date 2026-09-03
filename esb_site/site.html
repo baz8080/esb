@@ -216,8 +216,8 @@ function describeCell(ch, date) {
 }
 function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 
-// The national half of the answer, and "" once the month has five days. Split
-// out because the line above the county list has no county to count faults for.
+// The national half alone: the notices below have no county whose faults they
+// could count. "" once the month has five days.
 function dayGateReason(ym) {
   var from = D.daygate && D.daygate[ym];
   if (from === undefined) return "";
@@ -225,10 +225,7 @@ function dayGateReason(ym) {
   return monthLabelLong(ym) + " is too new to grade. Grades appear from " + from;
 }
 
-// Why a month carries no letter. Three things withhold it and naming the wrong
-// one sends a reader hunting outages that are not the reason: past both gates,
-// the count is not what is missing - a judged restoration is. Mirrored in
-// render.py (ungraded_reason).
+// Mirrors render.py (ungraded_reason); the two wordings have to agree.
 function ungradedReason(ym, faults) {
   return dayGateReason(ym) || (faults < MIN_FAULTS
     ? "Too few faults in " + monthLabelLong(ym) + " to grade fairly"
@@ -291,9 +288,6 @@ function renderOverview() {
     "fault interrupted." + (within == null ? "" :
       " Nationally " + (partial ? "this month" : "in " + monthLabelLong(curMonth)) +
       ": <b>" + within + "%</b>.") +
-    // Said in the open rather than in 26 chips, because the five-day gate is
-    // national and a chip's hover does not exist on a touch screen. Without it
-    // a month of dashes reads as a verdict on every county at once.
     (dayGateReason(curMonth) ? " <b>" + esc(dayGateReason(curMonth)) + ".</b>" : "") +
     // one hover cue above the list, not a placeholder in every strip
     ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
@@ -335,8 +329,6 @@ function renderCounty() {
     // a screen reader lists links stripped of their context.
     '<div class="sub"><a href="c/' + slug(c) + '.html">Every month for County ' +
       esc(c) + " on one page</a></div>" +
-    // The overview says this above the list; this view has no list to sit
-    // above, and the dash is right beside the county's name.
     (dayGateReason(curMonth)
       ? '<div class="ungraded">' + esc(dayGateReason(curMonth)) + ".</div>" : "") +
     '<div class="controls"><div class="months">' + monthTabs(D.months, curMonth, "setMonth") + "</div></div>";

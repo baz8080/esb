@@ -21,10 +21,8 @@
 /* the customer figure that sits on the drill-down heading line itself */
 .chead .pop { color: var(--muted); font-size: 12.5px; }
 
-/* Why the chip above is a dash. The shared sub-line rule is adjacent-sibling
-   and so reaches only the first line under a heading; this is the second, and
-   needs its own. Same treatment one shade up, because it answers a question
-   the dash has already made the reader ask. */
+/* Why the chip above is a dash. The shared sub-line rule is adjacent-sibling,
+   so it reaches only the first line under a heading; this is the second. */
 .ungraded { color: var(--ink-2); font-size: 12.5px; margin: -12px 0 16px; }
 
 /* county page: the month-by-month archive. A table is the one thing here that

@@ -170,9 +170,10 @@ class TestTheMonthTable(CountyPageCase):
 
 
 class TestAnUngradedMonthSaysWhy(CountyPageCase):
-    """Two gates leave a month ungraded and they are not the same fact. The
-    chip blamed faults for both, so the first five days of every month told 26
-    counties' readers to go looking for outages that were not the reason."""
+    """Three gates leave a month ungraded and they are not the same fact. The
+    chip blamed faults for all of them, so the first five days of every month
+    told 26 counties' readers to go looking for outages that were not the
+    reason."""
 
     def test_a_month_under_five_days_old_names_the_date_it_is_graded_from(self):
         self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
