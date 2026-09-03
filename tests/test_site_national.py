@@ -238,7 +238,7 @@ class PayloadCase(unittest.TestCase):
             set(self.data),
             {
                 "generated", "observed", "observed_iso", "stale_hours",
-                "partial", "compare",
+                "partial", "daygate", "compare",
                 "start", "months", "esb",
                 "counties", "customers", "stats", "national",
             },

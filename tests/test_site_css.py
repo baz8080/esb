@@ -73,6 +73,35 @@ def _winner(css, prop):
     return max(rules)[2] if rules else None
 
 
+def _day_gated_county_page():
+    """The same page inside the five-day gate, where the ungraded notice shows."""
+    index = model.SmallAreaIndex.load()
+    now = datetime(2026, 9, 2, 20, 0, tzinfo=UTC)
+    data, _, months, _ = render.build([], index, now, now)
+    return render.county_page("Dublin", data, {}, months, now, index.counties)
+
+
+class UngradedNoticeCase(unittest.TestCase):
+    """The notice is the touch-screen half of the fix: the chip's `title` does
+    not open on a phone, so this line carries the reason instead. An unstyled
+    one would render at body size, louder than the heading it explains."""
+
+    def test_the_notice_renders_inside_the_gate_and_not_outside_it(self):
+        self.assertIn('<div class="ungraded">', _day_gated_county_page())
+        self.assertNotIn('<div class="ungraded">', _county_page())
+
+    def test_it_does_not_break_the_shared_sub_line_adjacency(self):
+        """It sits after the customer count, so `.chead + .sub` still matches."""
+        self.assertRegex(
+            _day_gated_county_page(),
+            r'<div class="chead">(?:(?!</?div).)*</div>\s*<div class="sub"',
+        )
+
+    def test_something_in_the_stylesheet_matches_it(self):
+        css = _stylesheet(_day_gated_county_page())
+        self.assertRegex(css, r"(^|[,{}])\s*\.ungraded\s*[,{]")
+
+
 class SharedSubLineCase(unittest.TestCase):
     def test_the_page_renders_an_element_the_rule_can_match(self):
         """A rule with nothing to match is a rule that does not apply. The

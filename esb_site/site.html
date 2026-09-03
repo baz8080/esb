@@ -69,8 +69,10 @@
     Charter</a> the CRU approves: <q>our aim is to restore supply within less
     than 4 hours in 95% of cases</q>. The same guarantee pays compensation after
     <b>24 hours</b> without power; outages past that mark are counted separately
-    on each county page. A month with fewer than five faults is left ungraded -
-    one long outage in a quiet county would swing the letter two bands. Planned
+    on each county page. A month with fewer than five faults is left ungraded,
+    because one long outage in a quiet county would swing the letter two bands.
+    So is a month less than five days old: there is barely a month there to
+    judge, which is why grades appear a few days into each one. Planned
     works are excluded just as the CRU's incentive excludes them: they are
     announced in advance and never report a restore time.</p>
     <p>The figure the CRU actually regulates is <b>Customer Minutes Lost</b> -
@@ -212,9 +214,20 @@ function describeCell(ch, date) {
 }
 function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 
-function gradeChip(g, big) {
+// Why a month carries no letter. The five-day gate is the calendar's and the
+// five-fault gate is the county's, and blaming faults for the first sends a
+// reader hunting outages that are not the reason. Mirrored in render.py
+// (ungraded_reason).
+function ungradedReason(ym) {
+  var from = D.daygate && D.daygate[ym];
+  if (from === undefined) return "Too few faults in " + monthLabelLong(ym) + " to grade fairly";
+  if (!from) return "Only part of " + monthLabelLong(ym) + " was watched, so it is not graded";
+  return monthLabelLong(ym) + " is too new to grade. Grades appear from " + from;
+}
+
+function gradeChip(g) {
   return '<span class="gradechip g-' + (g || "none") + '" title="' +
-    esc(g ? "Grade " + g + ": " + GRADES[g] : "Too few faults this month to grade fairly") + '">' +
+    esc(g ? "Grade " + g + ": " + GRADES[g] : ungradedReason(curMonth)) + '">' +
     (g || "–") + "</span>";
 }
 
@@ -267,6 +280,11 @@ function renderOverview() {
     "fault interrupted." + (within == null ? "" :
       " Nationally " + (partial ? "this month" : "in " + monthLabelLong(curMonth)) +
       ": <b>" + within + "%</b>.") +
+    // Said in the open rather than in 26 chips, because the five-day gate is
+    // national and a chip's hover does not exist on a touch screen. Without it
+    // a month of dashes reads as a verdict on every county at once.
+    (D.daygate && D.daygate[curMonth] !== undefined
+      ? " <b>" + esc(ungradedReason(curMonth)) + ".</b>" : "") +
     // one hover cue above the list, not a placeholder in every strip
     ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
 
@@ -298,7 +316,7 @@ function renderCounty() {
 
   var head =
     '<a class="back" href="#" onclick="event.preventDefault();go(null)">← All counties</a>' +
-    '<div class="chead">' + gradeChip(m ? m[1] : null, true) + "<h2>" + esc(c) + "</h2>" +
+    '<div class="chead">' + gradeChip(m ? m[1] : null) + "<h2>" + esc(c) + "</h2>" +
       '<span class="pop">About ' + num(D.customers[c]) +
       " homes and businesses · estimated from Census 2022</span></div>" +
     // Named for what is on the other side rather than for being a permalink:
@@ -307,6 +325,10 @@ function renderCounty() {
     // a screen reader lists links stripped of their context.
     '<div class="sub"><a href="c/' + slug(c) + '.html">Every month for County ' +
       esc(c) + " on one page</a></div>" +
+    // The overview says this above the list; this view has no list to sit
+    // above, and the dash is right beside the county's name.
+    (D.daygate && D.daygate[curMonth] !== undefined
+      ? '<div class="ungraded">' + esc(ungradedReason(curMonth)) + ".</div>" : "") +
     '<div class="controls"><div class="months">' + monthTabs(D.months, curMonth, "setMonth") + "</div></div>";
 
   var summary = '<div class="card">' +

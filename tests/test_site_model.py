@@ -1090,3 +1090,33 @@ class TestCaseCopy(unittest.TestCase):
         self.assertEqual(render._approx(32069), 32000)
         self.assertEqual(render._approx(9432), 9400)
         self.assertEqual(render._approx(151678), 152000)
+
+
+class TestTheFiveDayGate(unittest.TestCase):
+    """The gate that empties the whole site for the first five days of a month.
+    It takes no county, which is the property the page leans on when it says so
+    once above the list instead of in 26 chips."""
+
+    def test_it_measures_calendar_coverage_not_days_with_faults(self):
+        """Nothing in it counts an outage. A quiet county and a battered one
+        clear it on the same date."""
+        self.assertIsNotNone(
+            model.days_gate("2026-09", datetime(2026, 9, 5, 23, 59, tzinfo=UTC))
+        )
+        self.assertIsNone(
+            model.days_gate("2026-09", datetime(2026, 9, 6, 0, 0, tzinfo=UTC))
+        )
+
+    def test_it_opens_five_days_after_the_window_not_the_month(self):
+        """A month the collector joined part-way through is judged from where it
+        started watching, not from the 1st."""
+        self.assertEqual(
+            model.days_gate("2026-07", datetime(2026, 8, 1, tzinfo=UTC)),
+            model.COLLECTION_START + timedelta(days=model.MIN_GRADED_DAYS),
+        )
+
+    def test_a_month_caught_too_late_never_opens(self):
+        """July holds three hours and is over. The caller has to check the date
+        against the month, or it promises a grade that can never arrive."""
+        when = model.days_gate("2026-07", datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertGreater(when, model.month_bounds("2026-07")[1])

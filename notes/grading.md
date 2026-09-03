@@ -72,6 +72,93 @@ The scale ran A, B, C, D, F. Skipping E is an American-ism and ESB is not Americ
 
 Unlike uisce's, this cut needed no fitting: the bands are anchored to an absolute published standard rather than calibrated against this dataset, so the arithmetic sets them and the distribution only has to be checked for a band nobody can reach.
 
+### The five-day gate had nobody to explain it (2026-09-03)
+
+September opened and every county on the site showed a dash. The site had never
+crossed a month boundary before: collection began at 21:02 on 31 July, so August
+was its only whole month, and July's three hours were too old for anyone to
+question.
+
+Nothing was broken. `county_month` needs five observed days and five faults, and
+on 2 September the month held 1.83 days, so the day gate shut all 26 counties at
+once. It reopens at `2026-09-06T00:00Z`, and will shut again for the first five
+days of every month after this one - about 16% of the calendar, on the view the
+app opens on.
+
+**What was wrong was the explanation.** The chip said "Too few faults this month
+to grade fairly" for both gates, and the footer documented only the five-fault
+rule. In September that sent a reader looking for outages that were not the
+reason. The two gates are not the same fact:
+
+| Gate | Scope | Measures |
+|---|---|---|
+| `MIN_GRADED_DAYS` | national - `observed_window` takes no county | calendar coverage of the month |
+| `MIN_GRADED_FAULTS` | the county's own | faults that started and ended in the window |
+
+Neither counts "days on which a fault happened", which is the reading the old
+wording invited.
+
+#### Why this site needs the gate and uisce and lifts do not
+
+All three grade A-F. The difference is the denominator. uisce divides by
+`pop * period_s` and lifts by `observed` days: **time**, which accrues whether or
+not anything happens, so their denominator is always full-size for the window
+being measured and a two-day answer is a complete two-day fact. This site divides
+by `judged`, the customers that a fault actually reached. That is a **sample**,
+not a census: its size is whatever the weather delivered, and with zero faults it
+is not 100% but `None`, undefined. A measure that only exists once enough has
+gone wrong is a measure that needs a small-sample floor. Theirs is at its most
+solid when nothing has happened at all.
+
+The siblings also name their own denominator to the reader ("listed on 1 of 2
+days watched"), so a short window cannot mislead. A single letter has no room to
+say "C, from one outage", which is why this site withholds the letter instead.
+
+#### The gate is a floor, not a settling point
+
+Measured by replaying August at every day-of-month horizon with the gate removed,
+against each county's settled August letter:
+
+| Horizon | Counties with a defined grade | Matching their settled letter |
+|---|---:|---:|
+| day 1 | 14/26 | 3/26 |
+| day 3 | 25/26 | 6/26 |
+| day 5 | 26/26 | 8/26 |
+| day 10 | 26/26 | 12/26 |
+| day 14 | 26/26 | 17/26 |
+
+Five days buys a defined, non-defamatory letter. It does not buy a stable one:
+nine counties were still moving bands after a fortnight. What it prevents is the
+day-1 reading, where Wicklow was an **F** that settled at A and Dublin an **E**
+that settled at C, off one or two outages each.
+
+So the gate stays at five days and is not raised. The letter is honestly a
+month-to-date figure, the app already says "so far", and a gate long enough to
+settle the letter would withhold half the month. The fix was the wording.
+
+#### What the site says now
+
+`model.days_gate` returns the instant a month reaches five days, or `None` once
+it has, and `county_month` tests it rather than `observed_days` so the letter and
+the sentence cannot disagree. `render.ungraded_reason` turns it into one of three
+sentences, mirrored in site.html as `ungradedReason`:
+
+- **too new**: "September 2026 is too new to grade. Grades appear from 6 September"
+- **never watched enough**: "Only part of July 2026 was watched, so it is not
+  graded" - July can never reach five days and the month is over, so promising a
+  date would be a lie
+- **too few faults**: unchanged, and now naming its month
+
+The day-gate sentence is also printed **in the open** - above the county list in
+the app, under the heading on `c/<slug>.html` and in the app's county view. A
+`title` does not open on a touch screen, and a page of dashes reads as a verdict.
+It is said once rather than in 26 chips because the day gate is national, which
+is the property `days_gate` has and `county_month` does not.
+
+One thing the gate does not measure: a collector gap *inside* the window is not
+deducted, only one at the horizon is. Down for three of five days still reads as
+five observed days.
+
 ### Why not Customer Minutes Lost
 
 CML was the original basis and was replaced, for two reasons.

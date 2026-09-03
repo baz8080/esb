@@ -125,7 +125,7 @@ class TestTheMonthTable(CountyPageCase):
         JS - have to agree."""
         # this fixture county is ungraded every month, which is the chip the
         # page can show; the lettered ones come off the helper
-        self.assertIn("Too few faults this month to grade fairly", self.page)
+        self.assertIn("Too few faults in September 2026 to grade fairly", self.page)
         self.assertIn('title="Grade A: meets ESB', render._grade_chip("A"))
         # the heading chip is one month's letter and the card that named that
         # month is gone, so the title has to name it
@@ -161,6 +161,51 @@ class TestTheMonthTable(CountyPageCase):
         self.assertIn("from 31 Jul", july)
         sept = re.search(r'<th scope="row">September 2026(.*?)</th>', self.page).group(1)
         self.assertIn("to 10 Sep", sept)
+
+
+class TestAnUngradedMonthSaysWhy(CountyPageCase):
+    """Two gates leave a month ungraded and they are not the same fact. The
+    chip blamed faults for both, so the first five days of every month told 26
+    counties' readers to go looking for outages that were not the reason."""
+
+    def test_a_month_under_five_days_old_names_the_date_it_is_graded_from(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 2, 20, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county(now=datetime(2026, 9, 2, 20, 0, tzinfo=UTC))
+        self.assertIn("September 2026 is too new to grade", page)
+        self.assertIn("Grades appear from 6 September", page)
+        self.assertNotIn("Too few faults in September", page)
+
+    def test_the_reason_is_on_the_page_not_only_in_a_hover(self):
+        """`title` does not exist on a touch screen, and the dash it explains is
+        the first thing on the page. The five-day gate is national, so one
+        sentence under the chip covers every county."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 2, 20, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county(now=datetime(2026, 9, 2, 20, 0, tzinfo=UTC))
+        self.assertIn(
+            '<div class="ungraded">September 2026 is too new to grade.', page
+        )
+        self.assertIn("September 2026 is too new to grade", self.text_of(page))
+
+    def test_a_month_that_can_never_reach_five_days_promises_no_date(self):
+        """Collection opened at 21:02 on 31 July, so July holds three hours and
+        the month is over. "Grades appear from 5 August" would be a lie."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        self.assertIn("Only part of July 2026 was watched, so it is not graded", page)
+        self.assertNotIn("Grades appear from 5 August", page)
+
+    def test_a_watched_month_still_blames_its_faults(self):
+        """The wording that was already right stays right: past five days, the
+        county's own fault count is the gate."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        self.assertIn("Too few faults in September 2026 to grade fairly", page)
+        # and no bare line under the chip: nothing here a hover cannot carry
+        self.assertNotIn('<div class="ungraded">', page)
 
 
 class TestThePageStandsAlone(CountyPageCase):
