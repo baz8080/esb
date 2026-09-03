@@ -1,12 +1,15 @@
 name: Build site
 
 on:
+  # esb-data dispatches this workflow on every push, which is what actually keeps
+  # the site current. These two are the fallback for a dispatch that never
+  # arrives, and they are late by design: scheduled runs here have been landing
+  # 4-10 hours after their cron time, so they cannot be aimed at a window.
+  # 07:00Z is 07:00 in Dublin in winter and 08:00 in summer, 14:00Z is 14:00 and
+  # 15:00 - the only UTC hours inside both target windows in both seasons.
   schedule:
-    # One run after each push slot: the collector pushes to esb-data at local
-    # midnight and noon with up to 30 minutes of jitter, and these clear both
-    # whether Dublin is on UTC or UTC+1.
-    - cron: '40 5 * * *'
-    - cron: '40 12 * * *'
+    - cron: '0 7 * * *'
+    - cron: '0 14 * * *'
   push:
     branches: [main]
   workflow_dispatch:

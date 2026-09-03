@@ -432,7 +432,7 @@ function boot() {
   }
   curMonth = D.months[D.months.length - 1];
   var natmeta = document.getElementById("natmeta");
-  natmeta.innerHTML = freshness(D.observed_iso, D.stale_hours, "collection has stopped");
+  natmeta.innerHTML = freshness(D.observed_iso, D.stale_hours);
   // the exact horizon, for whoever hovers the age chip; the footer stopped
   // carrying it when the sites' footers were aligned
   natmeta.title = "Data to " + D.observed;
