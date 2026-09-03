@@ -448,8 +448,10 @@ def ungraded_reason(ym, faults, until):
     # Past both gates and still no letter means nothing was judged: every fault
     # was still out at the horizon, or began before the month. The count is not
     # the reason here, and saying it is contradicts the Faults column beside it.
+    # "restored" rather than "ended" because that is the word the column beside
+    # this chip uses, and the grade is about restoration.
     return (
-        f"No fault in {month_label(ym)} both began and ended inside it, "
+        f"No fault in {month_label(ym)} was restored in the month it started, "
         "so there is nothing to grade"
     )
 

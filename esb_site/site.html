@@ -233,7 +233,7 @@ function ungradedReason(ym, faults) {
   return dayGateReason(ym) || (faults < MIN_FAULTS
     ? "Too few faults in " + monthLabelLong(ym) + " to grade fairly"
     : "No fault in " + monthLabelLong(ym) +
-      " both began and ended inside it, so there is nothing to grade");
+      " was restored in the month it started, so there is nothing to grade");
 }
 
 function gradeChip(g, faults) {

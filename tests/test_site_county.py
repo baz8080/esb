@@ -235,7 +235,7 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         self.assertIsNone(stats["grade"])
         said = render.ungraded_reason("2026-08", stats["faults"], self.until)
         self.assertNotIn("Too few faults", said)
-        self.assertIn("both began and ended inside it", said)
+        self.assertIn("was restored in the month it started", said)
 
     def test_a_watched_month_still_blames_its_faults(self):
         """The wording that was already right stays right: past five days, the

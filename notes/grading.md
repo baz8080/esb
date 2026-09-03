@@ -88,15 +88,18 @@ app opens on.
 **What was wrong was the explanation.** The chip said "Too few faults this month
 to grade fairly" for both gates, and the footer documented only the five-fault
 rule. In September that sent a reader looking for outages that were not the
-reason. The two gates are not the same fact:
+reason. Three separate things withhold the letter, and none of them is the same
+fact as another:
 
 | Gate | Scope | Measures |
 |---|---|---|
 | `MIN_GRADED_DAYS` | national - `observed_window` takes no county | calendar coverage of the month |
-| `MIN_GRADED_FAULTS` | the county's own | faults that started and ended in the window |
+| `MIN_GRADED_FAULTS` | the county's own | faults overlapping the window |
+| `within is None` | the county's own | whether *any* fault was scoreable at all |
 
-Neither counts "days on which a fault happened", which is the reading the old
-wording invited.
+None of them counts "days on which a fault happened", which is the reading the
+old wording invited. The third was itself missed on the first pass and is written
+up at the end of this section.
 
 #### Why this site needs the gate and uisce and lifts do not
 
@@ -140,7 +143,7 @@ settle the letter would withhold half the month. The fix was the wording.
 
 `model.days_gate` returns the instant a month reaches five days, or `None` once
 it has, and `county_month` tests it rather than `observed_days` so the letter and
-the sentence cannot disagree. `render.ungraded_reason` turns it into one of three
+the sentence cannot disagree. `render.ungraded_reason` turns it into one of four
 sentences, mirrored in site.html as `ungradedReason`:
 
 - **too new**: "September 2026 is too new to grade. Grades appear from 6 September"
@@ -148,6 +151,11 @@ sentences, mirrored in site.html as `ungradedReason`:
   graded" - July can never reach five days and the month is over, so promising a
   date would be a lie
 - **too few faults**: unchanged, and now naming its month
+- **nothing judged**: "No fault in August 2026 was restored in the month it
+  started, so there is nothing to grade"
+
+That fourth one is the correction below, and the reason there are three gates in
+the table above rather than two.
 
 The day-gate sentence is also printed **in the open** - above the county list in
 the app, under the heading on `c/<slug>.html` and in the app's county view. A
@@ -158,6 +166,34 @@ is the property `days_gate` has and `county_month` does not.
 One thing the gate does not measure: a collector gap *inside* the window is not
 deducted, only one at the horizon is. Down for three of five days still reads as
 five observed days.
+
+#### The third gate was missed on the first pass
+
+Review of the first commit caught `ungraded_reason` taking a `faults` argument
+and never reading it, so "Too few faults" was an unconditional catch-all for any
+month past the day gate. There are three gates, not two: `within` is `None`
+whenever `judged` is zero, which is independent of the count. `judged` takes only
+faults that started inside the window, were restored inside it, and are not still
+out at the horizon, so a county can carry a dozen faults and have none of them
+scoreable.
+
+Reproduced with six live faults on 2026-08-20: `faults=6, within=None,
+grade=None`, and the chip read "Too few faults in August 2026" on the same table
+row whose Faults column read 6. That is the mis-blaming this whole change exists
+to end, with the gates swapped, so the fix is the same principle applied once
+more rather than a new one.
+
+Latent, not live: replaying the real corpus across every August horizon produces
+no occurrence. It would have surfaced in a storm, which is the worst moment for
+the page to contradict itself.
+
+The wording says "restored", not "ended", because that is the word the column
+beside the chip uses ("Restored in 4h"), and "the month it started" carries both
+conditions in one phrase - an earlier draft said "both began and ended inside it"
+and read as legal boilerplate. The day-gate half is split out as `dayGateReason`
+because the two visible notices are national and have no county whose faults they
+could count; handing them a placeholder count is how the argument went unread in
+the first place.
 
 ### Why not Customer Minutes Lost
 
