@@ -825,6 +825,19 @@ def observed_window(ym, until):
     return max(lo, COLLECTION_START), min(hi, until)
 
 
+def days_gate(ym, until):
+    """When month `ym` reaches MIN_GRADED_DAYS, or None once it has.
+
+    The instant can fall past the end of the month, so a caller about to
+    promise a reader a date has to check it against `month_bounds` first.
+    Takes no county: every county shares one answer.
+    """
+    lo, hi = observed_window(ym, until)
+    if hi - lo >= timedelta(days=MIN_GRADED_DAYS):
+        return None
+    return lo + timedelta(days=MIN_GRADED_DAYS)
+
+
 def county_month(outages, county, customers, ym, now, until):
     """Statistics for one county in one month.
 
@@ -911,9 +924,11 @@ def county_month(outages, county, customers, ym, now, until):
             )
 
     within = 100.0 * judged_within / judged if judged else None
+    # Through `days_gate` so the letter and the sentence explaining its
+    # absence cannot disagree.
     gradeable = (
         within is not None
-        and observed_days >= MIN_GRADED_DAYS
+        and days_gate(ym, until) is None
         and faults >= MIN_GRADED_FAULTS
     )
     return {

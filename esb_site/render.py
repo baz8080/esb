@@ -187,6 +187,7 @@ def build(outages, sa_index, now, until):
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
         "partial": model.partial_days(until),
+        "daygate": _daygate(months, until),
         # The three figures the CML explainer quotes about itself. They move
         # with every rebuild, and hard-coding them into the prose meant the
         # paragraph making the site's credibility argument quietly went wrong.
@@ -410,7 +411,43 @@ GRADES = {
 }
 
 
-def _grade_chip(grade, month=None):
+def _daygate(months, until):
+    """Months the five-day gate still holds shut, against the date each opens.
+
+    Absent means graded on days; "" means a month that can never reach five.
+    """
+    gates = ((ym, model.days_gate(ym, until)) for ym in months)
+    return {
+        ym: "" if when >= model.month_bounds(ym)[1] else f"{when:%-d %B}"
+        for ym, when in gates
+        if when is not None
+    }
+
+
+def ungraded_reason(ym, faults, until):
+    """Why a county-month carries no letter. Call only for an ungraded one.
+
+    Three gates withhold it and naming the wrong one sends a reader after
+    outages that are not the reason. Mirrored in site.html (ungradedReason).
+    """
+    when = model.days_gate(ym, until)
+    if when is not None:
+        # past the month's end: it can never reach five days, so promise no date
+        if when >= model.month_bounds(ym)[1]:
+            return f"Only part of {month_label(ym)} was watched, so it is not graded"
+        return f"{month_label(ym)} is too new to grade. Grades appear from {when:%-d %B}"
+    if faults < model.MIN_GRADED_FAULTS:
+        return f"Too few faults in {month_label(ym)} to grade fairly"
+    # Past both gates, nothing was judged: every fault still out at the horizon,
+    # or begun before the month. Blaming the count here would contradict the
+    # Faults column beside it.
+    return (
+        f"No fault in {month_label(ym)} was restored in the month it started, "
+        "so there is nothing to grade"
+    )
+
+
+def _grade_chip(grade, month=None, reason=None):
     """The letter, with the band it stands for on hover.
 
     The county page's footer used to spell the bands out. `month` names the
@@ -422,7 +459,8 @@ def _grade_chip(grade, month=None):
     title = (
         f"Grade {grade}{when}: {GRADES[grade]}"
         if grade
-        else f"Too few faults{when or ' this month'} to grade fairly"
+        # bare, never the faults wording: guessing at a gate is what went wrong
+        else reason or f"Not graded{when or ' this month'}"
     )
     return (
         f'<span class="gradechip g-{grade or "none"}" title="{html.escape(title)}">'
@@ -465,6 +503,11 @@ def _month_watched(ym, until):
     return " ".join(bits)
 
 
+def _reason_for(m, ym, until):
+    """The ungraded sentence for a payload row, or None where it has a letter."""
+    return None if m[1] else ungraded_reason(ym, m[4], until)
+
+
 def _county_months_html(county, data, months, until):
     """One row per month, newest first.
 
@@ -479,7 +522,7 @@ def _county_months_html(county, data, months, until):
             f'<tr><th scope="row">{month_label(ym)}'
             + (f'<span class="part">{watched}</span>' if watched else "")
             + "</th>"
-            f"<td>{_grade_chip(m[1])}</td>"
+            f"<td>{_grade_chip(m[1], reason=_reason_for(m, ym, until))}</td>"
             f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
             f"<td>{m[4]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
             f"<td>{m[3]:,.1f}</td></tr>"
@@ -505,7 +548,9 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     subject - and its title - change under the same URL every time the month
     rolled over.
     """
-    grade = data["stats"][county][months[-1]][1]
+    newest = data["stats"][county][months[-1]]
+    grade = newest[1]
+    reason = _reason_for(newest, months[-1], until)
     cases = _county_cases(by_month, months)
     faults = sum(1 for k in cases if not k[2])
     planned = len(cases) - faults
@@ -521,11 +566,15 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     )
     body = [
         '<a class="back" href="../index.html">← All counties</a>',
-        f'<div class="chead">{_grade_chip(grade, month_label(months[-1]))}',
+        f'<div class="chead">{_grade_chip(grade, month_label(months[-1]), reason)}',
         f"<h1>County {html.escape(county)}</h1></div>",
         f'<div class="sub">About {data["customers"][county]:,} homes '
         "and businesses · estimated from Census 2022</div>",
     ]
+    # A `title` does not open on a touch screen and a bare dash reads as a
+    # verdict, so the day gate - alone among the three - is said in the open.
+    if grade is None and model.days_gate(months[-1], until) is not None:
+        body.append(f'<div class="ungraded">{html.escape(reason)}.</div>')
     # Straight to the months: the newest month's card duplicated the table's
     # first row (notes/design-alignment.md § The county page became an archive).
     body.append(_county_months_html(county, data, months, until))
