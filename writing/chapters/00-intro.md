@@ -68,12 +68,13 @@ read alone.
 | **7a** | *A page for every place* | A page for every named town, and the honest answer to the one thing this feed cannot tell you: who an outage actually hit. |
 | **7b** | *The units a reader thinks in* | Figures put on the month's own clock, outage rows written as sentences, a guard that would have passed by checking less, and the letter E. |
 | **8** | *The month that would not start* | A stray clock time inside a date, and twenty-one hours of September that reached no page. |
-| **9** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
+| **9** | *The cron that never ran in the morning* | A publishing schedule that had never been keeping its own times, and a staleness threshold re-derived around the fix. |
+| **10** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
 
 ## How it was built, said once
 
 Like the water site, this project was written with an AI assistant - Claude, in Anthropic's
-Claude Code - from the first commit. Most of the repository's 144 commits carry a
+Claude Code - from the first commit. Most of the repository's 152 commits carry a
 `Co-Authored-By` trailer naming the model that wrote them: Opus 5 for the collector and the
 first site, Fable 5 for the later passes - and Fable 5 also drafted this series from the
 repository's own history under my direction, as it did the water series. I chose what to
@@ -94,9 +95,9 @@ each event is placed in a county by the nearest Census Small Area centroid, beca
 carries no county. A county-month is graded A to F on the share of its fault-interrupted
 customers restored within four hours - ESB's own charter aim of 95% is the A - and Customer
 Minutes Lost, the regulator's unit, is shown beside the grade with its caveat stated. The
-result is published as static pages at `baz8080.github.io/esb`, rebuilt twice a day after the
-Pi pushes its logs, with a banner that admits the data's age. Storm days are not excluded,
-because nothing in the feed identifies one, and the page says so.
+result is published as static pages at `baz8080.github.io/esb`, rebuilt within a minute of
+each of the Pi's six-hourly pushes, with a banner that admits the data's age. Storm days are
+not excluded, because nothing in the feed identifies one, and the page says so.
 
 ## A note on the numbers
 

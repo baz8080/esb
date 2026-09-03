@@ -18,8 +18,11 @@ walk started at `start.replace(day=1)`, which does exactly what it says: it repl
 poll's exact instant, `2026-07-31T21:02:11Z` (chapter 1). So the cursor carried 21:02:11
 through every step of the walk, and the loop's "is the cursor still inside the window?" test
 compared a 21:02 timestamp against the horizon. A new month could therefore not appear until
-the first evening of that month. The site builds at 05:40 and 12:40 UTC, both before nine in
-the evening, so September could not exist on the site until the build on 2 September.
+the first evening of that month. The site's builds were scheduled for 05:40 and 12:40 UTC,
+both before nine in the evening, so September could not exist on the site until the build on
+2 September. (Those slots are chapter 9's subject the following day, where it turns out they
+had been running hours late all along. The bug here is the same either way: the builds that
+did run, ran too early in the day for the month to exist yet.)
 
 > **Concept: a date comparison that is secretly a time comparison.** Two values can look like
 > dates, print like dates, and still be compared as instants. `replace(day=1)` on a timestamp

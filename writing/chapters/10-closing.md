@@ -1,8 +1,8 @@
-# 9. Closing: two feeds, two sites, one discipline
+# 10. Closing: two feeds, two sites, one discipline
 *~12 min read · with the side-by-side table and a glossary*
 
-*Where we are:* the end of the account, on 2 September 2026, with the repository at pull
-request #31 - 144 commits, 225 tests, and a month and a day of continuously collected data.
+*Where we are:* the end of the account, on 3 September 2026, with the repository at pull
+request #34 - 152 commits, 225 tests, and a month and two days of continuously collected data.
 
 ## The question, answered as far as it can be
 
@@ -86,7 +86,7 @@ site, each traceable to a property of the feed it serves.
 | The grade | Availability from person-hours, on the site's own fixed thresholds | The share restored inside 4 hours, on ESB's published 95% aim |
 | External validation | None exists to compare against | National CML, CI and CAIDI held to ESB's published figures in CI |
 | The named caveat | The 500 m radius is an assumption, stated | Storm days are in, stated |
-| Staleness trips at | 24 hours, sized to its build schedule | 16 hours, sized to the push arithmetic |
+| Staleness trips at | 24 hours, sized to its build schedule | 10 hours, sized to six-hourly pushes (16 while the pushes were twice daily) |
 | A new grade band | Fitted against its own distribution | Set by arithmetic, then checked for a band nobody can reach |
 | The smallest published place | A town, with the people in a 500 m circle around each pin | A town, with the outages *pinned near* it and a card pointing at its neighbours |
 
@@ -129,6 +129,9 @@ it - the convention inherited unchanged from the water site. In plain language:
 | Build the shared-name guard by parsing the shared file | A guard reading a shorter list passes by checking less, silently; ask the package instead, and assert what must be in the answer (chapter 7b). |
 | Keep a house rule in a personal config file | It never reaches a session that clones only the repository, so it applied only when its author was in the room (chapter 7b). |
 | Seed a month walk with `replace(day=1)` on a timestamp | It replaces the day and keeps the clock time, so a month could not appear until its first evening, and the 1st reached no shard or table (chapter 8). |
+| Publish on a schedule, and trust the schedule | Scheduled runs landed 4 to 10 hours late every day for a week and the morning slot never ran in the morning; build on the data landing instead, and keep the crons only as a fallback (chapter 9). |
+| Retime the late cron | A 4-to-10-hour delay cannot be aimed at a one-hour window; a better time only moves where the miss lands (chapter 9). |
+| Let the banner name a cause | From a browser a stalled build and a stalled collector are indistinguishable; publish the age and the warning, not the diagnosis (chapter 9). |
 
 If the water series' summary lesson was *measure before you build, and write down what you
 rejected*, this series adds the corollary that made this repository cheap to build: **collect
@@ -185,3 +188,6 @@ are the water series' boxes, borrowed and marked (→ u14, u16).
 - **A date comparison that is secretly a time comparison** - values that look and print like
   dates can still be compared as instants, and the symptom is absence rather than error: the
   page reads as quiet instead of as broken (8).
+- **A schedule you asked for is not a schedule you have** - a cron line is a request, and the
+  evidence for when a job runs is its recorded start times; an argument resting on "this runs
+  at T" is only as good as that log (9).

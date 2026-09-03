@@ -58,7 +58,10 @@ pushes instead of above it.
 > half-poll: a build racing the next push can therefore legitimately see data about **14
 > hours** old. A collector that has actually died is first noticed by the morning build at
 > **17+ hours**. The threshold went to **16 hours** - above everything innocent, below the
-> first guilty reading. The water site's equivalent threshold is 24 hours, sized against
+> first guilty reading. (Every quantity in that arithmetic moves in chapter 9, including one
+> that turned out never to have been true: the builds were not running when the workflow said
+> they were. The *method* survives the correction; the threshold is 10 hours now.) The water
+> site's equivalent threshold is 24 hours, sized against
 > *its* build schedule; when the freshness logic later moved into the shared layer, the
 > threshold and the warning sentence were exactly the two things left per-site, because they
 > are the two things the arithmetic makes site-specific (PR #13, 26 Aug 2026).

@@ -1,4 +1,4 @@
-# Outline - 11 posts plus intro and closing, chronological
+# Outline - 12 posts plus intro and closing, chronological
 
 Each entry: PRs/commits · thesis · concepts boxed · worked example · the uisce contrast the
 chapter must state. The repo's history is small enough to read directly - its commits, pull
@@ -128,7 +128,20 @@ back to ch 5: both failures make the site look calmer than the data). **Example.
 twenty-one hours, with the two build times. **Contrast.** Third borrowing from the water site,
 and the first that is a loop rather than a component.
 
-## Ch 9 - Closing
+## Ch 9 - The cron that never ran in the morning · PRs #32 to #34 · 2 Sep
+
+**Thesis.** The banner said "collection has stopped" over 9-hour-old data while the collector
+ran fine; the build had stopped. Two findings: the banner cannot name a cause (from a browser a
+stalled build and a stalled collector are identical, so `freshness()` loses its note), and the
+crons had been running 4-10 h late every day, the morning slot never in the morning (normal
+jitter before 26 Aug was 18-26 min). Retiming rejected. Fix: esb-data dispatches the build on
+push, crons demoted to a fallback at `0 7`/`0 14` UTC (hour boundaries because DST). Pushes go
+six-hourly, so the legitimate max age is ~7h not ~13h, and STALE_AFTER follows 16h → 10h.
+Deploy ordering matters: the Pi must take the new timer first. **Concept.** A schedule you
+asked for is not a schedule you have. **Example.** The threshold re-derived, ch 6b's arithmetic
+one cadence later. **Contrast.** The lift site broke the same way and carries the same note.
+
+## Ch 10 - Closing
 
 What the site can/cannot say (including the attribution limit and what an area page adds); the
 full side-by-side table, the series' deliverable, now 15 rows; the settled-decisions table in
