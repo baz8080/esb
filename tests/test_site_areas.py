@@ -28,6 +28,7 @@ SEPT = datetime(2026, 9, 20, 0, 0, 0, tzinfo=UTC)
 GLASNEVIN = {"c": "53.36858,-6.27098"}  # Dublin, "Cabra-Glasnevin"
 SKERRIES = {"c": "53.5793,-6.1083"}  # Dublin, "Skerries"
 RURAL_SLIGO = {"c": "54.1226,-8.1921"}  # Sligo, "Around Ballynashee"
+SLIGO_TOWN = {"c": "54.2697,-8.4771"}  # Sligo, "Sligo": the town named for its county
 
 
 class TestWhichAreasGetOne(unittest.TestCase):
@@ -151,6 +152,7 @@ class AreaSiteCase(SiteModelCase):
             ),
             datetime(2026, 8, 12, 12, 0, tzinfo=UTC),
         )
+        self.more()
         self.poll(datetime(2026, 9, 1, 0, 0, tzinfo=UTC), n_listed=1)
         outages, _, index = self.load(SEPT)
         self._out = tempfile.TemporaryDirectory()
@@ -158,8 +160,16 @@ class AreaSiteCase(SiteModelCase):
         self.out = Path(self._out.name)
         render.write(self.out, outages, index, SEPT, self.until)
 
+    def more(self):
+        """Observations a subclass adds before the site is built."""
+
     def page(self, rel):
         return (self.out / rel).read_text()
+
+    def index(self):
+        body = self.page("search.js")
+        self.assertTrue(body.startswith("window.ESB_PLACES = "))
+        return json.loads(body.split(" = ", 1)[1].rstrip(";\n"))
 
     def text_of(self, page):
         body = re.sub(r"<(script|style).*?</\1>", "", page, flags=re.S)
@@ -171,11 +181,6 @@ class TestTheSearchIndex(AreaSiteCase):
     page carries its slug so the hit can link straight to it; ESB's own location
     strings name no Census area and stay bare, which is also what the annotation
     beside the hit is reading."""
-
-    def index(self):
-        body = self.page("search.js")
-        self.assertTrue(body.startswith("window.ESB_PLACES = "))
-        return json.loads(body.split(" = ", 1)[1].rstrip(";\n"))
 
     def test_a_place_with_a_page_carries_its_slug(self):
         self.assertIn(["Skerries", "skerries"], self.index()["Dublin"])
@@ -195,6 +200,43 @@ class TestTheSearchIndex(AreaSiteCase):
                 path = self.out / "a" / render.slug(county) / f"{entry[1]}.html"
                 self.assertTrue(path.exists(), path)
         self.assertTrue(found, "no slugs emitted, so nothing was proved")
+
+
+def _sligo(point):
+    return detail(
+        "4",
+        point=point,
+        location="Sligo",
+        startTime="13/08/2026 09:00",
+        estRestoreTime="13/08/2026 12:00",
+        restoreTime="13/08/2026 11:00",
+    )
+
+
+class TestATownNamedForItsCounty(AreaSiteCase):
+    """Fourteen settlements share their county's name. The town's page is a
+    destination the county row cannot offer, so the name goes into the index
+    with its slug and the box can reach it (#28)."""
+
+    def more(self):
+        self.observe(_sligo(SLIGO_TOWN), datetime(2026, 8, 13, 12, 0, tzinfo=UTC))
+
+    def test_the_town_carries_its_slug_and_has_its_page(self):
+        self.assertIn(["Sligo", "sligo"], self.index()["Sligo"])
+        self.assertTrue((self.out / "a" / "sligo" / "sligo.html").exists())
+
+
+class TestACountyNameWithNoTownBehindIt(AreaSiteCase):
+    """ESB writing "Sligo" for a fault out in an ED is not the town: bare, the
+    name would be a second row to the county view the county row already
+    reaches, which is the guard's original purpose."""
+
+    def more(self):
+        self.observe(_sligo(RURAL_SLIGO), datetime(2026, 8, 13, 12, 0, tzinfo=UTC))
+
+    def test_the_bare_name_stays_out(self):
+        self.assertNotIn("Sligo", self.index()["Sligo"])
+        self.assertFalse((self.out / "a" / "sligo" / "sligo.html").exists())
 
 
 class TestThePage(AreaSiteCase):
