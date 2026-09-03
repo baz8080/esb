@@ -1,8 +1,9 @@
-# 10. Closing: two feeds, two sites, one discipline
+# 11. Closing: two feeds, two sites, one discipline
 *~12 min read · with the side-by-side table and a glossary*
 
 *Where we are:* the end of the account, on 3 September 2026, with the repository at pull
-request #34 - 152 commits, 225 tests, and a month and two days of continuously collected data.
+request #35 - 159 commits, 236 tests, and a month and three days of continuously collected
+data.
 
 ## The question, answered as far as it can be
 
@@ -43,6 +44,8 @@ control.
   derived from the push arithmetic rather than hope (chapter 6b).
 - **What has happened near a named town**, on its own page, for every settlement the Census
   names and every outage the archive holds, uncapped (chapter 7a).
+- **Why a letter is missing**, when one is, in the reader's own view and naming which of the
+  three gates withheld it (chapter 10).
 
 ## What it cannot say, and says so
 
@@ -88,6 +91,7 @@ site, each traceable to a property of the feed it serves.
 | The named caveat | The 500 m radius is an assumption, stated | Storm days are in, stated |
 | Staleness trips at | 24 hours, sized to its build schedule | 10 hours, sized to six-hourly pushes (16 while the pushes were twice daily) |
 | A new grade band | Fitted against its own distribution | Set by arithmetic, then checked for a band nobody can reach |
+| A thin month | Graded anyway: the denominator is time, so a short window is a complete short fact | Ungraded behind three gates: the denominator is a sample of what the weather delivered, and is undefined at zero faults |
 | The smallest published place | A town, with the people in a 500 m circle around each pin | A town, with the outages *pinned near* it and a card pointing at its neighbours |
 
 And the identical column, which is the deeper finding: both sites keep decisions in dated
@@ -132,6 +136,12 @@ it - the convention inherited unchanged from the water site. In plain language:
 | Publish on a schedule, and trust the schedule | Scheduled runs landed 4 to 10 hours late every day for a week and the morning slot never ran in the morning; build on the data landing instead, and keep the crons only as a fallback (chapter 9). |
 | Retime the late cron | A 4-to-10-hour delay cannot be aimed at a one-hour window; a better time only moves where the miss lands (chapter 9). |
 | Let the banner name a cause | From a browser a stalled build and a stalled collector are indistinguishable; publish the age and the warning, not the diagnosis (chapter 9). |
+| Explain three different gates with one sentence | "Too few faults" sent readers hunting for outages that were not the reason; one sentence per gate, each naming its month (chapter 10). |
+| Put the explanation in a hover | A `title` does not open on a touch screen, and the readers are on phones checking their power; a national gate is stated once, in the open (chapter 10). |
+| Raise the five-day gate until the letter settles | Measured: five days buys a defined letter, and nine counties were still moving band after a fortnight. A gate that waited for stability would withhold half the month (chapter 10). |
+| Explain three different gates with one sentence | "Too few faults" sent readers hunting for outages that were not the reason; one sentence per gate, each naming its month (chapter 10). |
+| Put the explanation in a hover | A `title` does not open on a touch screen, and the readers are on phones checking their power; a national gate is stated once, in the open (chapter 10). |
+| Raise the five-day gate until the letter settles | Measured: five days buys a defined letter, and nine counties were still moving band after a fortnight. A gate that waited for stability would withhold half the month (chapter 10). |
 
 If the water series' summary lesson was *measure before you build, and write down what you
 rejected*, this series adds the corollary that made this repository cheap to build: **collect
@@ -191,3 +201,9 @@ are the water series' boxes, borrowed and marked (→ u14, u16).
 - **A schedule you asked for is not a schedule you have** - a cron line is a request, and the
   evidence for when a job runs is its recorded start times; an argument resting on "this runs
   at T" is only as good as that log (9).
+- **A shared sentence for unrelated causes** - one message covering several causes is not a
+  simplification but a claim that they are the same cause, and it sends the reader to look in
+  the wrong place (10).
+- **A denominator that is time versus one that is a sample** - time accrues whether or not
+  anything happens, so a short window is a complete fact; a sample sized by events is
+  undefined when there are none, and needs a small-sample floor (10).

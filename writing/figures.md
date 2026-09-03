@@ -6,14 +6,14 @@ writing session). Chapters quote from here rather than re-deriving. Figures are 
 measured on their stated date; where the corpus moved between measurements (the CI ratio, the
 CML), the chapter quotes one snapshot and names it.
 
-## Verified against the working tree: 27 Aug (S0), 31 Aug (S1), 2 Sep (S2), 3 Sep (S3)
+## Verified against the working tree: 27 Aug (S0), 31 Aug (S1), 2 Sep (S2), 3 Sep (S3, S4)
 
 | Figure | Value | How | Verified |
 |---|---|---|---|
-| Commits on `main` | 152 (144 at S2, 138 at S1, 98 at S0) | `git log --oneline \| wc -l` | Y (3 Sep) |
-| Commits with a `Co-Authored-By` trailer | 95 (64 Claude Opus 5, 26 Claude Fable 5, 5 unversioned) | `git log --format='%b' \| grep -o 'Co-Authored-By: [^<]*' \| sort \| uniq -c` | Y (2 Sep) |
-| Merged pull requests | numbered to #34 (#28 unused) | GitHub, `baz8080/esb` | Y (3 Sep) |
-| Test count | 225 (`Ran 225 tests`; 16 skipped without `../esb-data`) | `uv run python -m unittest discover -s tests -t .` | Y (2 Sep) |
+| Commits on `main` | 159 (152 at S3, 144 at S2, 138 at S1, 98 at S0) | `git log --oneline \| wc -l` | Y (3 Sep, S4) |
+| Commits with a `Co-Authored-By` trailer | 103 (72 Claude Opus 5, 26 Claude Fable 5, 5 unversioned) | `git log --format='%b' \| grep -o 'Co-Authored-By: [^<]*' \| sort \| uniq -c` | Y (3 Sep, S4) |
+| Merged pull requests | numbered to #35 (#28 unused) | GitHub, `baz8080/esb` | Y (3 Sep, S4) |
+| Test count | 236 (`Ran 236 tests`; 16 skipped without `../esb-data`) | `uv run python -m unittest discover -s tests -t .` | Y (3 Sep, S4) |
 | `STALE_AFTER` | 10 hours (16 until PR #32) | `esb_site/render.py:40` | Y (3 Sep) |
 | `sort_keys=True` in the raw append | present | `esb_outages/store.py:201` | Y |
 | `notes/` files | grading · polling · design-alignment · area-pages (27 Aug) · publish-cadence (2 Sep) | `ls notes/` | Y (3 Sep) |
@@ -159,7 +159,7 @@ CML), the chapter quotes one snapshot and names it.
 | Chip contrast upstream | B measured Lc 38.6 on dark ink against 69.2 on white | PR #29 / statusui #11 |
 | At the end of the stretch | 221 tests; initial load 60.0 KB against the 500 KB budget | PR #29, 30 Aug 2026 |
 
-### Ch 10 (closing)
+### Ch 11 (closing)
 Aggregates of the above; no new figures except the CAIDI restatement (92.2 vs 85.1, ch 4b),
 the 0.65 h median of coarse-poll-lost ids restated as 39 minutes (ch 2), and the six-band
 distribution restated from ch 7b. The August 2026 five-band split (A 9 · B 6 · C 4 · D 4 ·

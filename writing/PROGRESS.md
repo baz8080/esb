@@ -16,18 +16,22 @@ later session) → `final`.
   arithmetic rested on build times that had never been kept, so its concept box gains a
   pointer and the threshold is 10h; ch 8's build times are marked as scheduled rather than
   actual; the intro's one-paragraph summary said "twice a day".
+- **Session 4 (3 Sep 2026, later)** merged `main` for PR #35, added chapter 10 and renumbered
+  the closing 10 → 11. Ch 4b's one-sentence ungraded rule gains a pointer, being the sentence
+  ch 10 takes apart. The closing passed the 3,000-word ceiling here, so `README.md` rule 6 was
+  amended to exempt it as a reference chapter with a different guard (it must stay an index).
 
 A later session should do the continuity/review pass and check every `figures.md` "lifted" row
 it quotes against its stated source.
 
 | Ch | Title | PRs | Status | Words |
 |---|---|---|---|---|
-| 00 | Ask the grid the same question (intro) | - | drafted | 1,604 |
+| 00 | Ask the grid the same question (intro) | - | drafted | 1,631 |
 | 01 | Write it down before you read it | pre-PR | drafted | 1,757 |
 | 02 | A collector in the hall | pre-PR + polling.md | drafted | 2,031 |
 | 03 | The feed that knows when it happened | #1 branch | drafted | 1,964 |
 | 04a | One fault, five records | #1 branch | drafted | 1,658 |
-| 04b | Grade them on their own promise | #1 branch | drafted | 2,199 |
+| 04b | Grade them on their own promise | #1 branch | drafted | 2,230 |
 | 05 | What the page may claim | #1 | drafted | 2,045 |
 | 06a | The third site of the family | #2 to #11 | drafted | 1,551 |
 | 06b | Reading like one product | #12 to #20 | drafted | 2,430 |
@@ -35,9 +39,10 @@ it quotes against its stated source.
 | 07b | The units a reader thinks in | #25 to #29 | drafted | 2,670 |
 | 08 | The month that would not start | #31 | drafted | 1,081 |
 | 09 | The cron that never ran in the morning | #32 to #34 | drafted | 1,563 |
-| 10 | Closing: two feeds, two sites, one discipline | - | drafted | 2,982 |
+| 10 | A dash on every county | #35 | drafted | 1,568 |
+| 11 | Closing: two feeds, two sites, one discipline | - | drafted | 3,356 |
 
-Total ~27,400 words, two SVGs (`envelope-not-sum.svg`, `horizon.svg`), one mermaid flow
+Total ~29,400 words, two SVGs (`envelope-not-sum.svg`, `horizon.svg`), one mermaid flow
 (ch 1). Companion series: uisce PR #43 (`writing/` on its `writing-series` branch); its
 chapters 14 and 16 narrate 19 to 26 August from the water site's side, and chapters here cite
 uisce chapters by number, not by URL, so links survive that PR's merge.
@@ -46,7 +51,7 @@ uisce chapters by number, not by URL, so links survive that PR's merge.
 
 - **00** The water site's question grows a power sibling; the purging feed (112-min
   retention) forces collect-first-design-later. First-month answer: 88.4% vs the 95% aim,
-  9 A counties, 1 outage past 24 h. AI process named once (95 of 152 commits co-authored).
+  9 A counties, 1 outage past 24 h. AI process named once (103 of 159 commits co-authored).
 - **01** The invariant: verbatim log before parse, DB disposable, rebuild replays the live
   path. Boxes: source of truth vs derived index; idempotent merge (sorted keys + `sort -u`).
   Example: outage 2826455 timezone proof. Contrast: uisce's upsert archive; sightings vs
@@ -110,10 +115,19 @@ uisce chapters by number, not by URL, so links survive that PR's merge.
   fallback; pushes six-hourly so the legitimate max age is ~7h not ~13h and STALE_AFTER goes
   16h → 10h; the Pi must take the new timer first. Box: a schedule you asked for is not a
   schedule you have.
-- **10** Question answered with dates (both scales); can-say / cannot-say lists incl.
-  attribution; the 16-row side-by-side table + the identical column; settled-decisions table
-  (25 rows) in plain language; "collect first, interpret later, keep the bytes"; glossary of
-  17 own + 3 borrowed boxes.
+- **10** PR #35: September opened with a dash on all 26 counties (1.83 of five observed days);
+  nothing broken, the explanation was. Ch 4b's one rule is three gates - five days (national,
+  calendar), five faults (county), nothing scoreable (county) - and none counts "days with
+  faults". Four sentences, each naming its month, printed in the open rather than in a `title`
+  no touch screen opens, the national one said once. Gate kept: August replay shows five days
+  buys a defined letter (day 1: 14/26 defined, 3/26 correct) not a stable one. Review caught
+  the fix re-committing the same sin with the gates swapped. Boxes: a shared sentence for
+  unrelated causes; a denominator that is time vs one that is a sample (the sharpest uisce
+  contrast in the series, written into `notes/grading.md` itself).
+- **11** Question answered with dates (both scales); can-say / cannot-say lists incl.
+  attribution and the missing-letter reason; the 17-row side-by-side table + the identical
+  column; settled-decisions table (28 rows) in plain language; "collect first, interpret
+  later, keep the bytes"; glossary of 19 own + 3 borrowed boxes.
 
 ## Open threads
 
@@ -124,11 +138,13 @@ uisce chapters by number, not by URL, so links survive that PR's merge.
   `notes/grading.md` "When to refresh".
 - A root README pointer to `writing/` is deliberately left for the publish decision, as the
   water series did.
-- Anything landing after PR #34 needs a new chapter or an extension to an existing one; the
+- Anything landing after PR #35 needs a new chapter or an extension to an existing one; the
   repo moves roughly a pull request a day, so check `git log origin/main` before assuming the
   account is current. A chapter is owed when a merged change *contradicts* what a chapter says
-  (the E band did, the county-page cap did, the publish cadence did); a passing mention
-  suffices when it merely adds.
-- Ch 6b and ch 8 now carry parenthetical corrections pointing forward to ch 9. If a third such
-  correction lands on the same chapter, consider whether the chapter should be rewritten rather
-  than annotated again.
+  (the E band did, the county-page cap did, the publish cadence did, the ungraded rule did); a
+  passing mention suffices when it merely adds.
+- Ch 4b, 6b and 8 now carry parenthetical corrections pointing forward. 4b has two (the E band
+  to 7b, the ungraded rule to 10). If a third lands on the same chapter, rewrite it rather than
+  annotating again.
+- The closing is over the length ceiling by design now (README rule 6, amended). Watch that it
+  stays an index: rows, not new prose sections.

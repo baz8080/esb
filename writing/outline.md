@@ -1,4 +1,4 @@
-# Outline - 12 posts plus intro and closing, chronological
+# Outline - 13 posts plus intro and closing, chronological
 
 Each entry: PRs/commits · thesis · concepts boxed · worked example · the uisce contrast the
 chapter must state. The repo's history is small enough to read directly - its commits, pull
@@ -141,7 +141,25 @@ Deploy ordering matters: the Pi must take the new timer first. **Concept.** A sc
 asked for is not a schedule you have. **Example.** The threshold re-derived, ch 6b's arithmetic
 one cadence later. **Contrast.** The lift site broke the same way and carries the same note.
 
-## Ch 10 - Closing
+## Ch 10 - A dash on every county · PR #35 · 3 Sep
+
+**Thesis.** September opened with a dash on all 26 counties: the month held 1.83 of the five
+observed days the grade needs, and the site had never crossed a month boundary before. Nothing
+broken; the *explanation* was. Ch 4b's one-sentence rule is really three gates (five days is
+national and about the calendar; five faults is the county's; "nothing scoreable" is a county
+that cleared both), and none counts "days with faults". Four sentences now, each naming its
+month, printed in the open rather than in a `title` a touch screen cannot open, and the
+national one said once rather than 26 times. Gate re-examined and kept: the August replay
+shows five days buys a *defined* letter (day 1: 14/26 defined, 3/26 matching the settled
+letter) but not a stable one (nine counties still moving at day 14). Review caught the fix
+committing the same sin with the gates swapped. **Concepts.** A shared sentence for unrelated
+causes · a denominator that is time versus one that is a sample. **Example.** The replay table.
+**Contrast.** The sharpest in the series, and written into `notes/grading.md` itself: uisce and
+lifts divide by time, which accrues regardless, so a two-day answer is a complete two-day fact;
+this site divides by a sample that is undefined at zero faults. They also name their
+denominator to the reader, and a single letter cannot say "C, from one outage".
+
+## Ch 11 - Closing
 
 What the site can/cannot say (including the attribution limit and what an area page adds); the
 full side-by-side table, the series' deliverable, now 15 rows; the settled-decisions table in

@@ -48,7 +48,9 @@ ESB's own 4-hour standard…", 17 Aug 2026).
 > anchor is not mine. If a county gets an A, it met the operator's own promise; if the
 > country gets a B, the operator missed it. Nationally, the first month: **88.4%**, against
 > the 95% aim. A county-month with fewer than five faults or five observed days goes
-> ungraded rather than pretending a sample that thin means something.
+> ungraded rather than pretending a sample that thin means something. (That one sentence turns
+> out to cover three unrelated gates, which is chapter 10; "sample" is the load-bearing word,
+> and the reason the sibling sites need no such rule.)
 
 For August 2026, the 26 counties split A 9 · B 6 · C 4 · D 4 · F 3 (`notes/grading.md`,
 17 Aug 2026; measured on the five-band scale, so its F column is what chapter 7b later splits

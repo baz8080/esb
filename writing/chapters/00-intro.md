@@ -69,12 +69,13 @@ read alone.
 | **7b** | *The units a reader thinks in* | Figures put on the month's own clock, outage rows written as sentences, a guard that would have passed by checking less, and the letter E. |
 | **8** | *The month that would not start* | A stray clock time inside a date, and twenty-one hours of September that reached no page. |
 | **9** | *The cron that never ran in the morning* | A publishing schedule that had never been keeping its own times, and a staleness threshold re-derived around the fix. |
-| **10** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
+| **10** | *A dash on every county* | The morning no county had a grade, and the three different reasons a letter can be missing. |
+| **11** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
 
 ## How it was built, said once
 
 Like the water site, this project was written with an AI assistant - Claude, in Anthropic's
-Claude Code - from the first commit. Most of the repository's 152 commits carry a
+Claude Code - from the first commit. Most of the repository's 158 commits carry a
 `Co-Authored-By` trailer naming the model that wrote them: Opus 5 for the collector and the
 first site, Fable 5 for the later passes - and Fable 5 also drafted this series from the
 repository's own history under my direction, as it did the water series. I chose what to

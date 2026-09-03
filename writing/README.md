@@ -48,8 +48,13 @@ Identical to the uisce series' rules; restated so this file stands alone.
 5. **Diagrams earn their place.** Mermaid fences for flows; small hand-written SVG in
    `diagrams/` for anything spatial or temporal. ≤ 40 lines, no polish.
 6. **Length: target ~1,500–2,000 words, hard ceiling 3,000.** This series is deliberately
-   shorter than uisce's - the repo is a month old, not eight weeks - so do not pad a light
+   shorter than uisce's - the repo is five weeks old, not eight - so do not pad a light
    chapter. Each post carries a "~N min read" line (≈ 230 words/min).
+   The **closing is exempt**, because it is a reference chapter rather than a narrative one:
+   its three tables take a row per chapter, so it grows whenever the series does, and cutting
+   it would mean dropping a fork, a settled decision or a concept box that a chapter earned.
+   Its own guard is different: it must stay an index. New *prose* sections do not belong in
+   it, only new rows. (Amended 3 Sep 2026, when the closing passed 3,000 on chapter 10.)
 7. **Standalone.** Each chapter opens with a two-line *Where we are* so it works as a single
    blog post.
 8. **Vocabulary is fixed** (below); do not drift between synonyms.
