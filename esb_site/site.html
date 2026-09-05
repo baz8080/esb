@@ -483,9 +483,11 @@ function boot() {
     },
     // a name that can only reach its county says so: ESB's own location
     // strings name no Census area, and a hit that quietly does something else
-    // is worse than one that says what it will do
+    // is worse than one that says what it will do. A town named for its county
+    // sits under the county's own row, so it says which of the two it is
     note: function (name, c, t) {
-      return name === c ? "" : t ? c : c + " · county";
+      if (t) return name === c ? "town" : c;
+      return name === c ? "" : c + " · county";
     },
     pick: function (c, t) { if (t) return false; go(c); return true; }
   });

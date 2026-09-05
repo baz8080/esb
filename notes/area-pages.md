@@ -110,6 +110,7 @@ built and listed in `areas.html` but is not reachable from the box; uisce arrive
 place by a different route, where statusui's `name|county` dedup lets the county hit win. Left
 as it is: typing a county name almost always means the county, and the county view is the
 richer answer. Reopen it only with an answer for what two rows both labelled "Sligo" would say.
+(Reopened with one, 2026-09-03: "The county-named towns reach the box", below.)
 
 `search.js` assigns `ESB_PLACES` rather than `ESB_SEARCH`, and the rename is load-bearing. The
 file is fetched on the first keystroke, so a tab opened before a deploy pairs its own inlined
@@ -249,6 +250,49 @@ the bottom of `site.html`**, restoring base.css's values. That is the one
 footer on the site that is a block of prose (the grade, the method, what the
 numbers cannot tell you), which is a block worth dividing; the three static
 templates just end.
+
+## The county-named towns reach the box - 2026-09-03
+
+Issue #28. The `name != o.county` line dates from the first cut of the site (`ca7638d`), when
+every hit went to a county and a row for Carlow town would have been the County Carlow row
+twice. Area pages ended that: `a/carlow/carlow.html` exists, holds the town's own outages, and
+the search box was the one way in that could not reach it. Twelve of the fourteen have a page
+on today's data (Leitrim and Louth have had no fault placed in the town yet), so twelve pages
+were listed in `areas.html` and reachable from nowhere else.
+
+uisce had the same symptom by a different route, which is why the fix is in three places. Its
+index already carried `["Carlow", "carlow"]`; statusui's `searchHits` keyed its dedup on
+`name|county`, the county hit ranks first, and the targeted town entry lost the key before it
+rendered. That dedup now keys on `name|county|target` (statusui `eecdf2d`): a bare name that is
+also a county still collapses to one row, which is what lifts relies on, and a targeted entry is
+treated as the different destination it is. So esb's index now admits a county-named settlement
+**when it is paged**, and both sites' `note` callbacks answer the question the paragraph above
+left open.
+
+**What the two rows say:** `Sligo` and `Sligo town`. The county row is unchanged and still
+first, so typing a county name still lands on the county; the town is one row down, with
+`town` in the annotation slot where every other area hit shows its county. "Sligo town",
+"Carlow town", "Wicklow town" is how the places are told apart from their counties in speech,
+so the row reads as people already say it rather than as a label the site invented.
+
+Rejected:
+
+- **Dropping the guard outright.** ESB's own `location` string is often just the county name
+  for a fault out in an ED. Bare, that name would be a second row to the same county view,
+  which is exactly the redundancy the guard existed to prevent, so the bare case still stays
+  out and only the paged one enters. Where the town is paged, a bare "Sligo" beside it merges
+  into the pair, as every location string that repeats its town already does; the index is
+  keyed on the name and the slug is right for that name either way.
+- **Renaming the entry "Sligo town".** The CSO name and the page heading are "Sligo", and the
+  box would then match a query of "town" against fourteen rows.
+- **Annotating every county row "· county".** Twenty-six rows changed for fourteen cases, and
+  the bare county row is the convention on both sites.
+
+Measured: `search.js` 37,398 → 37,666 bytes (+268, off the initial load in any case); the
+initial load is unmoved at 63.9 KB. The site half was inert until the statusui pin moved past
+`eecdf2d`: with the old dedup the new entries were dropped exactly as uisce's were, so the two
+sides were safe to merge in either order. statusui merged first and the pin bump rode in the
+same PR here (`49802b2`), so the rows went live with it.
 
 ## Residue to watch
 

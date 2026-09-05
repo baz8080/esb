@@ -155,19 +155,28 @@ def build(outages, sa_index, now, until):
     # bare. Keyed on the name because `location` falls back to `town`, and the
     # slug is right for that name either way. Every page these address is
     # written from the same outages below, so a slug here always has a file.
+    #
+    # A name that is its county's enters only with a slug: paged, it is one of
+    # the fourteen towns named for their county and its page is somewhere the
+    # county row cannot go; bare, it is ESB writing "Sligo" for a fault
+    # somewhere in the county, and would be a second row to the same view.
     paged = {}
     search = {}
     for o in outages:
         if model.area_has_page(o.town_code):
             paged.setdefault(o.county, {})[o.town] = slug(o.town)
         names = search.setdefault(o.county, set())
-        for name in (o.town, o.location):
-            if name and name != o.county:
-                names.add(name)
-    search = {
-        c: [[n, paged[c][n]] if n in paged.get(c, ()) else n for n in sorted(names)]
-        for c, names in sorted(search.items())
-    }
+        names.update(n for n in (o.town, o.location) if n)
+
+    def entries(county, names):
+        p = paged.get(county, {})
+        return [
+            [n, p[n]] if n in p else n
+            for n in sorted(names)
+            if n != county or n in p
+        ]
+
+    search = {c: entries(c, names) for c, names in sorted(search.items())}
 
     data = {
         "generated": _stamp(now),
