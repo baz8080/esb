@@ -421,3 +421,52 @@ Rejected:
   archive fact.
 - **A bare "24 h" heading.** Beside "Restored in 4h" and "Faults" it reads as a
   duration; "Over 24 h" plus the hover reads as a count of faults.
+
+## An outage still out says so - 2026-09-05
+
+`Outage.ongoing` has decided since 2026-08-18 whether a fault is judged on the
+charter (grading.md § An outage still listed), and `case_record` dropped it. A
+fault still out at the horizon rendered as "off for about 2 h · no restore time
+published", the same words as one that had quietly left the feed, and its
+estimate was thrown away with it: `case_record` shipped `est` only beside a
+confirmed restore. So the one row a reader most wants to read, the live one,
+was the row that told them least.
+
+The record carries a twelfth field, `ongoing`, and ships the estimate whenever
+that is set. `_end_bits` and its mirror `endBits` take the flag before any
+other shape, and the row says what is known:
+
+| Shape | Fault | Planned |
+|---|---|---|
+| no estimate | still out when last checked · no estimate published | still listed when last checked · no end time published |
+| estimate ahead | still out when last checked · expected back by 07:30 | scheduled until Wed 9 Sep, 17:00 (7 days) · still listed when last checked |
+| estimate passed | still out when last checked · past ESB's estimate of 00:15 | the same schedule wording; a listing is not an observed outage |
+
+The three faults ongoing at the 5 September horizon happened to be one of each:
+Kilkee with no estimate, Kilcock expected back at 07:30, and Carrigaline five
+hours past its 00:15 estimate. Templeogue's planned works had read "listed for
+about 3 days · no end time published" while ESB had them scheduled to the 9th
+all along.
+
+**No span for a live fault.** "Off for about 2 h so far" was the first draft.
+The end of an ongoing outage is the collection horizon, and where the model
+ended it on a passed estimate (`end_src == "estimated"`) the span would stop at
+the estimate rather than at the last sighting, understating by up to the
+distance between them. The row already says when it began; the age of the data
+is on the banner and in the month table's "to 5 Sep". Planned works keep their
+span because theirs measures the schedule, which is the one duration ESB
+actually states.
+
+**"When last checked", not the horizon's clock time.** The exact horizon left
+the county page on 2026-08-28 and this does not bring it back; the phrase names
+the fact without a timestamp the page has decided not to carry.
+
+Rejected: a tag label ("Fault · still out"), the way a planned reason rides in
+the tag. The tag names what the outage is and the summary line says what
+happened to it, and a live fault is a state of the second kind.
+
+Residue: 167 of the 179 delisted faults carried an estimate that lay *after*
+their last sighting - ESB dropped them before the time it had named - and that
+estimate is still not shipped for them. A row for one says "off for about 4 h ·
+no restore time published"; whether it should also say what ESB had expected is
+a separate question with a separate shape.

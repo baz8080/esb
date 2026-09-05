@@ -933,7 +933,7 @@ class TestEstimatePlumbing(SiteModelCase):
 
     def test_an_estimate_the_page_cannot_show_is_not_serialized(self):
         # Matching the restore exactly would render "restored 12:00 · ESB's
-        # estimate was 12:00"; an unconfirmed end never renders the estimate
+        # estimate was 12:00"; a delisted outage never renders the estimate
         # at all. Neither belongs in the shard.
         self.observe(
             detail("1", restoreTime="10/08/2026 13:00"),
@@ -950,12 +950,34 @@ class TestEstimatePlumbing(SiteModelCase):
         self.assertIsNone(render.case_record(by_loc["Marino"])[10])
 
 
+class TestOngoingRecord(SiteModelCase):
+    """An outage still listed at the last poll is flagged, and carries the
+    estimate the row will need; one that left the feed carries neither."""
+
+    def test_an_ongoing_outage_ships_its_flag_and_its_estimate(self):
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1", estRestoreTime="10/08/2026 15:00"), t)
+        self.poll(t, n_listed=1)
+        outages, _, _ = self.load()
+        k = render.case_record(outages[0])
+        self.assertEqual(k[11], 1)
+        self.assertEqual(k[10], "2026-08-10T14:00")
+
+    def test_a_delisted_outage_ships_neither(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC), n_listed=0)
+        outages, _, _ = self.load()
+        k = render.case_record(outages[0])
+        self.assertEqual(k[11], 0)
+        self.assertIsNone(k[10])
+
+
 class TestCaseCopy(unittest.TestCase):
     """The outage card's summary line, in the words the page shows.
 
     Records are hand-made in case_record's shape:
     [id, location, planned, customers, start, end, endSrc, reason, chain,
-    updates, est].
+    updates, est, ongoing].
     """
 
     @staticmethod
@@ -963,11 +985,11 @@ class TestCaseCopy(unittest.TestCase):
         k = [
             "1", "Glasnevin", 0, 17,
             "2026-08-24T10:46", "2026-08-24T14:32", "restored",
-            "", [], [], "2026-08-24T15:00",
+            "", [], [], "2026-08-24T15:00", 0,
         ]
         fields = {
             "planned": 2, "customers": 3, "start": 4, "end": 5,
-            "end_src": 6, "reason": 7, "est": 10,
+            "end_src": 6, "reason": 7, "est": 10, "ongoing": 11,
         }
         for name, value in over.items():
             k[fields[name]] = value
@@ -1055,6 +1077,59 @@ class TestCaseCopy(unittest.TestCase):
         )
         self.assertIn("scheduled until 15:00 (4 h 14 min)", html)
         self.assertNotIn("not confirmed", html)
+
+    # An outage still listed at the last poll. Its end is the horizon, so the
+    # delisted wording ("off for about 4 h · no restore time published") read
+    # as an ending, and the same words for a fault that was live and one that
+    # had quietly left the feed.
+
+    def test_a_live_fault_says_it_is_still_out_not_how_long_it_was(self):
+        html = render._case_html(
+            self.record(end="2026-09-05T05:00", end_src="listed", est=None, ongoing=1)
+        )
+        self.assertIn("still out when last checked · no estimate published", html)
+        self.assertNotIn("off for", html)
+        self.assertNotIn("no restore time published", html)
+
+    def test_a_live_fault_with_an_estimate_ahead_says_when(self):
+        html = render._case_html(
+            self.record(start="2026-09-05T03:25", end="2026-09-05T05:00",
+                        end_src="listed", est="2026-09-05T07:30", ongoing=1)
+        )
+        self.assertIn("still out when last checked · expected back by 07:30", html)
+
+    def test_a_live_fault_past_its_estimate_says_so(self):
+        # end_src is "estimated" here: the estimate passed while it was still
+        # listed, so the model ended it on the estimate
+        html = render._case_html(
+            self.record(start="2026-09-04T22:06", end="2026-09-05T00:15",
+                        end_src="estimated", est="2026-09-05T00:15", ongoing=1)
+        )
+        self.assertIn(
+            "still out when last checked · past ESB's estimate of Sat 5 Sep, 00:15",
+            html,
+        )
+        self.assertNotIn("expected back", html)
+
+    def test_live_planned_works_keep_their_schedule(self):
+        # A listing is not an observed outage, so "still out" would overclaim;
+        # a multi-day job read as "listed for about 3 days · no end time
+        # published" while ESB had it scheduled to the 9th all along.
+        html = render._case_html(
+            self.record(planned=1, start="2026-09-02T08:22", end="2026-09-05T05:00",
+                        end_src="listed", est="2026-09-09T17:00", ongoing=1)
+        )
+        self.assertIn(
+            "scheduled until Wed 9 Sep, 17:00 (7 days) · still listed when last checked",
+            html,
+        )
+        self.assertNotIn("listed for", html)
+
+    def test_live_planned_works_with_no_schedule_say_they_are_listed(self):
+        html = render._case_html(
+            self.record(planned=1, end_src="listed", est=None, ongoing=1)
+        )
+        self.assertIn("still listed when last checked · no end time published", html)
 
     def test_esbs_shouted_reasons_come_out_readable(self):
         self.assertEqual(model.reason_label("IMPROVE QUALITY OF SUPPLY"), "supply quality")

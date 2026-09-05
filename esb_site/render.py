@@ -235,9 +235,16 @@ def case_record(o):
                 o.start, o.end, o.end_src, o.segments
             )
         ],
-        # Only a confirmed restore renders the estimate, and only when the two
-        # differ; anything else is payload the page can never show.
-        _short(o.est) if o.end_src == "restored" and o.est != o.end else None,
+        # The estimate rides along only where the row can show it: beside a
+        # confirmed restore it differs from, or on an outage still out, where
+        # it is the one thing a reader wants to know. Anywhere else it is
+        # payload the page never renders.
+        _short(o.est)
+        if o.est and (o.ongoing or (o.end_src == "restored" and o.est != o.end))
+        else None,
+        # Still listed at the last poll. The end above is the horizon, not an
+        # ending, and the row has to say so rather than read like a delisting.
+        1 if o.ongoing else 0,
     ]
 
 
@@ -285,6 +292,8 @@ def _end_bits(k, hours):
     record rather than hedging. Mirrored in site.html (endBits).
     """
     planned, src = k[2], k[6]
+    if k[11]:
+        return _ongoing_bits(k)
     if src == "restored":
         bits = [f"restored {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
         if k[10]:
@@ -305,6 +314,33 @@ def _end_bits(k, hours):
     if planned:
         return [f"listed for {_span_hm(hours, about=True)}", "no end time published"]
     return [f"off for {_span_hm(hours, about=True)}", "no restore time published"]
+
+
+def _ongoing_bits(k):
+    """An outage still listed when the collector last looked.
+
+    Its end is the horizon, so a span would measure the collector rather than
+    the outage; what a reader wants is whether ESB has said when it will be
+    back, and whether that time has already gone. Planned works keep their
+    schedule wording - a listing is not an observed outage - and only gain the
+    fact that they were still listed. Mirrored in site.html (ongoingBits).
+    """
+    planned, start, est = k[2], k[4], k[10]
+    if planned:
+        if not est:
+            return ["still listed when last checked", "no end time published"]
+        hours = (
+            datetime.fromisoformat(est) - datetime.fromisoformat(start)
+        ).total_seconds() / 3600.0
+        return [
+            f"scheduled until {_when_at(est, start)} ({_span_hm(hours)})",
+            "still listed when last checked",
+        ]
+    if not est:
+        return ["still out when last checked", "no estimate published"]
+    if est > k[5]:
+        return ["still out when last checked", f"expected back by {_when_at(est, start)}"]
+    return ["still out when last checked", f"past ESB's estimate of {_when_at(est, start)}"]
 
 
 def _case_html(k):

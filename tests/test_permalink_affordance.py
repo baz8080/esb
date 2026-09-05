@@ -56,7 +56,7 @@ class DescriptionCase(unittest.TestCase):
         shard = {
             "2026-08": [
                 [f"o{i}", "Somewhere", i % 2, 10, "2026-08-01T09:00",
-                 "2026-08-01T11:00", "restored", "", [], [], None]
+                 "2026-08-01T11:00", "restored", "", [], [], None, 0]
                 for i in range(n)
             ]
         }
