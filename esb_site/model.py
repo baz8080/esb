@@ -458,10 +458,8 @@ def _merge_group(members):
     else:
         ender = max(members, key=lambda o: o.end)
     end, end_src = ender.end, ender.end_src
-    # The ender decides whether the event is over, for the same reason it
-    # decides when: a sibling lingering a minute past a confirmed restore is
-    # the feed catching up. any() over the members made such an event both
-    # "restored" and "still out", and kept it out of the grade for one build.
+    # The record that ended the event says whether it is over. any() over the
+    # members called a confirmed restore "still out" while a sibling lingered.
     ongoing = ender.ongoing
     # ESB revises its estimate as sections come back, so the estimate the event
     # ended on is the one carried by the record that ended it. Taking max()
@@ -469,9 +467,8 @@ def _merge_group(members):
     # closed early, after ESB had already revised it down.
     est = ender.est
     if ongoing and est is None:
-        # That risk is about records that closed. A live event's reader wants
-        # the latest time ESB has named for any part of it, and "no estimate
-        # published" would be false while a sibling carries one.
+        # A live event borrows a sibling's estimate rather than claiming ESB
+        # published none. The stale-figure risk above is about closed records.
         est = max((o.est for o in members if o.est), default=None)
 
     # Customers off at any instant is the envelope over the members, not their

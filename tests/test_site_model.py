@@ -365,9 +365,8 @@ class TestEventMerging(SiteModelCase):
         self.assertEqual(outages[0].end, datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
 
     def test_a_lingering_record_does_not_make_a_restored_event_ongoing(self):
-        """The same shape at the horizon. any() over the members called the
-        event both restored and still out, which the row now says aloud, and
-        held it out of the grade until the sibling was purged."""
+        """any() over the members called this event both restored and still
+        out, and held it out of the grade until the sibling was purged."""
         t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
         common = {"location": "Glasnevin", "startTime": "10/08/2026 10:00"}
         self.observe(
@@ -1120,10 +1119,7 @@ class TestCaseCopy(unittest.TestCase):
         self.assertIn("scheduled until 15:00 (4 h 14 min)", html)
         self.assertNotIn("not confirmed", html)
 
-    # An outage still listed at the last poll. Its end is the horizon, so the
-    # delisted wording ("off for about 4 h · no restore time published") read
-    # as an ending, and the same words for a fault that was live and one that
-    # had quietly left the feed.
+    # Still listed at the last poll: the delisted wording read as an ending.
 
     def test_a_live_fault_says_it_is_still_out_not_how_long_it_was(self):
         html = self.html(
@@ -1141,8 +1137,7 @@ class TestCaseCopy(unittest.TestCase):
         self.assertIn("still out when last checked · expected back by 07:30", html)
 
     def test_an_estimate_between_the_sighting_and_the_horizon_has_passed(self):
-        # Last seen 04:30, estimate 04:45, data to 05:00: by the data's own
-        # clock the time ESB named has gone, whatever the row's end says.
+        # Last seen 04:30, estimate 04:45, data to 05:00: the time has passed.
         html = self.html(
             self.record(start="2026-09-05T03:25", end="2026-09-05T04:30",
                         end_src="listed", est="2026-09-05T04:45", ongoing=1)
@@ -1151,8 +1146,7 @@ class TestCaseCopy(unittest.TestCase):
         self.assertNotIn("expected back", html)
 
     def test_a_live_fault_past_its_estimate_says_so(self):
-        # end_src is "estimated" here: the estimate passed while it was still
-        # listed, so the model ended it on the estimate
+        # the estimate passed while it was still listed, so the model ended it there
         html = self.html(
             self.record(start="2026-09-04T22:06", end="2026-09-05T00:15",
                         end_src="estimated", est="2026-09-05T00:15", ongoing=1)
@@ -1164,9 +1158,7 @@ class TestCaseCopy(unittest.TestCase):
         self.assertNotIn("expected back", html)
 
     def test_live_planned_works_keep_their_schedule(self):
-        # A listing is not an observed outage, so "still out" would overclaim;
-        # a multi-day job read as "listed for about 3 days · no end time
-        # published" while ESB had it scheduled to the 9th all along.
+        # A listing is not an observed outage, so "still out" would overclaim.
         html = self.html(
             self.record(planned=1, start="2026-09-02T08:22", end="2026-09-05T05:00",
                         end_src="listed", est="2026-09-09T17:00", ongoing=1)

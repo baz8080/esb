@@ -235,15 +235,13 @@ def case_record(o):
                 o.start, o.end, o.end_src, o.segments
             )
         ],
-        # The estimate rides along only where the row can show it: beside a
-        # confirmed restore it differs from, or on an outage still out, where
-        # it is the one thing a reader wants to know. Anywhere else it is
-        # payload the page never renders.
+        # Shipped only where the row shows it: beside a confirmed restore it
+        # differs from, or on an outage still out.
         _short(o.est)
         if o.est and (o.ongoing or (o.end_src == "restored" and o.est != o.end))
         else None,
-        # Still listed at the last poll. The end above is the horizon, not an
-        # ending, and the row has to say so rather than read like a delisting.
+        # Still listed at the last poll, so the end above is the horizon
+        # rather than an ending.
         1 if o.ongoing else 0,
     ]
 
@@ -286,8 +284,7 @@ def _vs_estimate(end, est):
 
 
 def _horizon(data):
-    """The collection horizon in the record's own timestamp format, for the
-    one comparison a row makes against it."""
+    """The horizon as a record timestamp, so a row can compare an estimate to it."""
     return data["observed_iso"][:16]
 
 
@@ -323,16 +320,11 @@ def _end_bits(k, hours, horizon):
 
 
 def _ongoing_bits(k, horizon):
-    """An outage still listed when the collector last looked.
+    """An outage still listed at the last poll.
 
-    Its end is the horizon, so a span would measure the collector rather than
-    the outage; what a reader wants is whether ESB has said when it will be
-    back, and whether that time has already gone. "Gone" is judged against the
-    horizon rather than the row's own end: that end is the last sighting, up to
-    a poll cycle earlier, and an estimate falling in that gap has passed by the
-    data's own clock. Planned works keep their schedule wording - a listing is
-    not an observed outage - and only gain the fact that they were still
-    listed. Mirrored in site.html (ongoingBits).
+    No span, because its end is the horizon. The row says whether ESB named a
+    time and whether that time has passed. Planned works keep their schedule
+    wording. Mirrored in site.html (ongoingBits).
     """
     planned, start, est = k[2], k[4], k[10]
     if planned:
@@ -347,6 +339,7 @@ def _ongoing_bits(k, horizon):
         ]
     if not est:
         return ["still out when last checked", "no estimate published"]
+    # against the horizon, not k[5]: that is a sighting up to a poll cycle earlier
     if est > horizon:
         return ["still out when last checked", f"expected back by {_when_at(est, start)}"]
     return ["still out when last checked", f"past ESB's estimate of {_when_at(est, start)}"]
