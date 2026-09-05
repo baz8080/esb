@@ -167,14 +167,16 @@ def build(outages, sa_index, now, until):
             paged.setdefault(o.county, {})[o.town] = slug(o.town)
         names = search.setdefault(o.county, set())
         names.update(n for n in (o.town, o.location) if n)
-    search = {
-        c: [
-            [n, paged[c][n]] if n in paged.get(c, ()) else n
+
+    def entries(county, names):
+        p = paged.get(county, {})
+        return [
+            [n, p[n]] if n in p else n
             for n in sorted(names)
-            if n != c or n in paged.get(c, ())
+            if n != county or n in p
         ]
-        for c, names in sorted(search.items())
-    }
+
+    search = {c: entries(c, names) for c, names in sorted(search.items())}
 
     data = {
         "generated": _stamp(now),
