@@ -1008,7 +1008,7 @@ class TestOngoingRecord(SiteModelCase):
 
 
 class TestKeptEstimate(SiteModelCase):
-    """Whether ESB's restore estimate held, on the row's own five-minute line."""
+    """Whether ESB's first restore estimate held, on the row's own five-minute line."""
 
     def kept(self, **over):
         body = {"outageType": "Restored", "restoreTime": "10/08/2026 13:00", **over}
@@ -1026,6 +1026,23 @@ class TestKeptEstimate(SiteModelCase):
         self.assertTrue(self.kept(restoreTime="10/08/2026 13:04"))
         self.assertFalse(self.kept(restoreTime="10/08/2026 13:05"))
 
+    def test_an_estimate_pushed_back_after_it_passed_is_a_miss(self):
+        # Named 13:00, moved to 17:00 half an hour after 13:00 had gone, and
+        # restored ahead of the new time. The row compares against ESB's last
+        # word; the share holds ESB to its first.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1"), t)
+        self.observe(
+            detail("1", outageType="Restored", estRestoreTime="10/08/2026 17:00",
+                   restoreTime="10/08/2026 16:50"),
+            t + timedelta(hours=4),
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        o = self.load()[0][0]
+        self.assertEqual(o.first_est, datetime(2026, 8, 10, 12, 0, tzinfo=UTC))
+        self.assertEqual(o.est, datetime(2026, 8, 10, 16, 0, tzinfo=UTC))
+        self.assertFalse(o.kept_estimate())
+
     def test_nothing_to_hold_it_to(self):
         self.assertIsNone(self.kept(estRestoreTime=""))
         self.observe(detail("2", location="Marino"), datetime(2026, 8, 10, 14, tzinfo=UTC))
@@ -1035,7 +1052,6 @@ class TestKeptEstimate(SiteModelCase):
         self.assertIsNone(by_loc["Marino"].kept_estimate())
 
     def test_the_share_is_withheld_under_the_floor(self):
-        outages = []
         for i in range(model.MIN_ESTIMATES):
             self.observe(
                 detail(str(i), outageType="Restored", location=f"Place{i}",

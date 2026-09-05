@@ -214,7 +214,7 @@ class TestTheCompensationColumn(CountyPageCase):
 
 
 class TestTheEstimateColumn(CountyPageCase):
-    """The share of ESB's estimates kept, beside the share back in four hours."""
+    """The share of ESB's first estimates kept, beside the share back in four hours."""
 
     def restored(self, i, restore):
         # distinct places and starts, or the merge folds them into one event
@@ -232,22 +232,22 @@ class TestTheEstimateColumn(CountyPageCase):
         self.restored(4, "15:00")
         self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=0)
         page = self.render_county()
-        self.assertEqual(self.column(page, "August 2026", "Restored by estimate"), "80%")
-        self.assertEqual(self.column(page, "September 2026", "Restored by estimate"), "–")
+        self.assertEqual(self.column(page, "August 2026", "Restored by first estimate"), "80%")
+        self.assertEqual(self.column(page, "September 2026", "Restored by first estimate"), "–")
 
     def test_under_five_estimates_the_cell_is_blank(self):
         for i in range(4):
             self.restored(i, "12:30")
         self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=0)
         page = self.render_county()
-        self.assertEqual(self.column(page, "August 2026", "Restored by estimate"), "–")
+        self.assertEqual(self.column(page, "August 2026", "Restored by first estimate"), "–")
 
     def test_the_heading_says_what_counts(self):
         self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
         self.poll(datetime(2026, 9, 1, 0, 0, tzinfo=UTC), n_listed=1)
-        head = re.search(r'<th scope="col" title="([^"]*)">Restored by estimate</th>',
+        head = re.search(r'<th scope="col" title="([^"]*)">Restored by first estimate</th>',
                          self.render_county())
-        self.assertIn("five minutes", head.group(1))
+        self.assertIn("no later than five minutes after", head.group(1))
         self.assertIn("Blank under five", head.group(1))
 
 

@@ -75,8 +75,9 @@
     judge, which is why grades appear a few days into each one. Planned
     works are excluded just as the CRU's incentive excludes them: they are
     announced in advance and never report a restore time. <b>Restored by
-    ESB's estimate</b> is the share of faults back within five minutes of the
-    restore time ESB published for them; nearly every fault carries one, and a
+    ESB's first estimate</b> is the share of faults back no later than five
+    minutes after the first restore time ESB named for them. It is held to the
+    first because ESB mostly revises an estimate after that time has passed. A
     month with fewer than five to count is left blank.</p>
     <p>The figure the CRU actually regulates is <b>Customer Minutes Lost</b> -
     the minutes an average customer spends without supply over a year. For 2024
@@ -321,7 +322,7 @@ function renderOverview() {
     "The national picture in " + monthLabelLong(curMonth);
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "restored within 4 hours"],
-    [n[6] == null ? "–" : n[6] + "%", "restored by ESB's estimate"],
+    [n[6] == null ? "–" : n[6] + "%", "restored by ESB's first estimate"],
     [num(n[3]), "customers hit by faults"],
     // Customers times the hours they were off. Always hours: rolled into
     // years it printed "years" beside three figures that are all one month's.
@@ -365,7 +366,7 @@ function renderCounty() {
     '<div class="daycap"></div>' +
     '<div class="tiles" style="margin-bottom:0">' + [
       [m && m[2] != null ? m[2] + "%" : "–", "restored within 4 hours"],
-      [m && m[8] != null ? m[8] + "%" : "–", "restored by ESB's estimate"],
+      [m && m[8] != null ? m[8] + "%" : "–", "restored by ESB's first estimate"],
       [m ? m[4] : 0, "faults"],
       [m ? m[5] : 0, "planned outages"],
       [m ? num(m[6]) : 0, "customers hit by faults"]

@@ -128,8 +128,8 @@ class NationalCase(unittest.TestCase):
         time is being read wrongly, not that ESB changed overnight."""
         judged = [o for o in self.started if o.end <= self.hi and not o.ongoing]
         share, estimates = model.estimate_share(judged)
-        with_est = sum(1 for o in judged if o.end_src == "restored")
-        self.assertGreater(estimates / with_est, 0.9, "most restored faults carry an estimate")
+        restored = sum(1 for o in judged if o.end_src == "restored")
+        self.assertGreater(estimates / restored, 0.9, "most restored faults carry an estimate")
         self.assertGreater(share, 50.0, f"{share:.1f}% of estimates kept")
         self.assertLess(share, 95.0, f"{share:.1f}% of estimates kept")
 

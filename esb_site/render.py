@@ -585,9 +585,9 @@ def _county_months_html(county, data, months, until):
         '<table class="mtable"><thead><tr>'
         '<th scope="col">Month</th><th scope="col">Grade</th>'
         '<th scope="col">Restored in 4h</th>'
-        '<th scope="col" title="Faults restored within five minutes of the time '
-        "ESB estimated for them, of those with a confirmed restore and an "
-        'estimate. Blank under five estimates">Restored by estimate</th>'
+        '<th scope="col" title="Faults back no later than five minutes after the '
+        "first restore time ESB named for them, of those with a confirmed restore "
+        'and an estimate. Blank under five estimates">Restored by first estimate</th>'
         '<th scope="col">Faults</th>'
         # The charter's other number. Counted here and nowhere else: the
         # footer has promised it on the county page since the tiles were
