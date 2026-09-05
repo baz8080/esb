@@ -387,3 +387,37 @@ rebuild: the month table's `CML` column became **Minutes lost** carrying the
 month's own figure (3451f8f), and the case rows got the sentence treatment
 (73be525) — the static county page renders through the same `_case_html` as
 every other page, so it was never a separate fix.
+
+## The county table carries the 24-hour count the footer promised - 2026-09-05
+
+The footer has said since 2026-08-28 that outages past the charter's 24-hour
+compensation mark "are counted separately on each county page". They were not.
+`county_month` computed `over_compensation`, `render.build` packed it as the
+eighth field of every county-month row in `data.js`, and neither the app nor the
+county page read it. The sentence was written for a count the tiles decision
+above then declined to show (§ The tiles say what they mean: replacing the
+customer-hours tile with it "was raised and declined by the owner"), and nobody
+went back to the footer.
+
+**It is now a column in the county page's month table**, `Over 24 h`, between
+Faults and Planned, with the charter named in the heading's hover the way
+"Minutes lost" carries its own definition. Read off the same payload row as the
+rest of the table, so the app and the page cannot disagree about a month. The
+count is the one `grading.md` settled: a fault still out past the mark counts,
+because the time it has already run is a lower bound.
+
+On the corpus to 5 September: 6 faults over 24 hours across 1,387, 3 of them
+with a confirmed restore. A column that is 0 on nearly every row is legible in a
+table, which is where a rare count belongs.
+
+Rejected:
+
+- **A fifth tile in the app's county view.** Twenty-five counties would carry a
+  tile reading 0 most months, and a tile exists to be read. The national tile
+  was declined on the same day for the same reason, and that decision stands.
+- **Dropping the footer sentence instead.** The count is the most useful
+  independent fact the payload already held, and the sentence was right about
+  where it belongs: the county page is the archive, and the 24-hour mark is an
+  archive fact.
+- **A bare "24 h" heading.** Beside "Restored in 4h" and "Faults" it reads as a
+  duration; "Over 24 h" plus the hover reads as a count of faults.
