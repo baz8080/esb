@@ -458,11 +458,18 @@ def _merge_group(members):
     else:
         ender = max(members, key=lambda o: o.end)
     end, end_src = ender.end, ender.end_src
+    # The record that ended the event says whether it is over. any() over the
+    # members called a confirmed restore "still out" while a sibling lingered.
+    ongoing = ender.ongoing
     # ESB revises its estimate as sections come back, so the estimate the event
     # ended on is the one carried by the record that ended it. Taking max()
     # over the group instead can resurrect a stale figure from a sibling that
     # closed early, after ESB had already revised it down.
     est = ender.est
+    if ongoing and est is None:
+        # A live event borrows a sibling's estimate rather than claiming ESB
+        # published none. The stale-figure risk above is about closed records.
+        est = max((o.est for o in members if o.est), default=None)
 
     # Customers off at any instant is the envelope over the members, not their
     # sum: each record describes part of the same event, and adding them counts
@@ -487,7 +494,7 @@ def _merge_group(members):
         end=end,
         end_src=end_src,
         restored=all(o.restored for o in members),
-        ongoing=any(o.ongoing for o in members),
+        ongoing=ongoing,
         est=est,
         customers=max(c for _, _, c in segments),
         updates=_envelope_updates(members, segments, end, end_src, lead.planned),

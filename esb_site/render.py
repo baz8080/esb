@@ -244,9 +244,14 @@ def case_record(o):
                 o.start, o.end, o.end_src, o.segments
             )
         ],
-        # Only a confirmed restore renders the estimate, and only when the two
-        # differ; anything else is payload the page can never show.
-        _short(o.est) if o.end_src == "restored" and o.est != o.end else None,
+        # Shipped only where the row shows it: beside a confirmed restore it
+        # differs from, or on an outage still out.
+        _short(o.est)
+        if o.est and (o.ongoing or (o.end_src == "restored" and o.est != o.end))
+        else None,
+        # Still listed at the last poll, so the end above is the horizon
+        # rather than an ending.
+        1 if o.ongoing else 0,
     ]
 
 
@@ -287,13 +292,20 @@ def _vs_estimate(end, est):
     )
 
 
-def _end_bits(k, hours):
+def _horizon(data):
+    """The horizon as a record timestamp, so a row can compare an estimate to it."""
+    return data["observed_iso"][:16]
+
+
+def _end_bits(k, hours, horizon):
     """How the outage ended and how long it ran, as one phrase per shape.
 
     Only a "restored" end is something ESB confirmed; the rest name the missing
     record rather than hedging. Mirrored in site.html (endBits).
     """
     planned, src = k[2], k[6]
+    if k[11]:
+        return _ongoing_bits(k, horizon)
     if src == "restored":
         bits = [f"restored {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
         if k[10]:
@@ -316,7 +328,33 @@ def _end_bits(k, hours):
     return [f"off for {_span_hm(hours, about=True)}", "no restore time published"]
 
 
-def _case_html(k):
+def _ongoing_bits(k, horizon):
+    """An outage still listed at the last poll.
+
+    No span, because its end is the horizon. The row says whether ESB named a
+    time and whether that time has passed. Planned works keep their schedule
+    wording. Mirrored in site.html (ongoingBits).
+    """
+    planned, start, est = k[2], k[4], k[10]
+    if planned:
+        if not est:
+            return ["still listed when last checked", "no end time published"]
+        hours = (
+            datetime.fromisoformat(est) - datetime.fromisoformat(start)
+        ).total_seconds() / 3600.0
+        return [
+            f"scheduled until {_when_at(est, start)} ({_span_hm(hours)})",
+            "still listed when last checked",
+        ]
+    if not est:
+        return ["still out when last checked", "no estimate published"]
+    # against the horizon, not k[5]: that is a sighting up to a poll cycle earlier
+    if est > horizon:
+        return ["still out when last checked", f"expected back by {_when_at(est, start)}"]
+    return ["still out when last checked", f"past ESB's estimate of {_when_at(est, start)}"]
+
+
+def _case_html(k, horizon):
     planned = k[2]
     chain = k[8]
     bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s") + " affected"]
@@ -326,7 +364,7 @@ def _case_html(k):
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
-        bits.extend(_end_bits(k, hours))
+        bits.extend(_end_bits(k, hours, horizon))
     # in the chip rather than trailing the timings: it is the row's most human
     # fact and it was in its least-read position
     tag = "Planned" if planned else "Fault"
@@ -599,7 +637,7 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
             f'<div class="card"><h2>Outage history <span class="n">'
             f'· {len(cases):,} outage{"" if len(cases) == 1 else "s"}</span></h2>'
         )
-        body.append("".join(_case_html(k) for k in cases))
+        body.append("".join(_case_html(k, _horizon(data)) for k in cases))
         body.append("</div>")
     else:
         body.append(
@@ -774,7 +812,7 @@ def area_page(county, name, pop, events, nearby, data):
         "under a neighbouring area, and one listed here may reach far beyond "
         f"it - which is why a row can count more customers than "
         f"{html.escape(name)} has people.</p>",
-        "".join(_case_html(k) for k in cases),
+        "".join(_case_html(k, _horizon(data)) for k in cases),
         "</div>",
     ]
     if near:

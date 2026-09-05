@@ -168,6 +168,7 @@ function vsEstimate(end, est) {
    "restored" end is something ESB confirmed; the rest name the missing record
    rather than hedging. Mirrored in render.py. */
 function endBits(k, hours) {
+  if (k[11]) return ongoingBits(k);
   if (k[6] === "restored") {
     var bits = ["restored " + whenAt(k[5], k[4]) + " (" + spanHM(hours) + ")"];
     if (k[10]) bits.push(vsEstimate(k[5], k[10]));
@@ -184,6 +185,25 @@ function endBits(k, hours) {
   // list - rather than the sighting's clock time, which told a reader nothing.
   if (k[2]) return ["listed for " + spanHM(hours, true), "no end time published"];
   return ["off for " + spanHM(hours, true), "no restore time published"];
+}
+
+/* Still listed at the last poll. No span, because the end is the horizon;
+   the row says whether ESB named a time and whether it has passed. Planned
+   works keep their schedule wording. Mirrored in render.py (_ongoing_bits). */
+function ongoingBits(k) {
+  var planned = k[2], start = k[4], est = k[10];
+  if (planned) {
+    if (!est) return ["still listed when last checked", "no end time published"];
+    var hours = (new Date(est + "Z") - new Date(start + "Z")) / 3600000;
+    return ["scheduled until " + whenAt(est, start) + " (" + spanHM(hours) + ")",
+            "still listed when last checked"];
+  }
+  if (!est) return ["still out when last checked", "no estimate published"];
+  // against the horizon, not k[5]: that is a sighting up to a poll cycle earlier
+  if (est > D.observed_iso.slice(0, 16)) {
+    return ["still out when last checked", "expected back by " + whenAt(est, start)];
+  }
+  return ["still out when last checked", "past ESB's estimate of " + whenAt(est, start)];
 }
 
 // a duration in hours and minutes, never a decimal a reader has to work out;
@@ -358,7 +378,7 @@ function renderCounty() {
 }
 
 function caseHtml(k) {
-  // [id, location, planned, customers, start, end, endSrc, reason, chain, updates, est]
+  // [id, location, planned, customers, start, end, endSrc, reason, chain, updates, est, ongoing]
   var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
   var bits = [plural(k[3], "customer") + " affected"];

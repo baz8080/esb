@@ -323,7 +323,7 @@ class TestTheHistoryListing(unittest.TestCase):
                 [
                     f"o{i}", "Somewhere", 0, 10,
                     f"2026-08-{1 + i % 28:02d}T09:00", f"2026-08-{1 + i % 28:02d}T11:00",
-                    "restored", "", [], [], None,
+                    "restored", "", [], [], None, 0,
                 ]
                 for i in range(n)
             ]
