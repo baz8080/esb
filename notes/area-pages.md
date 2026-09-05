@@ -289,9 +289,10 @@ Rejected:
   the bare county row is the convention on both sites.
 
 Measured: `search.js` 37,398 → 37,666 bytes (+268, off the initial load in any case); the
-initial load is unmoved at 63.9 KB. The site half is inert until the statusui pin moves past
-`eecdf2d`: with the old dedup the new entries are dropped exactly as uisce's were, so the
-change is safe to merge in either order and lands when `rollout.sh` next runs.
+initial load is unmoved at 63.9 KB. The site half was inert until the statusui pin moved past
+`eecdf2d`: with the old dedup the new entries were dropped exactly as uisce's were, so the two
+sides were safe to merge in either order. statusui merged first and the pin bump rode in the
+same PR here (`49802b2`), so the rows went live with it.
 
 ## Residue to watch
 
