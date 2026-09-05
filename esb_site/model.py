@@ -93,6 +93,12 @@ GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0), ("E", 60.0))
 MIN_GRADED_DAYS = 5
 MIN_GRADED_FAULTS = 5
 
+# A restore this close to ESB's estimate is the estimate kept: the row prints
+# no "later than ESB estimated" inside it, so the share cannot count it a miss.
+ESTIMATE_GRACE = timedelta(minutes=5)
+# The share of estimates kept has the grade's floor, for the grade's reason.
+MIN_ESTIMATES = MIN_GRADED_FAULTS
+
 # --- Day cells --------------------------------------------------------------
 # Fault minutes lost per customer, for one county on one day. Bucketing by
 # magnitude rather than by presence is deliberate: 66% of county-days in the
@@ -204,6 +210,19 @@ def grade(share_within_target):
         if share_within_target >= floor:
             return letter
     return "F"
+
+
+def estimate_share(outages):
+    """(share of estimates kept, estimates) over the faults that carried one.
+
+    Per outage, not per customer: an estimate is one statement about one
+    outage. None under MIN_ESTIMATES, the way the grade withholds its letter.
+    """
+    kept = [k for k in (o.kept_estimate() for o in outages if not o.planned)
+            if k is not None]
+    if len(kept) < MIN_ESTIMATES:
+        return None, len(kept)
+    return 100.0 * sum(kept) / len(kept), len(kept)
 
 
 def day_bucket(fault_minutes_per_customer, has_planned):
@@ -582,6 +601,13 @@ class Outage(NamedTuple):
             return 0.0
         return (self.end - self.start).total_seconds() / 60.0
 
+    def kept_estimate(self):
+        """Whether ESB's estimate held, or None with nothing to hold it to:
+        no estimate, or no confirmed restore."""
+        if self.end_src != "restored" or not self.est:
+            return None
+        return self.end - self.est < ESTIMATE_GRACE
+
     def customer_minutes(self, lo, hi):
         """Customer-minutes accrued inside [lo, hi).
 
@@ -867,6 +893,7 @@ def county_month(outages, county, customers, ym, now, until):
     # the window - so `ongoing` carries it.
     judged = judged_within = 0
     over_compensation = 0
+    scoreable = []
     per_day_fault = defaultdict(float)
     per_day_planned = set()
 
@@ -884,6 +911,7 @@ def county_month(outages, county, customers, ym, now, until):
             fault_cm += cm
             customers_hit += o.customers
             if o.start >= lo and o.end <= hi:
+                scoreable.append(o)
                 hours = o.minutes / 60.0
                 # Past 24 hours is true of an outage still out there: the clock
                 # it has already run is a lower bound, so this one still counts.
@@ -931,6 +959,7 @@ def county_month(outages, county, customers, ym, now, until):
             )
 
     within = 100.0 * judged_within / judged if judged else None
+    est_kept, estimates = estimate_share(scoreable)
     # Through `days_gate` so the letter and the sentence explaining its
     # absence cannot disagree.
     gradeable = (
@@ -948,6 +977,8 @@ def county_month(outages, county, customers, ym, now, until):
         "planned": planned,
         "customers_hit": customers_hit,
         "over_compensation": over_compensation,
+        "est_kept": est_kept,
+        "estimates": estimates,
         "fault_hours": fault_cm / 60.0,
         "planned_hours": planned_cm / 60.0,
         "observed_days": observed_days,

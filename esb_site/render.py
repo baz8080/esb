@@ -120,6 +120,8 @@ def build(outages, sa_index, now, until):
                 s["planned"],
                 s["customers_hit"],
                 s["over_compensation"],
+                None if s["est_kept"] is None else round(s["est_kept"], 1),
+                s["estimates"],
             ]
         stats[county] = per_month
 
@@ -136,6 +138,7 @@ def build(outages, sa_index, now, until):
             for o in judged
             if o.minutes / 60.0 <= model.CHARTER_TARGET_HOURS
         )
+        est_kept, estimates = model.estimate_share(judged)
         national[ym] = [
             round(model.national_cml(outages, until, ym, annualised=False), 1),
             len(faults),
@@ -143,6 +146,8 @@ def build(outages, sa_index, now, until):
             sum(o.customers for o in faults),
             round(sum(o.customer_minutes(lo, hi) for o in faults) / 60.0, 1),
             None if not seen else round(100.0 * within / seen, 1),
+            None if est_kept is None else round(est_kept, 1),
+            estimates,
         ]
 
     # Names a reader might type, grouped by county so the county name is stored
@@ -284,7 +289,7 @@ def _vs_estimate(end, est):
     delta = (
         datetime.fromisoformat(end) - datetime.fromisoformat(est)
     ).total_seconds() / 60.0
-    if abs(delta) < 5:
+    if abs(delta) < model.ESTIMATE_GRACE.total_seconds() / 60.0:
         return ""
     return (
         f"{_span_hm(abs(delta) / 60.0)} "
@@ -571,6 +576,7 @@ def _county_months_html(county, data, months, until):
             + "</th>"
             f"<td>{_grade_chip(m[1], reason=_reason_for(m, ym, until))}</td>"
             f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
+            f'<td>{"–" if m[8] is None else f"{m[8]:g}%"}</td>'
             f"<td>{m[4]:,}</td><td>{m[7]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
             f"<td>{m[3]:,.1f}</td></tr>"
         )
@@ -579,6 +585,9 @@ def _county_months_html(county, data, months, until):
         '<table class="mtable"><thead><tr>'
         '<th scope="col">Month</th><th scope="col">Grade</th>'
         '<th scope="col">Restored in 4h</th>'
+        '<th scope="col" title="Faults restored within five minutes of the time '
+        "ESB estimated for them, of those with a confirmed restore and an "
+        'estimate. Blank under five estimates">Restored by estimate</th>'
         '<th scope="col">Faults</th>'
         # The charter's other number. Counted here and nowhere else: the
         # footer has promised it on the county page since the tiles were

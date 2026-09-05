@@ -496,3 +496,35 @@ their last sighting - ESB dropped them before the time it had named - and that
 estimate is still not shipped for them. A row for one says "off for about 4 h ·
 no restore time published"; whether it should also say what ESB had expected is
 a separate question with a separate shape.
+
+## The site says how good ESB's estimates are - 2026-09-05
+
+Every outage row has said "2 h later than ESB estimated" since 2026-08-28, and
+nothing added those up. The estimate is the one number a customer actually
+plans around, and nobody publishes how often it holds. On the corpus to
+5 September, 1,079 of 1,129 restored faults carried one.
+
+**The figure is "restored by ESB's estimate"**: the share of faults, among
+those with a confirmed restore and an estimate, back within five minutes of
+the time ESB named. It sits beside "restored within 4 hours" everywhere that
+appears: a tile on the national view and the county view, and a column in the
+county page's month table. The footer's method disclosure defines it in one
+sentence.
+
+Choices, with the numbers behind them:
+
+| Choice | Taken | Measured |
+|---|---|---|
+| Per outage or per customer | **per outage** | 74.6% per outage against 83.4% customer-weighted: large faults keep their estimates more often, and weighting by customers would report the big outages' record as everyone's. An estimate is one statement about one outage, and that is how a customer meets it |
+| Grace | **five minutes**, `ESTIMATE_GRACE` | 73.3% at zero, 74.6% at five, 78.9% at fifteen, 82.3% at thirty. Five is the line the row already draws: it prints no "later than ESB estimated" inside it, so the share cannot count that a miss. Defined once in the model; the JS mirror is asserted by the same test that guards `MIN_FAULTS` |
+| Floor | **five estimates**, `MIN_ESTIMATES = MIN_GRADED_FAULTS` | August's smallest county sample was 10 and its largest 99; a September six days old ranged 1 to 25. Under five the cell is blank and the tile a dash, as the grade does. No day gate: this is a plain share of a sample, and the floor is the whole of what a small sample needs |
+| Population | the faults the grade judges | started and restored in the observed window; an ongoing fault has no restore to hold to the estimate |
+
+August, five or more estimates: Leitrim 41% of 27, Meath 57% of 35, up to
+Waterford 93% of 29 and Kilkenny 95% of 20. Misses are long when they happen:
+a median of 55 minutes late and a tenth over four hours.
+
+Rejected: an all-time national figure in the footer beside the CML comparison.
+That paragraph argues the site's credibility against ESB's published numbers,
+and ESB publishes nothing to compare an estimate share with. The tiles carry it
+month by month, which is the clock everything else on the page runs on.
