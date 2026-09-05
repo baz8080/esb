@@ -169,6 +169,44 @@ class TestTheMonthTable(CountyPageCase):
         self.assertIn("to 10 Sep", sept)
 
 
+class TestTheCompensationColumn(CountyPageCase):
+    """The footer has said since the tiles were settled that faults past the
+    charter's 24-hour mark are "counted separately on each county page". The
+    payload carried the count on every row and nothing read it."""
+
+    def column(self, page, month, heading):
+        """One cell of the month table, found by its heading rather than its
+        position, so a column added beside it cannot silently shift this one."""
+        heads = re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', page)
+        row = re.search(rf'<th scope="row">{month}.*?</th>(.*?)</tr>', page).group(1)
+        cells = re.findall(r"<td>(.*?)</td>", row)
+        # the first heading is the row's own <th>, which is not a <td>
+        return cells[heads.index(heading) - 1]
+
+    def test_a_fault_past_24_hours_is_counted_in_its_month(self):
+        self.observe(
+            detail("1", outageType="Restored", startTime="09/08/2026 08:00",
+                   restoreTime="10/08/2026 09:00"),
+            datetime(2026, 8, 10, 9, 30, tzinfo=UTC),
+        )
+        self.observe(detail("2", location="Drumcondra"),
+                     datetime(2026, 8, 12, 9, 30, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        self.assertEqual(self.column(page, "August 2026", "Over 24 h"), "1")
+        self.assertEqual(self.column(page, "August 2026", "Faults"), "2")
+        self.assertEqual(self.column(page, "September 2026", "Over 24 h"), "0")
+
+    def test_the_heading_says_what_the_mark_is(self):
+        """A bare "Over 24 h" beside "Faults" could be read as a duration
+        column; the hover names the charter, the way "Minutes lost" does."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, 0, 0, tzinfo=UTC), n_listed=1)
+        head = re.search(r'<th scope="col" title="([^"]*)">Over 24 h</th>',
+                         self.render_county())
+        self.assertIn("compensation", head.group(1))
+
+
 class TestAnUngradedMonthSaysWhy(CountyPageCase):
     """Three gates leave a month ungraded and they are not the same fact. The
     chip blamed faults for all of them, so the first five days of every month

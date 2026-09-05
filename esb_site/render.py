@@ -533,7 +533,7 @@ def _county_months_html(county, data, months, until):
             + "</th>"
             f"<td>{_grade_chip(m[1], reason=_reason_for(m, ym, until))}</td>"
             f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
-            f"<td>{m[4]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
+            f"<td>{m[4]:,}</td><td>{m[7]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
             f"<td>{m[3]:,.1f}</td></tr>"
         )
     return (
@@ -541,7 +541,14 @@ def _county_months_html(county, data, months, until):
         '<table class="mtable"><thead><tr>'
         '<th scope="col">Month</th><th scope="col">Grade</th>'
         '<th scope="col">Restored in 4h</th>'
-        '<th scope="col">Faults</th><th scope="col">Planned</th>'
+        '<th scope="col">Faults</th>'
+        # The charter's other number. Counted here and nowhere else: the
+        # footer has promised it on the county page since the tiles were
+        # settled, and the payload carried it unread.
+        '<th scope="col" title="Faults lasting more than 24 hours, the point at '
+        "which the Customer Charter pays compensation. One still out past that "
+        'mark counts too">Over 24 h</th>'
+        '<th scope="col">Planned</th>'
         '<th scope="col">Customers hit</th>'
         '<th scope="col" title="Customer Minutes Lost: minutes off supply for '
         'the average customer that month, faults only">Minutes lost</th>'
