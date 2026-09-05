@@ -285,7 +285,13 @@ def _vs_estimate(end, est):
     )
 
 
-def _end_bits(k, hours):
+def _horizon(data):
+    """The collection horizon in the record's own timestamp format, for the
+    one comparison a row makes against it."""
+    return data["observed_iso"][:16]
+
+
+def _end_bits(k, hours, horizon):
     """How the outage ended and how long it ran, as one phrase per shape.
 
     Only a "restored" end is something ESB confirmed; the rest name the missing
@@ -293,7 +299,7 @@ def _end_bits(k, hours):
     """
     planned, src = k[2], k[6]
     if k[11]:
-        return _ongoing_bits(k)
+        return _ongoing_bits(k, horizon)
     if src == "restored":
         bits = [f"restored {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
         if k[10]:
@@ -316,14 +322,17 @@ def _end_bits(k, hours):
     return [f"off for {_span_hm(hours, about=True)}", "no restore time published"]
 
 
-def _ongoing_bits(k):
+def _ongoing_bits(k, horizon):
     """An outage still listed when the collector last looked.
 
     Its end is the horizon, so a span would measure the collector rather than
     the outage; what a reader wants is whether ESB has said when it will be
-    back, and whether that time has already gone. Planned works keep their
-    schedule wording - a listing is not an observed outage - and only gain the
-    fact that they were still listed. Mirrored in site.html (ongoingBits).
+    back, and whether that time has already gone. "Gone" is judged against the
+    horizon rather than the row's own end: that end is the last sighting, up to
+    a poll cycle earlier, and an estimate falling in that gap has passed by the
+    data's own clock. Planned works keep their schedule wording - a listing is
+    not an observed outage - and only gain the fact that they were still
+    listed. Mirrored in site.html (ongoingBits).
     """
     planned, start, est = k[2], k[4], k[10]
     if planned:
@@ -338,12 +347,12 @@ def _ongoing_bits(k):
         ]
     if not est:
         return ["still out when last checked", "no estimate published"]
-    if est > k[5]:
+    if est > horizon:
         return ["still out when last checked", f"expected back by {_when_at(est, start)}"]
     return ["still out when last checked", f"past ESB's estimate of {_when_at(est, start)}"]
 
 
-def _case_html(k):
+def _case_html(k, horizon):
     planned = k[2]
     chain = k[8]
     bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s") + " affected"]
@@ -353,7 +362,7 @@ def _case_html(k):
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
-        bits.extend(_end_bits(k, hours))
+        bits.extend(_end_bits(k, hours, horizon))
     # in the chip rather than trailing the timings: it is the row's most human
     # fact and it was in its least-read position
     tag = "Planned" if planned else "Fault"
@@ -626,7 +635,7 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
             f'<div class="card"><h2>Outage history <span class="n">'
             f'· {len(cases):,} outage{"" if len(cases) == 1 else "s"}</span></h2>'
         )
-        body.append("".join(_case_html(k) for k in cases))
+        body.append("".join(_case_html(k, _horizon(data)) for k in cases))
         body.append("</div>")
     else:
         body.append(
@@ -801,7 +810,7 @@ def area_page(county, name, pop, events, nearby, data):
         "under a neighbouring area, and one listed here may reach far beyond "
         f"it - which is why a row can count more customers than "
         f"{html.escape(name)} has people.</p>",
-        "".join(_case_html(k) for k in cases),
+        "".join(_case_html(k, _horizon(data)) for k in cases),
         "</div>",
     ]
     if near:

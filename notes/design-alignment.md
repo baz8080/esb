@@ -461,6 +461,32 @@ actually states.
 the county page on 2026-08-28 and this does not bring it back; the phrase names
 the fact without a timestamp the page has decided not to carry.
 
+### What review of the first cut found
+
+Three shapes the single-id tests did not reach, all fixed at the source rather
+than in the wording:
+
+- **A merged event with a restored ender and a sibling still listed** was
+  `ongoing` by `any()` over its members, so the row said "still out when last
+  checked · past ESB's estimate of 01:52" for an outage ESB confirmed restored
+  at 01:52, and the event sat out of the grade for one build. Seven groups in
+  the corpus hit this shape at the build after their restore. `_merge_group`
+  already treats a sibling lingering a poll cycle past a confirmed restore as
+  the feed catching up; `ongoing` now follows the ender, as `end` always did.
+- **"No estimate published" when the ender had none and a sibling did.** The
+  ender is the record listed latest, not the one ESB put a time on; seven
+  unrestored groups had that shape. A live event now borrows the latest
+  estimate over its members when its ender carries none. The settled rule that
+  the ender's estimate wins (grading.md, stale figures resurrected by `max()`)
+  is about records that closed and is untouched.
+- **"Expected back by" was judged against the row's end**, which for a listed
+  outage is the last sighting, up to a poll cycle before the horizon. An
+  estimate in that gap has passed by the data's own clock. The comparison is
+  now against the horizon, which the app has as `D.observed_iso` and the static
+  pages take from the same payload field; `_case_html` takes it as an argument
+  rather than defaulting, so a caller cannot fall back to the sighting by
+  accident.
+
 Rejected: a tag label ("Fault · still out"), the way a planned reason rides in
 the tag. The tag names what the outage is and the summary line says what
 happened to it, and a live fault is a state of the second kind.

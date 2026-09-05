@@ -188,9 +188,10 @@ function endBits(k, hours) {
 }
 
 /* Still listed at the last poll: the end is the horizon, so no span, and
-   the question is whether ESB has named a time and whether it has gone.
-   Planned works keep their schedule wording. Mirrored in render.py
-   (_ongoing_bits). */
+   the question is whether ESB has named a time and whether it has gone -
+   gone by the horizon, not by the row's end, which is a sighting up to a
+   poll cycle earlier. Planned works keep their schedule wording. Mirrored
+   in render.py (_ongoing_bits). */
 function ongoingBits(k) {
   var planned = k[2], start = k[4], est = k[10];
   if (planned) {
@@ -200,7 +201,9 @@ function ongoingBits(k) {
             "still listed when last checked"];
   }
   if (!est) return ["still out when last checked", "no estimate published"];
-  if (est > k[5]) return ["still out when last checked", "expected back by " + whenAt(est, start)];
+  if (est > D.observed_iso.slice(0, 16)) {
+    return ["still out when last checked", "expected back by " + whenAt(est, start)];
+  }
   return ["still out when last checked", "past ESB's estimate of " + whenAt(est, start)];
 }
 
