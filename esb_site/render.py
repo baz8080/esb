@@ -10,7 +10,9 @@ only way to hold that line is to never put a per-outage record in `data.js`.
 
 from __future__ import annotations
 
+import csv
 import html
+import io
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -33,6 +35,22 @@ SITE_CSS = TEMPLATES / "site.css"
 # may be filed, since the pin is the fault and not everyone it cut off. Five
 # covers a plausible substation catchment without becoming a gazetteer.
 NEARBY_AREAS = 5
+
+# The spots card: this many faults makes a spot, and this many rows is the
+# card. Mayo's ten cover 83% of its faults; Dublin's cover 32%, over 51 spots.
+SPOT_MIN_FAULTS = 2
+SPOTS = 10
+
+# One row per merged event, oldest first. Times are UTC, `esb_ids` is every id
+# folded into the event, `location` is ESB's own string and empty where it gave
+# none, and the end carries its source because the three are not equally
+# trustworthy.
+CSV_COLUMNS = (
+    "esb_ids", "county", "area", "location", "type", "planned_reason",
+    "customers", "start_utc", "end_utc", "end_source", "estimate_utc",
+    "first_estimate_utc", "ongoing", "customer_minutes", "repeat_leg",
+    "repeat_chain", "lat", "lon",
+)
 
 # How far the data may lag the build before the page says so. Pushes land every
 # six hours, so with the timer's jitter and one poll interval the newest data can
@@ -98,9 +116,13 @@ def build(outages, sa_index, now, until):
     """
     months = model.month_list(model.COLLECTION_START, now)
 
+    # A county's record starts at the first poll: an outage restored before
+    # it overlaps no observed window, so the page never lists it and nothing
+    # derived from the county's list may count it either.
     by_county = defaultdict(list)
     for o in outages:
-        by_county[o.county].append(o)
+        if o.end > model.COLLECTION_START:
+            by_county[o.county].append(o)
 
     stats, national = {}, {}
     for county in sa_index.counties:
@@ -603,7 +625,9 @@ def _county_months_html(county, data, months, until):
     )
 
 
-def county_page(county, data, by_month, months, until, all_counties, areas=()):
+def county_page(
+    county, data, by_month, months, until, all_counties, areas=(), spots=()
+):
     """The whole body of c/<slug>.html.
 
     Every month, not only the latest. The URL names a county, so what it
@@ -641,10 +665,14 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
     # Straight to the months: the newest month's card duplicated the table's
     # first row (notes/design-alignment.md § The county page became an archive).
     body.append(_county_months_html(county, data, months, until))
+    if spots:
+        body.append(_spots_html(spots, data["start"]))
     if cases:
         body.append(
             f'<div class="card"><h2>Outage history <span class="n">'
             f'· {len(cases):,} outage{"" if len(cases) == 1 else "s"}</span></h2>'
+            f'<p class="note"><a href="{slug(county)}.csv">This list as a CSV '
+            "file</a>, one row per outage, times in UTC.</p>"
         )
         body.append("".join(_case_html(k, _horizon(data)) for k in cases))
         body.append("</div>")
@@ -678,6 +706,65 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
             "BODY": "".join(body),
         },
     )
+
+
+def fault_spots(outages):
+    """[(location, faults, peak customers)], most faults first.
+
+    ESB's own location names: 222 of the 422 in the corpus straddle more than
+    one Census area, so a spot is not an area and links to no page.
+    """
+    by = defaultdict(list)
+    for o in outages:
+        # ESB's bare county name is its string for a fault out in the country,
+        # the same reading the search box gives it, and not a spot
+        if not o.planned and o.esb_location and o.esb_location != o.county:
+            by[o.esb_location].append(o)
+    spots = [
+        (loc, len(v), max(o.customers for o in v))
+        for loc, v in by.items()
+        if len(v) >= SPOT_MIN_FAULTS
+    ]
+    spots.sort(key=lambda s: (-s[1], -s[2], s[0]))
+    return spots[:SPOTS]
+
+
+def _spots_html(spots, since):
+    rows = "".join(
+        f"<li>{html.escape(loc)}"
+        '<span class="fill"></span>'
+        f'<span class="n">{n} faults</span>'
+        f'<span class="p">up to {peak:,} customers</span></li>'
+        for loc, n, peak in spots
+    )
+    return (
+        '<div class="card"><h2>Where faults keep happening '
+        f'<span class="n">· since {since}</span></h2>'
+        '<p class="note">The places ESB names on its faults, counted over every '
+        "month. A name can sit in more than one Census area, so these are not "
+        "the areas listed below.</p>"
+        f'<ul class="areas">{rows}</ul></div>'
+    )
+
+
+def county_csv(outages):
+    """One county's merged events as CSV, oldest first; the columns are
+    CSV_COLUMNS. The site's own rows, so a reader gets what the page counts
+    rather than raw ESB ids."""
+    buf = io.StringIO()
+    out = csv.writer(buf, lineterminator="\n")
+    out.writerow(CSV_COLUMNS)
+    for o in sorted(outages, key=lambda o: (o.start, int(o.id))):
+        out.writerow([
+            " ".join(o.ids), o.county, o.town, o.esb_location,
+            "planned" if o.planned else "fault", model.reason_label(o.reason),
+            o.customers, model.fmt_utc(o.start), model.fmt_utc(o.end), o.end_src,
+            model.fmt_utc(o.est), model.fmt_utc(o.first_est), int(o.ongoing),
+            round(o.customer_minutes(o.start, o.end)),
+            o.chain[0] if o.chain else "", o.chain[1] if o.chain else "",
+            o.lat, o.lon,
+        ])
+    return buf.getvalue()
 
 
 def area_path(county, name):
@@ -908,9 +995,13 @@ def write(site_dir, outages, sa_index, now, until):
         (site_dir / "c" / f"{slug(county)}.html").write_text(
             county_page(
                 county, data, by_month, months, until, sa_index.counties,
-                county_areas.get(county, ()),
+                county_areas.get(county, ()), fault_spots(by_county.get(county, [])),
             ),
             encoding="utf-8",
+        )
+        # Every county, an empty one too: the URL is stable, like the shard's.
+        (site_dir / "c" / f"{slug(county)}.csv").write_text(
+            county_csv(by_county.get(county, [])), encoding="utf-8"
         )
 
     area_paths = []
@@ -950,7 +1041,11 @@ def size_report(site_dir):
     # empty is invisible from the field
     site_dir = Path(site_dir)
     pages = list((site_dir / "a").glob("*/*.html"))
+    csvs = list((site_dir / "c").glob("*.csv"))
     report += (
+        f"\n  {'county csv':<16}"
+        f"{sum(p.stat().st_size for p in csvs) / 1024:8.1f} KB"
+        f"   ({len(csvs)} files, on request)"
         f"\n  {'areas.html':<16}"
         f"{(site_dir / 'areas.html').stat().st_size / 1024:8.1f} KB   (standalone)"
         f"\n  {'area pages':<16}"

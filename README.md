@@ -288,6 +288,12 @@ python -m esb_site --data-dir /var/lib/esb-outages     # writes out/site/
 It reads `esb.db`, so run `rebuild` first if the database is stale. Counties are
 derived from Census Small Area centroids, because the feed has no county field.
 
+Every county has a CSV of its outages at `c/<county>.csv`, linked from its
+page's outage history: one row per merged event, oldest first, with the columns
+named in `render.CSV_COLUMNS`. It is the site's own rows, so anyone studying the
+data gets what the page counts without rebuilding the database or
+re-implementing the merge.
+
 Each county-month is graded A–F on ESB Networks' own published service standard,
 from the CRU-approved Customer Charter: *"our aim is to restore supply within
 less than 4 hours in 95% of cases"*. A county scores on the share of its
