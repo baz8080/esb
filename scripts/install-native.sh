@@ -73,6 +73,11 @@ if [ ! -f "$ENV_FILE" ]; then
 # An ntfy.sh topic needs no account - pick an unguessable name.
 #ESB_ALERT_WEBHOOK=https://ntfy.sh/change-me-to-something-unguessable
 
+# Dead-man's heartbeat, pinged after every run that reached the feed. The
+# webhook cannot report a Pi that is off; a monitor watching for this can.
+# A healthchecks.io check with a 30 minute period and a 90 minute grace fits.
+#ESB_HEARTBEAT_URL=
+
 # Only needed if ESB rotates the de-facto public key.
 #ESB_API_KEY=
 ENVEOF
@@ -95,7 +100,7 @@ done
 
 echo
 echo "Installed. Next:"
-echo "  1. Set ESB_ALERT_WEBHOOK in $ENV_FILE"
+echo "  1. Set ESB_ALERT_WEBHOOK and ESB_HEARTBEAT_URL in $ENV_FILE"
 echo "  2. Prove alerts work:  sudo esb test-alert"
 echo "  3. Check the API key:  sudo esb check"
 echo "  4. One run now:        sudo systemctl start esb-outages.service"

@@ -84,7 +84,13 @@ def run_poll(data_dir, client: EsbClient | None = None, delay_ms: int | None = N
         if not acquired:
             print("another poll run holds the lock; skipping this trigger")
             return alert.EXIT_OK
-        return _run(data_dir, client, delay_ms)
+        code = _run(data_dir, client, delay_ms)
+    # Sent for every run that reached the feed, not only a clean one: schema
+    # drift and partial detail loss still leave the list on disk, and the
+    # webhook already carries them. Silence means collection has stopped.
+    if code not in (alert.EXIT_AUTH, alert.EXIT_UNREACHABLE):
+        alert.heartbeat()
+    return code
 
 
 def _run(data_dir: Path, client: EsbClient, delay_ms: int) -> int:

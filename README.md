@@ -93,6 +93,7 @@ Environment variables:
 | `ESB_API_KEY` | built-in public key | Override if ESB rotates it |
 | `ESB_POLL_DELAY_MS` | `1000` | Pause between detail requests |
 | `ESB_ALERT_WEBHOOK` | unset | Optional ntfy/Discord/Slack URL for failures |
+| `ESB_HEARTBEAT_URL` | unset | Optional dead-man's monitor ping URL, hit after every run that reached the feed |
 
 ### The API key
 
@@ -130,6 +131,24 @@ list call and its detail call — routine), and one or two isolated fetch failur
 Neither loses data, because unfinalised outages stay listed for the retention
 window and are retried on the next run. Alerting on recoverable blips only trains
 you to ignore the ones that matter.
+
+### The heartbeat
+
+Every alert above needs the collector to be running and to have a network. A
+Pi that is off, a timer someone disabled, a dead SD card or a lost uplink sends
+nothing, and that is the failure that has happened silently before. So the
+collector also pings `ESB_HEARTBEAT_URL` after every run that reached the feed,
+and a dead-man's monitor alerts when the pings stop. [healthchecks.io](https://healthchecks.io)
+is one such service and its free tier is enough: create a check with a period of
+30 minutes and a grace of 90 minutes, so three missed polls in a row raise it and
+a single catch-up run after a reboot does not, then set its ping URL in
+`/etc/esb-outages.env`. `sudo esb test-alert` pings it too, so the same command
+proves both channels.
+
+The ping is sent for schema drift and partial runs as well as clean ones,
+because those still put the list on disk and the webhook already reports them.
+It is not sent when the key is rejected or ESB cannot be reached, so those
+failures raise both alarms, which is right: collection has stopped.
 
 ## Deploying on a Raspberry Pi (or any systemd host)
 

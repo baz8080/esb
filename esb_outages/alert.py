@@ -148,6 +148,25 @@ def notify(message: str) -> bool:
         return False
 
 
+def heartbeat() -> bool:
+    """Ping ESB_HEARTBEAT_URL. Returns whether it was delivered.
+
+    The webhook reports failures the collector can see. A Pi that is off, a
+    disabled timer, a dead card or a lost uplink reports nothing, so a
+    dead-man's monitor watches for this ping instead and alerts on silence.
+    Best effort like the webhook: it can never change the exit code.
+    """
+    url = os.environ.get("ESB_HEARTBEAT_URL")
+    if not url:
+        return False
+    try:
+        urllib.request.urlopen(url, timeout=10).close()
+        return True
+    except Exception as exc:  # pragma: no cover - never let the ping break the run
+        print(f"warning: heartbeat ping failed: {exc}", file=sys.stderr)
+        return False
+
+
 def fail(message: str, code: int) -> int:
     """Print a fatal banner to stderr, fire the optional webhook, return the code."""
     print(message, file=sys.stderr)

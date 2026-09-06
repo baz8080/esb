@@ -256,6 +256,90 @@ class TestWebhookAlerting(unittest.TestCase):
             self.assertFalse(alert.notify("hello"))
 
 
+class TestHeartbeat(PollTestCase):
+    """The ping a dead-man's monitor waits for: sent whenever a run reached
+    the feed, and never when it did not."""
+
+    def setUp(self):
+        super().setUp()
+        import http.server
+        import threading
+
+        self.pings = []
+        outer = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                outer.pings.append(self.path)
+                self.send_response(200)
+                self.end_headers()
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+        self.server.timeout = 0.5
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/ping"
+        # one request at most: a test that expects none must not hang on it
+        threading.Thread(target=self.server.handle_request, daemon=True).start()
+        self.env = unittest.mock.patch.dict(os.environ, {"ESB_HEARTBEAT_URL": self.url})
+        self.env.start()
+
+    def tearDown(self):
+        self.env.stop()
+        self.server.server_close()
+        super().tearDown()
+
+    def settle(self):
+        # give the server thread its half second to see nothing arrive
+        import time
+
+        time.sleep(0.6)
+        return self.pings
+
+    def test_a_clean_run_pings(self):
+        self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
+        self.assertEqual(self.settle(), ["/ping"])
+
+    def test_a_drifted_run_still_pings(self):
+        # the list is on disk and the webhook carries the drift; silence would
+        # raise a second alarm for a collector that is running
+        body = dict(detail("fault"))
+        body["brandNewField"] = "surprise"
+        client = FakeClient(
+            list_body=make_list(detail("fault")), details={body["outageId"]: body}
+        )
+        self.assertEqual(self.poll(client), alert.EXIT_SCHEMA_DRIFT)
+        self.assertEqual(self.settle(), ["/ping"])
+
+    def test_a_rejected_key_does_not_ping(self):
+        self.poll(FakeClient(list_error=AuthError("401 rejected")))
+        self.assertEqual(self.settle(), [])
+
+    def test_an_unreachable_feed_does_not_ping(self):
+        self.poll(FakeClient(list_error=TransientError("connection refused")))
+        self.assertEqual(self.settle(), [])
+
+    def test_a_skipped_trigger_does_not_ping(self):
+        with poll_lock(self.data_dir) as acquired:
+            self.assertTrue(acquired)
+            self.poll(self.client_with("fault"))
+        self.assertEqual(self.settle(), [])
+
+    def test_unconfigured_is_a_no_op(self):
+        with unittest.mock.patch.dict(os.environ, {}, clear=True):
+            self.assertFalse(alert.heartbeat())
+            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
+        self.assertEqual(self.settle(), [])
+
+    def test_a_dead_monitor_does_not_change_the_exit_code(self):
+        with unittest.mock.patch.dict(
+            os.environ, {"ESB_HEARTBEAT_URL": "http://127.0.0.1:9/dead"}
+        ):
+            self.assertFalse(alert.heartbeat())
+            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
+
+
 class TestCheck(unittest.TestCase):
     def test_ok(self):
         self.assertEqual(run_check(FakeClient(list_body=make_list(detail("fault")))), alert.EXIT_OK)
