@@ -31,12 +31,13 @@ This is safe because the *list* is still fetched in full every run, and any
 change of outage type forces an immediate detail fetch however long that outage
 has been dormant. Only a quiet outage's descriptive fields are ever delayed.
 
-A storm can list more outages than one run can fetch. The service unit stops a
-run at 25 minutes, about 3,000 details; the collector catches the stop, records
-the run as cut short, and the next run fetches the outages never seen before it
-re-checks any it already has. Every detail is committed as it lands, so even a
-run killed outright leaves the database knowing what it fetched. `sudo esb
-stats` counts cut-short runs, which is the sign a storm outran the budget.
+A storm can list more outages than one run can fetch. A run stops itself at
+24 minutes, about 2,800 details, records itself as cut short, and the next run
+fetches first whatever a purge would take: outages listed as restored that
+still need their detail, then live ones never seen, then re-checks. Every detail
+is committed as it lands, so even a run killed outright leaves the database
+knowing what it fetched. `sudo esb stats` counts cut-short runs, which is the
+sign a storm outran the budget.
 
 ### Storage
 

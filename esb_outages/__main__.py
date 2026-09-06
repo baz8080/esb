@@ -8,7 +8,7 @@ import sys
 
 from . import __version__, alert
 from .client import EsbClient
-from .poll import run_check, run_poll
+from .poll import DEFAULT_DELAY_MS, run_check, run_poll
 from .store import Store
 
 DEFAULT_DATA_DIR = os.environ.get("ESB_DATA_DIR", "/data")
@@ -131,7 +131,7 @@ def main(argv=None) -> int:
     p_poll = sub.add_parser("poll", help="run one collection pass (the scheduled command)")
     p_poll.add_argument(
         "--delay-ms", type=int, default=None,
-        help="pause between detail requests (env: ESB_POLL_DELAY_MS, default 1000)",
+        help=f"pause between detail requests (env: ESB_POLL_DELAY_MS, default {DEFAULT_DELAY_MS})",
     )
     sub.add_parser("check", help="verify the API key and connectivity; writes nothing")
     sub.add_parser(

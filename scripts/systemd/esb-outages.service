@@ -22,10 +22,10 @@ EnvironmentFile=-/etc/esb-outages.env
 WorkingDirectory=/opt/esb-outages
 ExecStart=/usr/bin/python3 -m esb_outages poll
 
-# A storm can list more than a run can fetch. Stopped at 25 minutes, inside the
-# 30-minute interval, with about 3,000 details reached at half a second each;
-# the collector catches SIGTERM, records the run, and the next run takes what
-# was left first (notes/storms.md).
+# The collector stops itself at 24 minutes (poll.RUN_BUDGET_S) and records
+# what a storm left for the next run. This is the backstop a minute beyond,
+# and it is a failed unit if it ever fires; the collector catches the SIGTERM
+# and still closes the run out (notes/storms.md).
 TimeoutStartSec=1500
 
 # It reads its own code and writes one state directory. Nothing else.

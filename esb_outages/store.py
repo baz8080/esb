@@ -359,9 +359,11 @@ class Store:
         changes. So a state transition is still caught within one poll; all that
         is delayed is a quiet outage's descriptive fields.
 
-        The order matters when a run cannot finish. An outage never fetched has
-        no start time, no location and no customer count, and ESB purges it a
-        few hours after restoration; a re-check of one already captured loses
+        The order matters when a run cannot finish, and it is by what a purge
+        would take. ESB purges an outage a few hours after restoration and not
+        before, so anything listed Restored that still needs a fetch is on a
+        clock, whether it was never captured or has just flipped; a live
+        outage never captured stays listed while it is out; a re-check loses
         at most a revision. In ESB's list order a storm run cut short by the
         service timeout re-fetched the same head of the list every run and
         never reached the tail (notes/storms.md).
@@ -371,7 +373,8 @@ class Store:
         now = now or utc_now_iso()
         placeholders = ",".join("?" * len(outage_ids))
         rows = self.conn.execute(
-            f"""SELECT o.outage_id, o.has_detail, o.is_final, o.last_detail_utc,
+            f"""SELECT o.outage_id, o.outage_type, o.has_detail, o.is_final,
+                       o.last_detail_utc,
                        COALESCE(MAX(c.observed_at_utc), o.first_seen_utc) AS last_change
                 FROM outage o
                 LEFT JOIN outage_change c ON c.outage_id = o.outage_id
@@ -383,17 +386,22 @@ class Store:
 
         def urgency(outage_id: str) -> int | None:
             row = state.get(outage_id)
-            if row is None or not row["has_detail"]:
-                return 0  # never captured: the only fetch a purge can make unrecoverable
+            if row is None:
+                return 1
+            # apply_list has already written the list's type, so this is
+            # whether the purge clock is running
+            restored = row["outage_type"] == "Restored"
+            if not row["has_detail"]:
+                return 0 if restored else 1
             # Cleared by apply_list on a type change: something happened.
             if row["last_detail_utc"] is None:
-                return 1
+                return 0 if restored else 2
             if row["is_final"]:
                 return None
             if _hours_between(row["last_change"], now) < quiet_after_hours:
-                return 2  # actively changing, keep watching closely
+                return 3  # actively changing, keep watching closely
             if _hours_between(row["last_detail_utc"], now) >= recheck_hours:
-                return 3
+                return 4
             return None
 
         ranked = [

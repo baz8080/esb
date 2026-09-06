@@ -20,9 +20,13 @@ from .client import ApiError, AuthError, EsbClient, NotFound, TransientError
 from .parse import check_detail_schema, check_list_schema, normalize_detail
 from .store import Store, utc_now_iso
 
-# Half a second is courtesy, not a limit ESB states; at this pace a run reaches
-# about 3,000 details before the service unit's 25-minute cut-off.
+# Half a second is courtesy, not a limit ESB states.
 DEFAULT_DELAY_MS = 500
+
+# A run stops itself here, about 2,800 details at the pace above, and records
+# what it left. systemd's TimeoutStartSec sits a minute beyond as a backstop,
+# because a run systemd has to stop is a failed unit whatever it exits with.
+RUN_BUDGET_S = 24 * 60
 
 # A failed detail fetch is not lost data: the outage stays in the list for the
 # whole retention window and is not marked final, so the next hourly run retries
@@ -73,7 +77,12 @@ def check_writable(data_dir: Path) -> str | None:
     return None
 
 
-def run_poll(data_dir, client: EsbClient | None = None, delay_ms: int | None = None) -> int:
+def run_poll(
+    data_dir,
+    client: EsbClient | None = None,
+    delay_ms: int | None = None,
+    budget_s: float = RUN_BUDGET_S,
+) -> int:
     data_dir = Path(data_dir)
     client = client or EsbClient()
     if delay_ms is None:
@@ -87,7 +96,7 @@ def run_poll(data_dir, client: EsbClient | None = None, delay_ms: int | None = N
         if not acquired:
             print("another poll run holds the lock; skipping this trigger")
             return alert.EXIT_OK
-        code = _run(data_dir, client, delay_ms)
+        code = _run(data_dir, client, delay_ms, budget_s)
     # Sent for every run that reached the feed, not only a clean one: schema
     # drift and partial detail loss still leave the list on disk, and the
     # webhook already carries them. Silence means collection has stopped.
@@ -100,10 +109,11 @@ def run_poll(data_dir, client: EsbClient | None = None, delay_ms: int | None = N
 def _stop_on_sigterm():
     """Yield a list that gains an entry when SIGTERM arrives.
 
-    systemd sends it when a run outlives TimeoutStartSec, which a storm can
-    make happen. Left to Python's default the process dies mid-transaction:
-    no run record, no heartbeat, and the database forgets what was fetched.
-    Handled, the loop stops and the run closes itself out.
+    The backstop behind RUN_BUDGET_S: systemd sends it if a run outlives
+    TimeoutStartSec anyway. Left to Python's default the process dies
+    mid-transaction, with no run record, no heartbeat, and the database
+    forgetting what was fetched. Handled, the loop stops and the run closes
+    itself out.
     """
     stop: list[int] = []
     try:
@@ -117,13 +127,14 @@ def _stop_on_sigterm():
         signal.signal(signal.SIGTERM, previous)
 
 
-def _run(data_dir: Path, client: EsbClient, delay_ms: int) -> int:
+def _run(data_dir: Path, client: EsbClient, delay_ms: int, budget_s: float) -> int:
     with _stop_on_sigterm() as stop, Store(data_dir) as store:
-        return _collect(store, client, delay_ms, stop)
+        return _collect(store, client, delay_ms, stop, budget_s)
 
 
-def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list) -> int:
+def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_s: float) -> int:
     started_at = utc_now_iso()
+    deadline = time.monotonic() + budget_s
     # Timestamps are only second-resolution, so they cannot identify a run on
     # their own; rebuild groups observations by run_id and needs it unique.
     run_id = f"{started_at}-{uuid.uuid4().hex[:8]}"
@@ -168,10 +179,13 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list) -> int:
     done = 0
     errors: list[str] = []
     for index, outage_id in enumerate(todo):
-        if stop:
-            break
         if index:
             time.sleep(delay_ms / 1000.0)
+        # Checked after the sleep: a SIGTERM that lands during it resumes the
+        # sleep, and must not start one more fetch. The first fetch always
+        # runs, so a tiny budget still makes progress.
+        if stop or (index and time.monotonic() >= deadline):
+            break
         done += 1
         observed_at = utc_now_iso()
         try:
