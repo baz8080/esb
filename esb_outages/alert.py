@@ -125,27 +125,29 @@ def partial_banner(failed: int, attempted: int, errors: list[str]) -> str:
     )
 
 
-def notify(message: str) -> bool:
-    """Push to ESB_ALERT_WEBHOOK. Returns whether it was delivered.
+def _deliver(request, what: str) -> bool:
+    """Best effort, in one place: a failure to report must never mask the
+    problem being reported or change the exit code."""
+    try:
+        urllib.request.urlopen(request, timeout=10).close()
+        return True
+    except Exception as exc:
+        print(f"warning: {what} failed: {exc}", file=sys.stderr)
+        return False
 
-    This is the alerting channel. Best-effort by design: a webhook failure must
-    never mask the underlying problem or change the exit code.
-    """
+
+def notify(message: str) -> bool:
+    """Push to ESB_ALERT_WEBHOOK. Returns whether it was delivered."""
     url = os.environ.get("ESB_ALERT_WEBHOOK")
     if not url:
         return False
-    try:
-        if "ntfy" in url:
-            data, headers = message.encode("utf-8"), {"Title": "ESB poller failure"}
-        else:
-            data = json.dumps({"content": message, "text": message}).encode("utf-8")
-            headers = {"Content-Type": "application/json"}
-        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-        urllib.request.urlopen(req, timeout=10).close()
-        return True
-    except Exception as exc:  # pragma: no cover - never let alerting break the run
-        print(f"warning: alert webhook failed: {exc}", file=sys.stderr)
-        return False
+    if "ntfy" in url:
+        data, headers = message.encode("utf-8"), {"Title": "ESB poller failure"}
+    else:
+        data = json.dumps({"content": message, "text": message}).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+    return _deliver(req, "alert webhook")
 
 
 def heartbeat() -> bool:
@@ -154,17 +156,11 @@ def heartbeat() -> bool:
     The webhook reports failures the collector can see. A Pi that is off, a
     disabled timer, a dead card or a lost uplink reports nothing, so a
     dead-man's monitor watches for this ping instead and alerts on silence.
-    Best effort like the webhook: it can never change the exit code.
     """
     url = os.environ.get("ESB_HEARTBEAT_URL")
     if not url:
         return False
-    try:
-        urllib.request.urlopen(url, timeout=10).close()
-        return True
-    except Exception as exc:  # pragma: no cover - never let the ping break the run
-        print(f"warning: heartbeat ping failed: {exc}", file=sys.stderr)
-        return False
+    return _deliver(url, "heartbeat ping")
 
 
 def fail(message: str, code: int) -> int:

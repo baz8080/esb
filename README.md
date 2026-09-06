@@ -80,7 +80,7 @@ python -m esb_outages --data-dir ./data poll
 | --- | --- |
 | `poll` | One collection pass. This is the scheduled command. |
 | `check` | Verify the API key and connectivity. Writes nothing. |
-| `test-alert` | Send a test alert through `ESB_ALERT_WEBHOOK`. |
+| `test-alert` | Send a test alert through `ESB_ALERT_WEBHOOK` and ping `ESB_HEARTBEAT_URL`. |
 | `rebuild` | Drop the database and replay it from the raw logs. |
 | `stats` | Summarise what has been collected. |
 | `compact` | Gzip raw logs from previous months. |
@@ -168,7 +168,8 @@ from `scripts/systemd/`, and an `esb` command to `/usr/local/bin`. It is
 idempotent — re-run it after a `git pull` to deploy an update, and it re-arms the
 timers so a changed schedule actually takes effect.
 
-Then set `ESB_ALERT_WEBHOOK` in `/etc/esb-outages.env` and start it:
+Then set `ESB_ALERT_WEBHOOK` and `ESB_HEARTBEAT_URL` in `/etc/esb-outages.env`
+and start it:
 
 ```bash
 sudo esb test-alert && sudo esb check
@@ -193,7 +194,7 @@ environment file holding the webhook is root-only.
 | --- | --- |
 | `sudo esb stats` | What has been collected, plus the recent runs and how many fetches the dormancy back-off avoided |
 | `sudo esb check` | Whether the API key still works. Writes nothing |
-| `sudo esb test-alert` | Whether a failure would actually reach you |
+| `sudo esb test-alert` | Whether a failure would actually reach you, and whether the heartbeat lands |
 | `sudo esb rebuild` | Re-derive the database from the raw logs |
 | `sudo esb compact` | Gzip previous months (skip this if backing up via git) |
 | `systemctl list-timers` | When the collector and backup next run |

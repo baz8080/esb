@@ -9,15 +9,22 @@ from esb_outages.client import ApiError, AuthError, TransientError
 from esb_outages.poll import poll_lock, run_check, run_poll
 from esb_outages.store import Store
 
-from .helpers import FakeClient, detail, make_list
+from .helpers import FakeClient, detail, make_list, one_shot_server
 
 
 class PollTestCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.data_dir = Path(self._tmp.name)
+        # A shell that has sourced the Pi's env file would otherwise send every
+        # fake poll's alarm and heartbeat to the real channels.
+        self._env = unittest.mock.patch.dict(os.environ)
+        self._env.start()
+        os.environ.pop("ESB_ALERT_WEBHOOK", None)
+        os.environ.pop("ESB_HEARTBEAT_URL", None)
 
     def tearDown(self):
+        self._env.stop()
         self._tmp.cleanup()
 
     def poll(self, client):
@@ -211,34 +218,18 @@ class TestWebhookAlerting(unittest.TestCase):
     """The webhook is the alerting channel; failures must reach it."""
 
     def setUp(self):
-        import http.server
-        import threading
-
         self.received = []
-        outer = self
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_POST(self):
-                length = int(self.headers.get("Content-Length", 0))
-                outer.received.append(self.rfile.read(length).decode())
-                self.send_response(200)
-                self.end_headers()
-
-            def log_message(self, *args):
-                pass
-
-        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/topic"
-        threading.Thread(target=self.server.handle_request, daemon=True).start()
+        self.url, self.server, self.thread = one_shot_server(self.received)
 
     def tearDown(self):
+        self.thread.join(1)
         self.server.server_close()
 
     def test_failure_is_pushed_to_the_webhook(self):
         with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
             alert.fail(alert.auth_banner("abc...xyz"), alert.EXIT_AUTH)
         self.assertEqual(len(self.received), 1)
-        self.assertIn("SUBSCRIPTION KEY REJECTED", self.received[0])
+        self.assertIn("SUBSCRIPTION KEY REJECTED", self.received[0][1])
 
     def test_notify_reports_delivery(self):
         with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
@@ -258,48 +249,26 @@ class TestWebhookAlerting(unittest.TestCase):
 
 class TestHeartbeat(PollTestCase):
     """The ping a dead-man's monitor waits for: sent whenever a run reached
-    the feed, and never when it did not."""
+    the feed, and never when it did not. The ping is synchronous, so what
+    the server saw is final the moment poll() returns."""
 
     def setUp(self):
         super().setUp()
-        import http.server
-        import threading
-
         self.pings = []
-        outer = self
-
-        class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self):
-                outer.pings.append(self.path)
-                self.send_response(200)
-                self.end_headers()
-
-            def log_message(self, *args):
-                pass
-
-        self.server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-        self.server.timeout = 0.5
-        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/ping"
-        # one request at most: a test that expects none must not hang on it
-        threading.Thread(target=self.server.handle_request, daemon=True).start()
-        self.env = unittest.mock.patch.dict(os.environ, {"ESB_HEARTBEAT_URL": self.url})
-        self.env.start()
+        self.url, self.server, self.thread = one_shot_server(self.pings, method="GET")
+        os.environ["ESB_HEARTBEAT_URL"] = self.url
 
     def tearDown(self):
-        self.env.stop()
+        self.thread.join(1)
         self.server.server_close()
         super().tearDown()
 
-    def settle(self):
-        # give the server thread its half second to see nothing arrive
-        import time
-
-        time.sleep(0.6)
-        return self.pings
+    def paths(self):
+        return [path for path, _ in self.pings]
 
     def test_a_clean_run_pings(self):
         self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
-        self.assertEqual(self.settle(), ["/ping"])
+        self.assertEqual(self.paths(), ["/hook"])
 
     def test_a_drifted_run_still_pings(self):
         # the list is on disk and the webhook carries the drift; silence would
@@ -310,34 +279,32 @@ class TestHeartbeat(PollTestCase):
             list_body=make_list(detail("fault")), details={body["outageId"]: body}
         )
         self.assertEqual(self.poll(client), alert.EXIT_SCHEMA_DRIFT)
-        self.assertEqual(self.settle(), ["/ping"])
+        self.assertEqual(self.paths(), ["/hook"])
 
     def test_a_rejected_key_does_not_ping(self):
         self.poll(FakeClient(list_error=AuthError("401 rejected")))
-        self.assertEqual(self.settle(), [])
+        self.assertEqual(self.paths(), [])
 
     def test_an_unreachable_feed_does_not_ping(self):
         self.poll(FakeClient(list_error=TransientError("connection refused")))
-        self.assertEqual(self.settle(), [])
+        self.assertEqual(self.paths(), [])
 
     def test_a_skipped_trigger_does_not_ping(self):
         with poll_lock(self.data_dir) as acquired:
             self.assertTrue(acquired)
             self.poll(self.client_with("fault"))
-        self.assertEqual(self.settle(), [])
+        self.assertEqual(self.paths(), [])
 
     def test_unconfigured_is_a_no_op(self):
-        with unittest.mock.patch.dict(os.environ, {}, clear=True):
-            self.assertFalse(alert.heartbeat())
-            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
-        self.assertEqual(self.settle(), [])
+        del os.environ["ESB_HEARTBEAT_URL"]
+        self.assertFalse(alert.heartbeat())
+        self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
+        self.assertEqual(self.paths(), [])
 
     def test_a_dead_monitor_does_not_change_the_exit_code(self):
-        with unittest.mock.patch.dict(
-            os.environ, {"ESB_HEARTBEAT_URL": "http://127.0.0.1:9/dead"}
-        ):
-            self.assertFalse(alert.heartbeat())
-            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
+        os.environ["ESB_HEARTBEAT_URL"] = "http://127.0.0.1:9/dead"
+        self.assertFalse(alert.heartbeat())
+        self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
 
 
 class TestCheck(unittest.TestCase):

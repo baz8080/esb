@@ -28,6 +28,35 @@ def make_list(*details, extra=None):
     return {"outageMessage": items}
 
 
+def one_shot_server(received, method="POST"):
+    """A local HTTP server that answers one request and records it.
+
+    Returns (url, server, thread). The thread gives up after half a second so
+    a test expecting no request does not hang, and a caller joins it before
+    closing the server.
+    """
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def _record(self):
+            length = int(self.headers.get("Content-Length", 0))
+            received.append((self.path, self.rfile.read(length).decode()))
+            self.send_response(200)
+            self.end_headers()
+
+        do_GET = do_POST = _record
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    server.timeout = 0.5
+    thread = threading.Thread(target=server.handle_request, daemon=True)
+    thread.start()
+    return f"http://127.0.0.1:{server.server_address[1]}/hook", server, thread
+
+
 class FakeClient:
     """Stands in for EsbClient. Records calls so caching can be asserted."""
 
@@ -58,6 +87,7 @@ class FakeClient:
 
 
 __all__ = [
+    "one_shot_server",
     "FIXTURES", "load", "detail", "make_list", "FakeClient",
     "AuthError", "NotFound", "TransientError",
 ]
