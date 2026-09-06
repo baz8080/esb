@@ -28,12 +28,13 @@ def make_list(*details, extra=None):
     return {"outageMessage": items}
 
 
-def one_shot_server(received, method="POST"):
-    """A local HTTP server that answers one request and records it.
+def local_server(received):
+    """A local HTTP server that records every request until stopped.
 
-    Returns (url, server, thread). The thread gives up after half a second so
-    a test expecting no request does not hang, and a caller joins it before
-    closing the server.
+    Returns (url, server, thread); stop it with `stop_server`. It serves until
+    told to stop rather than for a fixed window: a one-shot server that gave
+    up after half a second lost the ping of a poll that took longer on a
+    loaded CI runner.
     """
     import http.server
     import threading
@@ -51,10 +52,17 @@ def one_shot_server(received, method="POST"):
             pass
 
     server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
-    server.timeout = 0.5
-    thread = threading.Thread(target=server.handle_request, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+    )
     thread.start()
     return f"http://127.0.0.1:{server.server_address[1]}/hook", server, thread
+
+
+def stop_server(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join(2)
 
 
 class FakeClient:
@@ -87,7 +95,8 @@ class FakeClient:
 
 
 __all__ = [
-    "one_shot_server",
+    "local_server",
+    "stop_server",
     "FIXTURES", "load", "detail", "make_list", "FakeClient",
     "AuthError", "NotFound", "TransientError",
 ]

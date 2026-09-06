@@ -9,7 +9,7 @@ from esb_outages.client import ApiError, AuthError, TransientError
 from esb_outages.poll import poll_lock, run_check, run_poll
 from esb_outages.store import Store
 
-from .helpers import FakeClient, detail, make_list, one_shot_server
+from .helpers import FakeClient, detail, local_server, make_list, stop_server
 
 
 class PollTestCase(unittest.TestCase):
@@ -219,11 +219,10 @@ class TestWebhookAlerting(unittest.TestCase):
 
     def setUp(self):
         self.received = []
-        self.url, self.server, self.thread = one_shot_server(self.received)
+        self.url, self.server, self.thread = local_server(self.received)
 
     def tearDown(self):
-        self.thread.join(1)
-        self.server.server_close()
+        stop_server(self.server, self.thread)
 
     def test_failure_is_pushed_to_the_webhook(self):
         with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
@@ -255,12 +254,11 @@ class TestHeartbeat(PollTestCase):
     def setUp(self):
         super().setUp()
         self.pings = []
-        self.url, self.server, self.thread = one_shot_server(self.pings, method="GET")
+        self.url, self.server, self.thread = local_server(self.pings)
         os.environ["ESB_HEARTBEAT_URL"] = self.url
 
     def tearDown(self):
-        self.thread.join(1)
-        self.server.server_close()
+        stop_server(self.server, self.thread)
         super().tearDown()
 
     def paths(self):
