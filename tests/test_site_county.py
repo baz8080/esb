@@ -37,6 +37,15 @@ class CountyPageCase(SiteModelCase):
             county, data, by_month, months, self.until, index.counties
         )
 
+    def column(self, page, month, heading):
+        """One cell of the month table, found by its heading rather than its
+        position, so a column added beside it cannot silently shift this one."""
+        heads = re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', page)
+        row = re.search(rf'<th scope="row">{month}.*?</th>(.*?)</tr>', page).group(1)
+        cells = re.findall(r"<td>(.*?)</td>", row)
+        # the first heading is the row's own <th>, which is not a <td>
+        return cells[heads.index(heading) - 1]
+
     def text_of(self, page):
         """The page as a reader with no stylesheet would read it."""
         body = re.sub(r"<(script|style).*?</\1>", "", page, flags=re.S)
@@ -142,6 +151,12 @@ class TestTheMonthTable(CountyPageCase):
             app,
             "site.html's MIN_FAULTS has drifted from model.MIN_GRADED_FAULTS",
         )
+        # and the row's "later than ESB estimated" line, which the share counts on
+        self.assertIn(
+            f"var EST_GRACE_MIN = {int(model.ESTIMATE_GRACE.total_seconds() // 60)};",
+            app,
+            "site.html's EST_GRACE_MIN has drifted from model.ESTIMATE_GRACE",
+        )
 
     def test_every_band_the_model_grades_has_wording(self):
         """The wording is what a chip's title says, so a band with none is a
@@ -174,15 +189,6 @@ class TestTheCompensationColumn(CountyPageCase):
     charter's 24-hour mark are "counted separately on each county page". The
     payload carried the count on every row and nothing read it."""
 
-    def column(self, page, month, heading):
-        """One cell of the month table, found by its heading rather than its
-        position, so a column added beside it cannot silently shift this one."""
-        heads = re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', page)
-        row = re.search(rf'<th scope="row">{month}.*?</th>(.*?)</tr>', page).group(1)
-        cells = re.findall(r"<td>(.*?)</td>", row)
-        # the first heading is the row's own <th>, which is not a <td>
-        return cells[heads.index(heading) - 1]
-
     def test_a_fault_past_24_hours_is_counted_in_its_month(self):
         self.observe(
             detail("1", outageType="Restored", startTime="09/08/2026 08:00",
@@ -205,6 +211,44 @@ class TestTheCompensationColumn(CountyPageCase):
         head = re.search(r'<th scope="col" title="([^"]*)">Over 24 h</th>',
                          self.render_county())
         self.assertIn("compensation", head.group(1))
+
+
+class TestTheEstimateColumn(CountyPageCase):
+    """The share of ESB's first estimates kept, beside the share back in four hours."""
+
+    def restored(self, i, restore):
+        # distinct places and starts, or the merge folds them into one event
+        self.observe(
+            detail(str(i), outageType="Restored", location=f"Place{i}",
+                   point={"c": f"53.3{i}858,-6.27098"},
+                   startTime=f"1{i}/08/2026 09:00", estRestoreTime=f"1{i}/08/2026 13:00",
+                   restoreTime=f"1{i}/08/2026 {restore}"),
+            datetime(2026, 8, 10 + i, 14, 0, tzinfo=UTC),
+        )
+
+    def test_the_share_is_per_outage_and_five_is_enough_to_show(self):
+        for i in range(4):
+            self.restored(i, "12:30")
+        self.restored(4, "15:00")
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=0)
+        page = self.render_county()
+        self.assertEqual(self.column(page, "August 2026", "Restored by first estimate"), "80%")
+        self.assertEqual(self.column(page, "September 2026", "Restored by first estimate"), "–")
+
+    def test_under_five_estimates_the_cell_is_blank(self):
+        for i in range(4):
+            self.restored(i, "12:30")
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=0)
+        page = self.render_county()
+        self.assertEqual(self.column(page, "August 2026", "Restored by first estimate"), "–")
+
+    def test_the_heading_says_what_counts(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, 0, 0, tzinfo=UTC), n_listed=1)
+        head = re.search(r'<th scope="col" title="([^"]*)">Restored by first estimate</th>',
+                         self.render_county())
+        self.assertIn("no later than five minutes after", head.group(1))
+        self.assertIn("Blank under five", head.group(1))
 
 
 class TestAnUngradedMonthSaysWhy(CountyPageCase):

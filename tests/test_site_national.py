@@ -122,6 +122,17 @@ class NationalCase(unittest.TestCase):
         self.assertGreater(share, 75.0, f"{share:.1f}% back inside 4h")
         self.assertLessEqual(share, 100.0)
 
+    def test_esb_keeps_most_of_its_estimates(self):
+        """ESB names a restore time on nearly every fault and keeps most of
+        them. A share far outside this band means the estimate or the restore
+        time is being read wrongly, not that ESB changed overnight."""
+        judged = [o for o in self.started if o.end <= self.hi and not o.ongoing]
+        share, estimates = model.estimate_share(judged)
+        restored = sum(1 for o in judged if o.end_src == "restored")
+        self.assertGreater(estimates / restored, 0.9, "most restored faults carry an estimate")
+        self.assertGreater(share, 50.0, f"{share:.1f}% of estimates kept")
+        self.assertLess(share, 95.0, f"{share:.1f}% of estimates kept")
+
     def test_almost_nothing_reaches_the_compensation_threshold(self):
         """24 hours is where the charter starts paying out. It should be rare."""
         over = [
@@ -157,7 +168,7 @@ class NationalCase(unittest.TestCase):
         row = render.build(
             self.outages, self.index, self.now, self.until
         )[0]["stats"]["Dublin"]["2026-08"]
-        cells, grade, within, cml, faults, planned, hit, over = row
+        cells, grade, within, cml, faults, planned, hit, over, est_kept, estimates = row
         month = model.county_month(
             self.outages,
             "Dublin",
@@ -174,6 +185,8 @@ class NationalCase(unittest.TestCase):
         self.assertIn(grade, set("ABCDEF") | {None})
         self.assertTrue(within is None or 0 <= within <= 100)
         self.assertGreater(faults, 0)
+        self.assertEqual(estimates, month["estimates"])
+        self.assertTrue(est_kept is None or 0 <= est_kept <= 100)
 
     def test_the_page_quotes_the_figures_this_suite_derives(self):
         """The CML explainer argues from four numbers; they have to be true.

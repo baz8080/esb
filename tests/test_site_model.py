@@ -1007,6 +1007,67 @@ class TestOngoingRecord(SiteModelCase):
         self.assertIsNone(k[10])
 
 
+class TestKeptEstimate(SiteModelCase):
+    """Whether ESB's first restore estimate held, on the row's own five-minute line."""
+
+    def kept(self, **over):
+        body = {"outageType": "Restored", "restoreTime": "10/08/2026 13:00", **over}
+        self.observe(detail("1", **body), datetime(2026, 8, 10, 14, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        return self.load()[0][0].kept_estimate()
+
+    def test_on_time_or_early_is_kept(self):
+        self.assertTrue(self.kept())
+        self.assertTrue(self.kept(restoreTime="10/08/2026 11:00"))
+
+    def test_inside_the_grace_is_kept_and_at_it_is_not(self):
+        # the row says nothing about a 4-minute miss and "5 min later" of a
+        # 5-minute one, so the share draws its line where the row does
+        self.assertTrue(self.kept(restoreTime="10/08/2026 13:04"))
+        self.assertFalse(self.kept(restoreTime="10/08/2026 13:05"))
+
+    def test_an_estimate_pushed_back_after_it_passed_is_a_miss(self):
+        # Named 13:00, moved to 17:00 half an hour after 13:00 had gone, and
+        # restored ahead of the new time. The row compares against ESB's last
+        # word; the share holds ESB to its first.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1"), t)
+        self.observe(
+            detail("1", outageType="Restored", estRestoreTime="10/08/2026 17:00",
+                   restoreTime="10/08/2026 16:50"),
+            t + timedelta(hours=4),
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        o = self.load()[0][0]
+        self.assertEqual(o.first_est, datetime(2026, 8, 10, 12, 0, tzinfo=UTC))
+        self.assertEqual(o.est, datetime(2026, 8, 10, 16, 0, tzinfo=UTC))
+        self.assertFalse(o.kept_estimate())
+
+    def test_nothing_to_hold_it_to(self):
+        self.assertIsNone(self.kept(estRestoreTime=""))
+        self.observe(detail("2", location="Marino"), datetime(2026, 8, 10, 14, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        by_loc = {o.location: o for o in self.load()[0]}
+        self.assertNotEqual(by_loc["Marino"].end_src, "restored")
+        self.assertIsNone(by_loc["Marino"].kept_estimate())
+
+    def test_the_share_is_withheld_under_the_floor(self):
+        for i in range(model.MIN_ESTIMATES):
+            self.observe(
+                detail(str(i), outageType="Restored", location=f"Place{i}",
+                       point={"c": f"53.3{i}858,-6.27098"},
+                       startTime=f"1{i}/08/2026 09:00", estRestoreTime=f"1{i}/08/2026 13:00",
+                       restoreTime=f"1{i}/08/2026 {'15:00' if i == 0 else '12:00'}"),
+                datetime(2026, 8, 10 + i, 14, 0, tzinfo=UTC),
+            )
+        self.poll(datetime(2026, 8, 20, 6, tzinfo=UTC))
+        outages = self.load()[0]
+        share, n = model.estimate_share(outages)
+        self.assertEqual((n, share), (model.MIN_ESTIMATES, 80.0))
+        share, n = model.estimate_share(outages[1:])
+        self.assertEqual((share, n), (None, model.MIN_ESTIMATES - 1))
+
+
 class TestCaseCopy(unittest.TestCase):
     """The outage card's summary line, in the words the page shows.
 

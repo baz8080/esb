@@ -496,3 +496,48 @@ their last sighting - ESB dropped them before the time it had named - and that
 estimate is still not shipped for them. A row for one says "off for about 4 h ·
 no restore time published"; whether it should also say what ESB had expected is
 a separate question with a separate shape.
+
+## The site says how good ESB's estimates are - 2026-09-05
+
+Every outage row has said "2 h later than ESB estimated" since 2026-08-28, and
+nothing added those up. The estimate is the one number a customer actually
+plans around, and nobody publishes how often it holds. On the corpus to
+5 September, 1,079 of 1,129 restored faults carried one.
+
+**The figure is "restored by ESB's first estimate"**: the share of faults,
+among those with a confirmed restore and an estimate, back no later than five
+minutes after the first restore time ESB named. It sits beside "restored within
+4 hours" everywhere that appears: a tile on the national view and the county
+view, and a column in the county page's month table. The footer's method
+disclosure defines it in two sentences.
+
+Choices, with the numbers behind them:
+
+| Choice | Taken | Measured |
+|---|---|---|
+| First estimate or last | **first**, `Outage.first_est` | 63.6% against the first, 74.4% against the last. 192 of the 973 single-id faults had their estimate revised, and 156 of those revisions came after the previous time had already passed: a revision is mostly ESB pushing back a time it missed, and scoring against it credits the miss. "Kept unless some estimate passed while still out" was measured too, at 67.3%, and rejected as a rule nobody could state in a tile's label |
+| Per outage or per customer | **per outage** | 74.6% per outage against 83.4% customer-weighted, on the last estimate: large faults keep their estimates more often, and weighting by customers would report the big outages' record as everyone's. An estimate is one statement about one outage, and that is how a customer meets it |
+| Grace | **five minutes**, `ESTIMATE_GRACE`, one-sided | 73.3% at zero, 74.6% at five, 78.9% at fifteen, 82.3% at thirty, on the last estimate. Five is the line the row already draws: it prints no "later than ESB estimated" inside it, so the share cannot count that a miss. Early is always kept; the wording says "no later than five minutes after" because "within five minutes" read as a band, and under a band the figure would be 3.7%. Defined once in the model; the JS mirror is asserted by the same test that guards `MIN_FAULTS` |
+| Floor | **five estimates**, `MIN_ESTIMATES = MIN_GRADED_FAULTS` | August's smallest county sample was 10 and its largest 99; a September six days old ranged 1 to 25. Under five the cell is blank and the tile a dash, as the grade does. No day gate: this is a plain share of a sample, and the floor is the whole of what a small sample needs |
+| Population | the faults the grade judges | started and restored in the observed window and not ongoing; the same list feeds `county_month` and the national row, so the two tiles cannot count different sets |
+
+**The row and the share use different estimates, on purpose.** The row's
+"28 min earlier than ESB estimated" compares against ESB's last word, the
+estimate carried by the record that ended the event (grading.md § One ESB event
+is one row), and the ongoing row's "expected back by" must be the latest. The
+share holds ESB to its first word, because that is the promise a customer acted
+on. A row can therefore read "earlier than ESB estimated" for a fault the share
+counts as a miss; the tile's label says "first" so a reader can tell which
+question each answers. For a merged event the first estimate is the earliest
+any member named; the envelope timeline carries no estimates, so it is taken
+per record before the merge.
+
+August, as the page shows it: nationally 59.2% of 982 first estimates were
+kept, Leitrim 33% of 27 and Meath 46% of 35 at one end, Kilkenny 75% of 20 and
+Waterford 77% of 30 at the other. Misses are long when they happen: against the
+last estimate, a median of 55 minutes late and a tenth over four hours.
+
+Rejected: an all-time national figure in the footer beside the CML comparison.
+That paragraph argues the site's credibility against ESB's published numbers,
+and ESB publishes nothing to compare an estimate share with. The tiles carry it
+month by month, which is the clock everything else on the page runs on.

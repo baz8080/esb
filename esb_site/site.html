@@ -74,7 +74,11 @@
     So is a month less than five days old: there is barely a month there to
     judge, which is why grades appear a few days into each one. Planned
     works are excluded just as the CRU's incentive excludes them: they are
-    announced in advance and never report a restore time.</p>
+    announced in advance and never report a restore time. <b>Restored by
+    ESB's first estimate</b> is the share of faults back no later than five
+    minutes after the first restore time ESB named for them. It is held to the
+    first because ESB mostly revises an estimate after that time has passed. A
+    month with fewer than five to count is left blank.</p>
     <p>The figure the CRU actually regulates is <b>Customer Minutes Lost</b> -
     the minutes an average customer spends without supply over a year. For 2024
     the target was <b>78.7</b> and ESB Networks reported <b>117.47</b> (<a
@@ -142,8 +146,10 @@ var GRADES = {
   E: "60% or more restored within 4 hours",
   F: "fewer than 60% restored within 4 hours"
 };
-// Mirrors model.MIN_GRADED_FAULTS, asserted by the same test that guards GRADES.
+// Mirror model.MIN_GRADED_FAULTS and model.ESTIMATE_GRACE in minutes, asserted
+// by the same test that guards GRADES.
 var MIN_FAULTS = 5;
+var EST_GRACE_MIN = 5;
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
@@ -159,7 +165,7 @@ function whenAt(ts, ref) {
    noise. Mirrored in render.py (_vs_estimate). */
 function vsEstimate(end, est) {
   var delta = (new Date(end + "Z") - new Date(est + "Z")) / 60000;
-  if (Math.abs(delta) < 5) return "";
+  if (Math.abs(delta) < EST_GRACE_MIN) return "";
   return spanHM(Math.abs(delta) / 60) + (delta > 0 ? " later" : " earlier") +
     " than ESB estimated";
 }
@@ -294,7 +300,7 @@ function renderOverview() {
       '<div class="daycap"></div></div></div>';
   }).join("");
 
-  var n = D.national[curMonth] || [0, 0, 0, 0, 0, null];
+  var n = D.national[curMonth] || [0, 0, 0, 0, 0, null, null, 0];
   var within = n[5];
   // "so far" only while the viewed month is still collecting
   var partial = D.observed_iso.slice(0, 7) === curMonth;
@@ -316,6 +322,7 @@ function renderOverview() {
     "The national picture in " + monthLabelLong(curMonth);
   document.getElementById("tiles").innerHTML = [
     [within == null ? "–" : within + "%", "restored within 4 hours"],
+    [n[6] == null ? "–" : n[6] + "%", "restored by ESB's first estimate"],
     [num(n[3]), "customers hit by faults"],
     // Customers times the hours they were off. Always hours: rolled into
     // years it printed "years" beside three figures that are all one month's.
@@ -359,6 +366,7 @@ function renderCounty() {
     '<div class="daycap"></div>' +
     '<div class="tiles" style="margin-bottom:0">' + [
       [m && m[2] != null ? m[2] + "%" : "–", "restored within 4 hours"],
+      [m && m[8] != null ? m[8] + "%" : "–", "restored by ESB's first estimate"],
       [m ? m[4] : 0, "faults"],
       [m ? m[5] : 0, "planned outages"],
       [m ? num(m[6]) : 0, "customers hit by faults"]
