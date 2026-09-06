@@ -561,6 +561,20 @@ one Census area. Westport's 26 faults sit in "Around Killavally"; Wexford's 12
 in "Around Whitechurch". The note under the heading says so, in the same words
 the area pages use for the same problem.
 
+**Two of ESB's strings are not spots.** ESB files a fault out in the country
+under the bare county name ("Wexford", twelve faults spread over four areas),
+which the search box already reads that way, and eleven records carry no
+location at all, which the page fills with the Census area for display. The
+card counts `Outage.esb_location`, ESB's own string, and skips the county name;
+six county pages had themselves as a top spot before it did.
+
+**And nothing restored before the first poll.** ESB was still listing fourteen
+outages at 21:02 on 31 July that it had already restored. They overlap no
+observed window, so the page never lists them, but a county's raw list held
+them and the first cut of the card and the CSV counted them: Monaghan's page
+said 74 outages and its CSV had 77 rows. `render.build` now drops them where
+the county lists are made, so the shard, the card and the CSV read one list.
+
 Measured on the corpus to 5 September: 308 of 422 locations have two or more
 faults, every county has at least two such spots, the median county has nine
 and Dublin 51. Ten rows cover 83% of Mayo's faults and 32% of Dublin's, which
@@ -578,8 +592,9 @@ the only way to do it was to clone `esb-data`, rebuild, and re-implement
 `merge_events`. Each county page now links `c/<slug>.csv`: one row per merged
 event, oldest first, the columns in `render.CSV_COLUMNS`. Every id folded into
 an event is in `esb_ids`, the end carries its source, both estimates ride
-along, and `customer_minutes` is the integrated figure the page uses, so a
-reader gets what the page counts rather than raw records.
+along, `location` is ESB's own string and empty where it gave none, and
+`customer_minutes` is the integrated figure the page uses, so a reader gets what
+the page counts rather than raw records.
 
 Per county rather than one national file, because the link sits on the county
 page and that is the unit a reader arrives at; 534 KB in 26 files, listed in

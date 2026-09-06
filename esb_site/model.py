@@ -155,6 +155,11 @@ def parse_utc(value):
     return datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
 
 
+def fmt_utc(dt):
+    """The inverse of parse_utc, and the one place the shape is written."""
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else ""
+
+
 def month_bounds(ym):
     year, month = int(ym[:4]), int(ym[5:7])
     lo = datetime(year, month, 1, tzinfo=UTC)
@@ -550,9 +555,7 @@ def _envelope_updates(members, segments, end, end_src, planned):
             start=None,
             est_restore=None,
             restore=(
-                end.strftime("%Y-%m-%dT%H:%M:%SZ")
-                if not off and end_src == "restored"
-                else None
+                fmt_utc(end) if not off and end_src == "restored" else None
             ),
             location=None,
         )
@@ -596,6 +599,9 @@ class Outage(NamedTuple):
     # revisions come after the previous time has passed, so the share of
     # estimates kept has to be held to the first.
     first_est: datetime | None = None
+    # ESB's own location string, "" where it gave none. `location` falls back
+    # to the Census town for display, which no ranking of ESB's names may count.
+    esb_location: str = ""
 
     @property
     def end_known(self):
@@ -823,6 +829,7 @@ def load_outages(db_path, sa_index, now):
                     town=town,
                     town_code=town_code,
                     location=row["location"] or town,
+                    esb_location=row["location"] or "",
                     planned=planned,
                     customers=max([n for _, _, n in segments] or [0]),
                     start=start,

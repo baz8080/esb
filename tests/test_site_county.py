@@ -300,6 +300,38 @@ class TestWhereFaultsKeepHappening(CountyPageCase):
         self.assertIn("2 faults", card)
         self.assertNotIn("<a ", card)
 
+    def test_esbs_bare_county_name_and_a_missing_name_are_not_spots(self):
+        """"Dublin" is ESB's string for a fault out in the country, and an
+        empty location falls back to the Census area for display; ranking
+        either would put an area under a heading that says these are not
+        areas."""
+        for i in range(2):
+            self.fault(i, "Dublin")
+        for i in range(2, 4):
+            self.fault(i, "")
+        for i in range(4, 6):
+            self.fault(i, "Glasnevin")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual([s[0] for s in self.spots()], ["Glasnevin"])
+
+    def test_an_outage_restored_before_the_first_poll_is_not_counted(self):
+        """The page lists nothing that ended before collection began, so the
+        card and the CSV built from the same county list must not either."""
+        self.fault(0, "Glasnevin")
+        self.fault(1, "Glasnevin")
+        self.observe(
+            detail("9", location="Glasnevin", outageType="Restored",
+                   startTime="31/07/2026 09:00", restoreTime="31/07/2026 12:00"),
+            datetime(2026, 7, 31, 21, 30, tzinfo=UTC),
+        )
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        outages, _, index = self.load()
+        _, by_county, _, _ = render.build(outages, index, SEPT, self.until)
+        self.assertEqual(len(by_county["Dublin"]), 2)
+        self.assertEqual(render.fault_spots(by_county["Dublin"])[0][1], 2)
+        rows = list(csv.DictReader(io.StringIO(render.county_csv(by_county["Dublin"]))))
+        self.assertEqual(len(rows), 2)
+
     def test_no_spot_no_card(self):
         self.fault(0, "Glasnevin")
         self.poll(datetime(2026, 9, 1, tzinfo=UTC))
@@ -324,6 +356,7 @@ class TestTheCountyCsv(CountyPageCase):
         self.assertEqual(rows[0]["end_utc"], "2026-08-10T10:30:00Z")
         self.assertEqual(rows[0]["end_source"], "restored")
         self.assertEqual(rows[1]["type"], "fault")
+        self.assertEqual(rows[1]["location"], "Marino")
         self.assertEqual(tuple(rows[0]), render.CSV_COLUMNS)
 
     def test_the_page_links_its_csv(self):

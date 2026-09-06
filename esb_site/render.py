@@ -42,8 +42,9 @@ SPOT_MIN_FAULTS = 2
 SPOTS = 10
 
 # One row per merged event, oldest first. Times are UTC, `esb_ids` is every id
-# folded into the event, and the end carries its source because the three are
-# not equally trustworthy.
+# folded into the event, `location` is ESB's own string and empty where it gave
+# none, and the end carries its source because the three are not equally
+# trustworthy.
 CSV_COLUMNS = (
     "esb_ids", "county", "area", "location", "type", "planned_reason",
     "customers", "start_utc", "end_utc", "end_source", "estimate_utc",
@@ -115,9 +116,13 @@ def build(outages, sa_index, now, until):
     """
     months = model.month_list(model.COLLECTION_START, now)
 
+    # A county's record starts at the first poll: an outage restored before
+    # it overlaps no observed window, so the page never lists it and nothing
+    # derived from the county's list may count it either.
     by_county = defaultdict(list)
     for o in outages:
-        by_county[o.county].append(o)
+        if o.end > model.COLLECTION_START:
+            by_county[o.county].append(o)
 
     stats, national = {}, {}
     for county in sa_index.counties:
@@ -711,8 +716,10 @@ def fault_spots(outages):
     """
     by = defaultdict(list)
     for o in outages:
-        if not o.planned:
-            by[o.location].append(o)
+        # ESB's bare county name is its string for a fault out in the country,
+        # the same reading the search box gives it, and not a spot
+        if not o.planned and o.esb_location and o.esb_location != o.county:
+            by[o.esb_location].append(o)
     spots = [
         (loc, len(v), max(o.customers for o in v))
         for loc, v in by.items()
@@ -740,10 +747,6 @@ def _spots_html(spots, since):
     )
 
 
-def _iso(dt):
-    return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else ""
-
-
 def county_csv(outages):
     """One county's merged events as CSV, oldest first; the columns are
     CSV_COLUMNS. The site's own rows, so a reader gets what the page counts
@@ -751,12 +754,12 @@ def county_csv(outages):
     buf = io.StringIO()
     out = csv.writer(buf, lineterminator="\n")
     out.writerow(CSV_COLUMNS)
-    for o in sorted(outages, key=lambda o: (o.start, o.id)):
+    for o in sorted(outages, key=lambda o: (o.start, int(o.id))):
         out.writerow([
-            " ".join(o.ids), o.county, o.town, o.location,
+            " ".join(o.ids), o.county, o.town, o.esb_location,
             "planned" if o.planned else "fault", model.reason_label(o.reason),
-            o.customers, _iso(o.start), _iso(o.end), o.end_src, _iso(o.est),
-            _iso(o.first_est), int(o.ongoing),
+            o.customers, model.fmt_utc(o.start), model.fmt_utc(o.end), o.end_src,
+            model.fmt_utc(o.est), model.fmt_utc(o.first_est), int(o.ongoing),
             round(o.customer_minutes(o.start, o.end)),
             o.chain[0] if o.chain else "", o.chain[1] if o.chain else "",
             o.lat, o.lon,
@@ -996,7 +999,7 @@ def write(site_dir, outages, sa_index, now, until):
             ),
             encoding="utf-8",
         )
-        # Written for every county, empty ones too, so the page's link never 404s.
+        # Every county, an empty one too: the URL is stable, like the shard's.
         (site_dir / "c" / f"{slug(county)}.csv").write_text(
             county_csv(by_county.get(county, [])), encoding="utf-8"
         )
