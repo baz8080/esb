@@ -260,6 +260,7 @@ class PayloadCase(unittest.TestCase):
     def test_every_county_has_a_page_and_a_shard(self):
         for county in self.data["counties"]:
             s = render.slug(county)
+            self.assertTrue((self.dir / "c" / f"{s}.csv").exists(), county)
             self.assertTrue((self.dir / "c" / f"{s}.html").exists(), county)
             # Written even for a county with nothing in it, so the loader never
             # has to tell a 404 apart from a quiet county.

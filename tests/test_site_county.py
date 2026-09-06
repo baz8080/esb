@@ -11,6 +11,8 @@ hand-made one is the clearer statement of the rule, which is the cap.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 import unittest
 from datetime import UTC, datetime
@@ -249,6 +251,85 @@ class TestTheEstimateColumn(CountyPageCase):
                          self.render_county())
         self.assertIn("no later than five minutes after", head.group(1))
         self.assertIn("Blank under five", head.group(1))
+
+
+class TestWhereFaultsKeepHappening(CountyPageCase):
+    """The county page ranks ESB's fault locations; nothing else on the site does."""
+
+    def fault(self, i, location, **over):
+        self.observe(
+            detail(str(i), location=location, point={"c": f"53.3{i % 10}858,-6.27098"},
+                   startTime=f"{1 + i:02d}/08/2026 09:00", **over),
+            datetime(2026, 8, 1 + i, 10, 0, tzinfo=UTC),
+        )
+
+    def spots(self):
+        outages, _, _ = self.load()
+        return render.fault_spots([o for o in outages if o.county == "Dublin"])
+
+    def test_ranked_by_faults_with_planned_and_one_offs_left_out(self):
+        for i in range(3):
+            self.fault(i, "Glasnevin", numCustAffected=50 + i)
+        self.fault(3, "Marino")
+        self.fault(4, "Marino")
+        self.fault(5, "Santry")
+        self.fault(6, "Santry", outageType="Planned")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual(self.spots(), [("Glasnevin", 3, 52), ("Marino", 2, 100)])
+
+    def test_the_card_caps_at_ten(self):
+        for i in range(2 * (render.SPOTS + 1)):
+            self.fault(i, f"Place{i // 2}")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual(len(self.spots()), render.SPOTS)
+
+    def test_the_card_names_spots_without_linking_them(self):
+        """ESB's location names straddle Census areas, so a row must not
+        pretend to be an area page."""
+        for i in range(2):
+            self.fault(i, "Glasnevin")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        outages, _, index = self.load()
+        data, by_county, months, _ = render.build(outages, index, SEPT, self.until)
+        page = render.county_page(
+            "Dublin", data, render.shard(by_county["Dublin"], months, self.until),
+            months, self.until, index.counties, spots=render.fault_spots(outages),
+        )
+        card = re.search(r'<h2>Where faults keep happening.*?</ul>', page, re.S).group(0)
+        self.assertIn("<li>Glasnevin<span", card)
+        self.assertIn("2 faults", card)
+        self.assertNotIn("<a ", card)
+
+    def test_no_spot_no_card(self):
+        self.fault(0, "Glasnevin")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual(self.spots(), [])
+        self.assertNotIn("Where faults keep happening", self.render_county())
+
+
+class TestTheCountyCsv(CountyPageCase):
+    def test_one_row_per_merged_event_with_every_id(self):
+        common = {"location": "Glasnevin", "startTime": "10/08/2026 10:00"}
+        at = datetime(2026, 8, 10, 11, 45, tzinfo=UTC)
+        self.observe(detail("1", outageType="Restored", restoreTime="10/08/2026 11:00",
+                            **common), at)
+        self.observe(detail("2", outageType="Restored", restoreTime="10/08/2026 11:30",
+                            **common), at)
+        self.observe(detail("3", location="Marino", startTime="12/08/2026 09:00"),
+                     datetime(2026, 8, 12, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        outages, _, _ = self.load()
+        rows = list(csv.DictReader(io.StringIO(render.county_csv(outages))))
+        self.assertEqual([r["esb_ids"] for r in rows], ["1 2", "3"])
+        self.assertEqual(rows[0]["end_utc"], "2026-08-10T10:30:00Z")
+        self.assertEqual(rows[0]["end_source"], "restored")
+        self.assertEqual(rows[1]["type"], "fault")
+        self.assertEqual(tuple(rows[0]), render.CSV_COLUMNS)
+
+    def test_the_page_links_its_csv(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC), n_listed=1)
+        self.assertIn('<a href="dublin.csv">', self.render_county())
 
 
 class TestAnUngradedMonthSaysWhy(CountyPageCase):

@@ -541,3 +541,48 @@ Rejected: an all-time national figure in the footer beside the CML comparison.
 That paragraph argues the site's credibility against ESB's published numbers,
 and ESB publishes nothing to compare an estimate share with. The tiles carry it
 month by month, which is the clock everything else on the page runs on.
+
+## The county page ranks its fault spots, and hands out its rows - 2026-09-06
+
+Two additions to `c/<slug>.html`, both static and neither on the initial load.
+
+### Where faults keep happening
+
+Nothing on the site ranked anything: the directory is alphabetical, the history
+is chronological. Westport has 26 faults in five weeks, Killinick 23, Milltown
+16, and a reader had to count rows to find that out. The card lists the ten
+locations with the most faults over every month, two faults or more, each with
+its count and the most customers any one of them took out.
+
+**The rows are ESB's own location names and link nowhere.** The obvious link
+is the area page, and it would be wrong: a location name is where ESB says the
+fault is, and 222 of the 422 names in the corpus have been pinned to more than
+one Census area. Westport's 26 faults sit in "Around Killavally"; Wexford's 12
+in "Around Whitechurch". The note under the heading says so, in the same words
+the area pages use for the same problem.
+
+Measured on the corpus to 5 September: 308 of 422 locations have two or more
+faults, every county has at least two such spots, the median county has nine
+and Dublin 51. Ten rows cover 83% of Mayo's faults and 32% of Dublin's, which
+is the range a fixed cap has to live with; a count is a proxy for bytes and
+this is 10 rows, so no byte budget was needed.
+
+Rejected: a repeat-chain count per row. The top eight spots hold one chain
+between them; chains are a within-the-hour phenomenon (grading.md § Repeat
+faults are not splits) and a spot is a within-the-month one.
+
+### The CSV
+
+The README has always said the point is to study Irish outages over time, and
+the only way to do it was to clone `esb-data`, rebuild, and re-implement
+`merge_events`. Each county page now links `c/<slug>.csv`: one row per merged
+event, oldest first, the columns in `render.CSV_COLUMNS`. Every id folded into
+an event is in `esb_ids`, the end carries its source, both estimates ride
+along, and `customer_minutes` is the integrated figure the page uses, so a
+reader gets what the page counts rather than raw records.
+
+Per county rather than one national file, because the link sits on the county
+page and that is the unit a reader arrives at; 534 KB in 26 files, listed in
+the size report as "on request" and outside the budget. Written for every
+county, an empty one included, so the link cannot 404. Not in the sitemap: a
+CSV is not a page.
