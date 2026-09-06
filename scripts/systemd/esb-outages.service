@@ -22,8 +22,11 @@ EnvironmentFile=-/etc/esb-outages.env
 WorkingDirectory=/opt/esb-outages
 ExecStart=/usr/bin/python3 -m esb_outages poll
 
-# A storm could take a while at one request per second; nothing here is urgent.
-TimeoutStartSec=900
+# The collector stops itself at 24 minutes (poll.RUN_BUDGET_S) and records
+# what a storm left for the next run. This is the backstop a minute beyond,
+# and it is a failed unit if it ever fires; the collector catches the SIGTERM
+# and still closes the run out (notes/storms.md).
+TimeoutStartSec=1500
 
 # It reads its own code and writes one state directory. Nothing else.
 NoNewPrivileges=true
