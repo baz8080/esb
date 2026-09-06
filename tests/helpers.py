@@ -28,6 +28,43 @@ def make_list(*details, extra=None):
     return {"outageMessage": items}
 
 
+def local_server(received):
+    """A local HTTP server that records every request until stopped.
+
+    Returns (url, server, thread); stop it with `stop_server`. It serves until
+    told to stop rather than for a fixed window: a one-shot server that gave
+    up after half a second lost the ping of a poll that took longer on a
+    loaded CI runner.
+    """
+    import http.server
+    import threading
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def _record(self):
+            length = int(self.headers.get("Content-Length", 0))
+            received.append((self.path, self.rfile.read(length).decode()))
+            self.send_response(200)
+            self.end_headers()
+
+        do_GET = do_POST = _record
+
+        def log_message(self, *args):
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), Handler)
+    thread = threading.Thread(
+        target=server.serve_forever, kwargs={"poll_interval": 0.05}, daemon=True
+    )
+    thread.start()
+    return f"http://127.0.0.1:{server.server_address[1]}/hook", server, thread
+
+
+def stop_server(server, thread):
+    server.shutdown()
+    server.server_close()
+    thread.join(2)
+
+
 class FakeClient:
     """Stands in for EsbClient. Records calls so caching can be asserted."""
 
@@ -58,6 +95,8 @@ class FakeClient:
 
 
 __all__ = [
+    "local_server",
+    "stop_server",
     "FIXTURES", "load", "detail", "make_list", "FakeClient",
     "AuthError", "NotFound", "TransientError",
 ]

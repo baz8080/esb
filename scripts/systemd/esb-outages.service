@@ -14,7 +14,8 @@ Group=esb
 StateDirectory=esb-outages
 Environment=ESB_DATA_DIR=/var/lib/esb-outages
 
-# ESB_ALERT_WEBHOOK, and ESB_API_KEY if ESB ever rotates the public one.
+# ESB_ALERT_WEBHOOK, ESB_HEARTBEAT_URL, and ESB_API_KEY if ESB ever rotates
+# the public one.
 # chmod 600, owned by root. The leading '-' allows the file not to exist.
 EnvironmentFile=-/etc/esb-outages.env
 
