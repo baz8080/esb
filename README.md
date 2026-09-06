@@ -17,7 +17,7 @@ Every 30 minutes:
 
 1. Fetch the outage list (~20 outages on a calm day, far more during a storm).
 2. Write that response to an append-only JSONL log, verbatim, before anything else.
-3. Fetch the detail for each outage that is new or still changing, one second apart.
+3. Fetch the detail for each outage that is new or still changing, half a second apart.
 4. Fold everything into a SQLite database, recording every field that changed.
 
 Restored outages are immutable once they carry a restore time, so they are never
@@ -30,6 +30,13 @@ fetches by 58% and captures an identical change log.
 This is safe because the *list* is still fetched in full every run, and any
 change of outage type forces an immediate detail fetch however long that outage
 has been dormant. Only a quiet outage's descriptive fields are ever delayed.
+
+A storm can list more outages than one run can fetch. The service unit stops a
+run at 25 minutes, about 3,000 details; the collector catches the stop, records
+the run as cut short, and the next run fetches the outages never seen before it
+re-checks any it already has. Every detail is committed as it lands, so even a
+run killed outright leaves the database knowing what it fetched. `sudo esb
+stats` counts cut-short runs, which is the sign a storm outran the budget.
 
 ### Storage
 
@@ -91,7 +98,7 @@ Environment variables:
 | --- | --- | --- |
 | `ESB_DATA_DIR` | `/var/lib/esb-outages` | Storage root |
 | `ESB_API_KEY` | built-in public key | Override if ESB rotates it |
-| `ESB_POLL_DELAY_MS` | `1000` | Pause between detail requests |
+| `ESB_POLL_DELAY_MS` | `500` | Pause between detail requests |
 | `ESB_ALERT_WEBHOOK` | unset | Optional ntfy/Discord/Slack URL for failures |
 | `ESB_HEARTBEAT_URL` | unset | Optional dead-man's monitor ping URL, hit after every run that reached the feed |
 

@@ -43,6 +43,9 @@ def cmd_stats(args) -> int:
         print(
             f"\ndetail fetches  : {fetched} made, {skipped} skipped ({pct:.0f}% avoided)"
         )
+    if s["cut_short"]:
+        # The storm signal: runs the service timeout stopped with work left.
+        print(f"runs cut short  : {s['cut_short']}")
     if s["recent_runs"]:
         print("\nrecent runs:")
         print(

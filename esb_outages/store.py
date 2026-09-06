@@ -346,7 +346,8 @@ class Store:
         quiet_after_hours: float = QUIET_AFTER_HOURS,
         recheck_hours: float = STALE_RECHECK_HOURS,
     ) -> list[str]:
-        """Which of these outages still need a detail fetch this run.
+        """Which of these outages still need a detail fetch this run, most
+        urgent first.
 
         Beyond skipping finalised outages, this backs off on ones that have gone
         quiet. ESB leaves planned works in the feed for weeks without ever
@@ -357,6 +358,13 @@ class Store:
         run, and apply_list clears last_detail_utc the moment an outage's type
         changes. So a state transition is still caught within one poll; all that
         is delayed is a quiet outage's descriptive fields.
+
+        The order matters when a run cannot finish. An outage never fetched has
+        no start time, no location and no customer count, and ESB purges it a
+        few hours after restoration; a re-check of one already captured loses
+        at most a revision. In ESB's list order a storm run cut short by the
+        service timeout re-fetched the same head of the list every run and
+        never reached the tail (notes/storms.md).
         """
         if not outage_ids:
             return []
@@ -373,20 +381,27 @@ class Store:
         ).fetchall()
         state = {r["outage_id"]: r for r in rows}
 
-        def needed(outage_id: str) -> bool:
+        def urgency(outage_id: str) -> int | None:
             row = state.get(outage_id)
             if row is None or not row["has_detail"]:
-                return True
+                return 0  # never captured: the only fetch a purge can make unrecoverable
             # Cleared by apply_list on a type change: something happened.
             if row["last_detail_utc"] is None:
-                return True
+                return 1
             if row["is_final"]:
-                return False
+                return None
             if _hours_between(row["last_change"], now) < quiet_after_hours:
-                return True  # actively changing, keep watching closely
-            return _hours_between(row["last_detail_utc"], now) >= recheck_hours
+                return 2  # actively changing, keep watching closely
+            if _hours_between(row["last_detail_utc"], now) >= recheck_hours:
+                return 3
+            return None
 
-        return [oid for oid in outage_ids if needed(oid)]
+        ranked = [
+            (rank, index, oid)
+            for index, oid in enumerate(outage_ids)
+            if (rank := urgency(oid)) is not None
+        ]
+        return [oid for _, _, oid in sorted(ranked)]
 
     def apply_detail(self, observed_at: str, normalized: dict) -> int:
         """Fold one detail response in, returning the number of changed fields."""
@@ -589,6 +604,9 @@ class Store:
             "SELECT SUM(n_detail_fetched) f, SUM(n_detail_skipped) s FROM run"
             " WHERE status = 'ok' AND n_listed IS NOT NULL"
         ).fetchone()
+        cut_short = c.execute(
+            "SELECT COUNT(*) n FROM run WHERE status = 'cut_short'"
+        ).fetchone()
         return {
             "outages": row["n"] or 0,
             "final": row["final"] or 0,
@@ -606,6 +624,7 @@ class Store:
             "recent_runs": [dict(r) for r in recent],
             "total_fetched": window["f"] or 0,
             "total_skipped": window["s"] or 0,
+            "cut_short": cut_short["n"] or 0,
         }
 
     def compact(self) -> list[str]:

@@ -1,4 +1,7 @@
+import copy
 import os
+import signal
+import sqlite3
 import tempfile
 import unittest
 import unittest.mock
@@ -214,6 +217,100 @@ class TestLocking(PollTestCase):
             self.assertTrue(acquired)
 
 
+class TestStorm(PollTestCase):
+    """A storm lists more than one run can fetch. Simulated on 30 outages with
+    a run stopped after ten, as the service timeout stops a real one."""
+
+    N, BUDGET = 30, 10
+
+    def storm(self):
+        base = detail("fault")
+        bodies = []
+        for i in range(self.N):
+            b = copy.deepcopy(base)
+            b["outageId"] = str(3000000 + i)
+            bodies.append(b)
+        return bodies
+
+    def client(self, bodies, budget):
+        class StormClient(FakeClient):
+            def get_outage_detail(inner, outage_id):
+                # systemd's SIGTERM lands during the last fetch in the budget;
+                # the collector's handler is what must catch it, and the next
+                # fetch must never start
+                if len(inner.detail_calls) == budget - 1:
+                    os.kill(os.getpid(), signal.SIGTERM)
+                return super().get_outage_detail(outage_id)
+
+        return StormClient(
+            list_body=make_list(*bodies), details={b["outageId"]: b for b in bodies}
+        )
+
+    def test_never_fetched_outages_go_before_rechecks(self):
+        bodies = self.storm()[:2]
+        with self.store() as st:
+            st.apply_list("2026-09-06T10:00:00Z", make_list(*bodies)["outageMessage"])
+            from esb_outages.parse import normalize_detail
+            st.apply_detail("2026-09-06T10:00:01Z", normalize_detail(bodies[0]))
+            ids = [b["outageId"] for b in bodies]
+            self.assertEqual(st.ids_needing_detail(ids, now="2026-09-06T10:30:00Z"), ids[::-1])
+
+    def test_a_run_cut_short_records_itself_and_the_next_run_carries_on(self):
+        bodies = self.storm()
+        fetched = []
+        for _ in range(3):
+            c = self.client(bodies, self.BUDGET)
+            self.assertEqual(self.poll(c), alert.EXIT_OK)
+            fetched.append(set(c.detail_calls))
+        # each run fetched only outages no earlier run had, and three runs
+        # covered the whole list
+        self.assertEqual([len(f) for f in fetched], [self.BUDGET] * 3)
+        self.assertEqual(len(set().union(*fetched)), self.N)
+        with self.store() as st:
+            statuses = [r["status"] for r in st.conn.execute(
+                "SELECT status FROM run ORDER BY started_at_utc, run_id")]
+            have = st.conn.execute(
+                "SELECT COUNT(*) FROM outage WHERE has_detail = 1").fetchone()[0]
+        # every run still had re-checks queued behind the new ones when the
+        # stop landed, and every outage was captured by the third
+        self.assertEqual(statuses, ["cut_short"] * 3)
+        self.assertEqual(have, self.N)
+
+    def test_the_stop_is_not_an_alarm(self):
+        received = []
+        url, server, thread = local_server(received)
+        try:
+            with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": url}):
+                self.assertEqual(self.poll(self.client(self.storm(), self.BUDGET)), alert.EXIT_OK)
+        finally:
+            stop_server(server, thread)
+        self.assertEqual(received, [])
+
+    def test_each_detail_is_committed_as_it_lands(self):
+        """A run killed outright, with no handler to close it out, must still
+        leave the database knowing what it fetched. Checked from a second
+        connection during the run, which sees only committed rows."""
+        bodies = self.storm()[:6]
+        db = self.data_dir / "esb.db"
+        seen = []
+
+        class Peeking(FakeClient):
+            def get_outage_detail(inner, outage_id):
+                other = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+                seen.append(other.execute(
+                    "SELECT COUNT(*) FROM outage WHERE has_detail = 1").fetchone()[0])
+                other.close()
+                return super().get_outage_detail(outage_id)
+
+        self.poll(Peeking(list_body=make_list(*bodies),
+                          details={b["outageId"]: b for b in bodies}))
+        self.assertEqual(seen, list(range(6)))
+
+    def test_the_handler_is_gone_after_the_run(self):
+        self.poll(self.client_with("fault"))
+        self.assertEqual(signal.getsignal(signal.SIGTERM), signal.SIG_DFL)
+
+
 class TestWebhookAlerting(unittest.TestCase):
     """The webhook is the alerting channel; failures must reach it."""
 
@@ -277,6 +374,13 @@ class TestHeartbeat(PollTestCase):
             list_body=make_list(detail("fault")), details={body["outageId"]: body}
         )
         self.assertEqual(self.poll(client), alert.EXIT_SCHEMA_DRIFT)
+        self.assertEqual(self.paths(), ["/hook"])
+
+    def test_a_run_cut_short_still_pings(self):
+        # a storm that outruns every run must not read as a stopped collector
+        storm = TestStorm("test_the_stop_is_not_an_alarm")
+        storm.data_dir = self.data_dir
+        self.assertEqual(self.poll(storm.client(storm.storm(), storm.BUDGET)), alert.EXIT_OK)
         self.assertEqual(self.paths(), ["/hook"])
 
     def test_a_rejected_key_does_not_ping(self):
