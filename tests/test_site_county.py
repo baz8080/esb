@@ -440,9 +440,71 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
         self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
         page = self.render_county()
-        self.assertIn("Too few faults in September 2026 to grade fairly", page)
-        # and no bare line under the chip: nothing here a hover cannot carry
-        self.assertNotIn('<div class="ungraded">', page)
+        self.assertIn(
+            '<div class="ungraded">Too few faults in September 2026 to grade '
+            "fairly.</div>",
+            page,
+        )
+
+    def test_the_county_gates_say_so_in_the_open_too(self):
+        """The day gate got this in September 2026 and the other two did not,
+        which left eight counties on 7 September showing a dash a phone had no
+        way to interrogate. Whichever gate shut, the sentence is on the page."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        self.assertIn("Too few faults in September 2026", self.text_of(page))
+
+    def test_the_app_carries_the_same_sentences(self):
+        """Three surfaces show the same dash - this page, the app's county view
+        and its list of 26 - and the JS half writes its own copy of the wording.
+        A drift leaves one of them blaming a gate the other rules out."""
+        app = render.SITE_HTML.read_text()
+        # one horizon and fault count per gate: inside the day gate, past a
+        # month that can never reach five days, and past both gates either side
+        # of the count. Read out of ungraded_reason rather than written here, or
+        # the two halves can be reworded together and still disagree.
+        gates = (
+            (datetime(2026, 9, 2, 20, 0, tzinfo=UTC), "2026-09", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-07", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-09", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-09", model.MIN_GRADED_FAULTS),
+        )
+        seen = set()
+        for until, ym, faults in gates:
+            said = render.ungraded_reason(ym, faults, until)
+            seen.add(said)
+            # the JS assembles the sentence around monthLabelLong(ym) and, for
+            # the day gate, the date out of D.daygate, so only the fixed parts
+            # between them are the same string in both halves
+            fixed = re.split(
+                rf"\d+ [A-Z][a-z]+|{re.escape(render.month_label(ym))}", said
+            )
+            # quoted, so a fragment that survives only inside some other JS
+            # string does not stand in for the literal that has to be there
+            for part in filter(None, fixed):
+                self.assertIn(
+                    f'"{part}"', app,
+                    f"site.html has drifted from ungraded_reason: {said}",
+                )
+        self.assertEqual(len(seen), len(gates), "a gate produced no sentence of its own")
+        # only the app can see every county at once, so only it counts them, and
+        # that one line is the site's only wording without a twin in render.py
+        self.assertIn('" not graded in "', app)
+        self.assertIn('"too few faults to grade fairly."', app)
+
+    def test_the_older_months_dashes_are_explained_under_the_table(self):
+        """Every month is a row, so the sentence under the county's name reaches
+        only the newest of them. July's dash is a different gate's."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        table = page[page.index("Month by month"):]
+        note = table[table.index("</table>"):]
+        self.assertIn("Only part of July 2026 was watched", note)
+        self.assertIn("Too few faults in August 2026", note)
+        # said once: the chip at the top of the page already carries September
+        self.assertNotIn("Too few faults in September 2026", note)
 
 
 class TestThePageStandsAlone(CountyPageCase):
