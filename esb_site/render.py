@@ -582,6 +582,21 @@ def _reason_for(m, ym, until):
     return None if m[1] else ungraded_reason(ym, m[4], until)
 
 
+def _ungraded_note(county, data, months, until):
+    """The dashes the sentence under the county's name does not reach.
+
+    Every month is a row here, and beside an ungraded one sits a Faults count,
+    which is the number two of the three gates are not about. The newest month
+    is left out because the chip at the top of the page has already said it.
+    """
+    said = [
+        ungraded_reason(ym, data["stats"][county][ym][4], until)
+        for ym in reversed(months[:-1])
+        if data["stats"][county][ym][1] is None
+    ]
+    return f'<p class="note">{html.escape(". ".join(said))}.</p>' if said else ""
+
+
 def _county_months_html(county, data, months, until):
     """One row per month, newest first.
 
@@ -621,7 +636,8 @@ def _county_months_html(county, data, months, until):
         '<th scope="col">Customers hit</th>'
         '<th scope="col" title="Customer Minutes Lost: minutes off supply for '
         'the average customer that month, faults only">Minutes lost</th>'
-        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>'
+        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+        f"{_ungraded_note(county, data, months, until)}</div>"
     )
 
 
@@ -659,8 +675,9 @@ def county_page(
         "and businesses · estimated from Census 2022</div>",
     ]
     # A `title` does not open on a touch screen and a bare dash reads as a
-    # verdict, so the day gate - alone among the three - is said in the open.
-    if grade is None and model.days_gate(months[-1], until) is not None:
+    # verdict. Which gate shut is not the reader's problem: all three are said
+    # in the open, and the older months' are under the table.
+    if reason:
         body.append(f'<div class="ungraded">{html.escape(reason)}.</div>')
     # Straight to the months: the newest month's card duplicated the table's
     # first row (notes/design-alignment.md § The county page became an archive).

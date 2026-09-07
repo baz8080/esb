@@ -72,8 +72,11 @@
     on each county page. A month with fewer than five faults is left ungraded,
     because one long outage in a quiet county would swing the letter two bands.
     So is a month less than five days old: there is barely a month there to
-    judge, which is why grades appear a few days into each one. Planned
-    works are excluded just as the CRU's incentive excludes them: they are
+    judge, which is why grades appear a few days into each one. So is one in
+    which no fault both started and was restored, because there is nothing to
+    score. Where a county carries no letter, the page says which of the three
+    it is. Planned works are excluded just as the CRU's incentive excludes
+    them: they are
     announced in advance and never report a restore time. <b>Restored by
     ESB's first estimate</b> is the share of faults back no later than five
     minutes after the first restore time ESB named for them. It is held to the
@@ -259,6 +262,27 @@ function ungradedReason(ym, faults) {
       " was restored in the month it started, so there is nothing to grade");
 }
 
+// Past the day gate the two remaining gates are each county's own, so the
+// notice above the list counts them rather than naming 26 counties. In
+// September 2026 eight rows carried a dash whose only explanation was a title
+// a phone cannot open.
+function ungradedNote(rows, ym) {
+  if (dayGateReason(ym)) return "";
+  var few = 0, none = 0;
+  rows.forEach(function (r) {
+    if (r.m && r.m[1]) return;
+    if (!r.m || r.m[4] < MIN_FAULTS) few++; else none++;
+  });
+  var n = few + none;
+  if (!n) return "";
+  var lead = (n === 1 ? "One county is" : n + " counties are") +
+    " not graded in " + monthLabelLong(ym) + ": ";
+  if (!none) return lead + "too few faults to grade fairly.";
+  if (!few) return lead + "no fault has been restored in the month it started.";
+  return lead + few + " with too few faults, and " + none +
+    " where no fault has been restored in the month it started.";
+}
+
 function gradeChip(g, faults) {
   return '<span class="gradechip g-' + (g || "none") + '" title="' +
     esc(g ? "Grade " + g + ": " + GRADES[g] : ungradedReason(curMonth, faults)) + '">' +
@@ -304,6 +328,7 @@ function renderOverview() {
   var within = n[5];
   // "so far" only while the viewed month is still collecting
   var partial = D.observed_iso.slice(0, 7) === curMonth;
+  var ungraded = ungradedNote(rows, curMonth);
   document.getElementById("natline").innerHTML =
     "<strong>" + monthLabelLong(curMonth) + (partial ? " so far" : "") + ":</strong> " +
     plural(n[1], "fault") + " and " + plural(n[2], "planned outage");
@@ -315,6 +340,7 @@ function renderOverview() {
       " Nationally " + (partial ? "this month" : "in " + monthLabelLong(curMonth)) +
       ": <b>" + within + "%</b>.") +
     (dayGateReason(curMonth) ? " <b>" + esc(dayGateReason(curMonth)) + ".</b>" : "") +
+    (ungraded ? " <b>" + esc(ungraded) + "</b>" : "") +
     // one hover cue above the list, not a placeholder in every strip
     ' <span class="hoverhint">Hover a day in a bar for its detail.</span>';
 
@@ -356,8 +382,10 @@ function renderCounty() {
     // a screen reader lists links stripped of their context.
     '<div class="sub"><a href="c/' + slug(c) + '.html">Every month for County ' +
       esc(c) + " on one page</a></div>" +
-    (dayGateReason(curMonth)
-      ? '<div class="ungraded">' + esc(dayGateReason(curMonth)) + ".</div>" : "") +
+    // One county in view, so it says which of the three gates shut, not only
+    // the national one. A title is no help on the screen most of these open on.
+    (m && m[1] ? "" :
+      '<div class="ungraded">' + esc(ungradedReason(curMonth, m ? m[4] : 0)) + ".</div>") +
     '<div class="controls"><div class="months">' + monthTabs(D.months, curMonth, "setMonth") + "</div></div>";
 
   var summary = '<div class="card">' +

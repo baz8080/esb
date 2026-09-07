@@ -195,6 +195,56 @@ because the two visible notices are national and have no county whose faults the
 could count; handing them a placeholder count is how the argument went unread in
 the first place.
 
+#### The other two gates were hover-only (2026-09-07)
+
+Reported from the site: Carlow, Cavan, Limerick, Longford "and some others" show
+a dash in September, long after the five-day gate opened on the 6th. Nothing was
+broken - all eight are the fault gate, and small:
+
+| County | Faults in September to the 7th |
+|---|---:|
+| Carlow | 1 |
+| Longford | 1 |
+| Offaly, Waterford, Westmeath | 2 |
+| Limerick | 3 |
+| Cavan, Tipperary | 4 |
+
+Eight of 26 counties, every one of them under `MIN_GRADED_FAULTS`, and the site
+had computed the right sentence for each - into a `title`. That is the same
+failure the day gate had three days earlier, and the same argument answers it: a
+hover does not open on a phone, and a dash with nothing beside it reads as a
+verdict rather than as an absence.
+
+The day gate was given an open sentence and the county-scoped two were not,
+because the day gate is national and one line covers 26 counties. That reasoning
+was about **where** to print it, and it was read as a rule about **whether** to.
+The gates are not equally in need of explanation, but none of them is
+self-evident from a dash.
+
+So the reason is now printed in the open wherever a reader meets the dash,
+whichever gate withheld it:
+
+- **`c/<slug>.html`**, under the county's name, for any ungraded newest month -
+  `county_page` had tested `days_gate` and now tests the reason itself
+- **the app's county view**, the same sentence off `ungradedReason`
+- **under the month table**, `_ungraded_note`, for the *older* ungraded months.
+  Every month is a row there, and July's dash had no explanation on the page at
+  all. The newest month is excluded because the chip above already carries it
+- **above the county list**, `ungradedNote`, which counts rather than names:
+  "8 counties are not graded in September 2026: too few faults to grade fairly".
+  Only the app sees all 26 at once, and 26 chips repeating one sentence is the
+  thing the national line exists to avoid. It splits the count when the two
+  county gates both apply, and stays quiet inside the day gate, whose own
+  sentence sits beside it and covers every county anyway
+
+The count is not "8 of 26": a reader of a list of 26 rows can see the
+denominator, and the shorter sentence is the one that gets read.
+
+The footer's method disclosure documented two gates and now documents three, and
+says the page names which one it is. No wording was invented for any of this -
+every sentence comes from `ungraded_reason`, which is still mirrored once in
+site.html, so there is nothing new that can drift.
+
 ### Why not Customer Minutes Lost
 
 CML was the original basis and was replaced, for two reasons.
