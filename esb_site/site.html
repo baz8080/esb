@@ -74,9 +74,9 @@
     So is a month less than five days old: there is barely a month there to
     judge, which is why grades appear a few days into each one. So is one in
     which no fault both started and was restored, because there is nothing to
-    score. Where a county carries no letter, the page says which of the three
-    it is. Planned works are excluded just as the CRU's incentive excludes
-    them: they are
+    score. Where a county carries no letter, its own page says which of the
+    three it is. Planned works are excluded just as the CRU's incentive
+    excludes them: they are
     announced in advance and never report a restore time. <b>Restored by
     ESB's first estimate</b> is the share of faults back no later than five
     minutes after the first restore time ESB named for them. It is held to the
@@ -245,8 +245,9 @@ function describeCell(ch, date) {
 }
 function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 
-// The national half alone: the notices below have no county whose faults they
-// could count. "" once the month has five days.
+// The national half alone, for the notice above the county list, which has 26
+// counties' fault counts and so can use none of them. "" once the month has
+// five days.
 function dayGateReason(ym) {
   var from = D.daygate && D.daygate[ym];
   if (from === undefined) return "";

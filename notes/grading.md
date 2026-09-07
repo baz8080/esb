@@ -241,9 +241,25 @@ The count is not "8 of 26": a reader of a list of 26 rows can see the
 denominator, and the shorter sentence is the one that gets read.
 
 The footer's method disclosure documented two gates and now documents three, and
-says the page names which one it is. No wording was invented for any of this -
-every sentence comes from `ungraded_reason`, which is still mirrored once in
-site.html, so there is nothing new that can drift.
+says a county's own page names which one it is - not the index, whose line
+counts rather than names, and where a mixed month leaves a given county's reason
+in the chip.
+
+One new sentence in all of this: the counted line above the list, which has no
+per-county twin to reuse. Every other one comes from `ungraded_reason`, still
+mirrored once in site.html, and the mirror test now reads the four sentences out
+of `ungraded_reason` and looks for their fixed parts as JS string literals
+rather than restating them - restated, the two halves could be reworded together
+and still disagree, and the quoted form stops a fragment matching inside some
+other string.
+
+**The under-table note is not collapsed and does not need to be.** One sentence
+per ungraded older month is a run-on paragraph if a county collects them, so the
+rate was measured: in August, the one whole month collected, no county was under
+the five-fault gate and the quietest, Longford, had 12 faults, 2.4x it. The
+gates that do fire are the two partial months at either end of collection, so
+the note is one sentence - July's - and stays that way. If a genuinely quiet
+month ever appears, collapse then, with the months named once.
 
 ### Why not Customer Minutes Lost
 

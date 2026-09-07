@@ -460,14 +460,36 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         and its list of 26 - and the JS half writes its own copy of the wording.
         A drift leaves one of them blaming a gate the other rules out."""
         app = render.SITE_HTML.read_text()
-        for fragment in (
-            "was watched, so it is not graded",
-            "is too new to grade. Grades appear from ",
-            "to grade fairly",
-            "was restored in the month it started",
-        ):
-            self.assertIn(fragment, app, "site.html has drifted from ungraded_reason")
-        # only the app can see every county at once, so only it counts them
+        # one horizon and fault count per gate: inside the day gate, past a
+        # month that can never reach five days, and past both gates either side
+        # of the count. Read out of ungraded_reason rather than written here, or
+        # the two halves can be reworded together and still disagree.
+        gates = (
+            (datetime(2026, 9, 2, 20, 0, tzinfo=UTC), "2026-09", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-07", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-09", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-09", model.MIN_GRADED_FAULTS),
+        )
+        seen = set()
+        for until, ym, faults in gates:
+            said = render.ungraded_reason(ym, faults, until)
+            seen.add(said)
+            # the JS assembles the sentence around monthLabelLong(ym) and, for
+            # the day gate, the date out of D.daygate, so only the fixed parts
+            # between them are the same string in both halves
+            fixed = re.split(
+                rf"\d+ [A-Z][a-z]+|{re.escape(render.month_label(ym))}", said
+            )
+            # quoted, so a fragment that survives only inside some other JS
+            # string does not stand in for the literal that has to be there
+            for part in filter(None, fixed):
+                self.assertIn(
+                    f'"{part}"', app,
+                    f"site.html has drifted from ungraded_reason: {said}",
+                )
+        self.assertEqual(len(seen), len(gates), "a gate produced no sentence of its own")
+        # only the app can see every county at once, so only it counts them, and
+        # that one line is the site's only wording without a twin in render.py
         self.assertIn('" not graded in "', app)
         self.assertIn('"too few faults to grade fairly."', app)
 
