@@ -11,6 +11,8 @@ hand-made one is the clearer statement of the rule, which is the cap.
 
 from __future__ import annotations
 
+import csv
+import io
 import re
 import unittest
 from datetime import UTC, datetime
@@ -36,6 +38,15 @@ class CountyPageCase(SiteModelCase):
         return render.county_page(
             county, data, by_month, months, self.until, index.counties
         )
+
+    def column(self, page, month, heading):
+        """One cell of the month table, found by its heading rather than its
+        position, so a column added beside it cannot silently shift this one."""
+        heads = re.findall(r'<th scope="col"[^>]*>([^<]*)</th>', page)
+        row = re.search(rf'<th scope="row">{month}.*?</th>(.*?)</tr>', page).group(1)
+        cells = re.findall(r"<td>(.*?)</td>", row)
+        # the first heading is the row's own <th>, which is not a <td>
+        return cells[heads.index(heading) - 1]
 
     def text_of(self, page):
         """The page as a reader with no stylesheet would read it."""
@@ -142,6 +153,12 @@ class TestTheMonthTable(CountyPageCase):
             app,
             "site.html's MIN_FAULTS has drifted from model.MIN_GRADED_FAULTS",
         )
+        # and the row's "later than ESB estimated" line, which the share counts on
+        self.assertIn(
+            f"var EST_GRACE_MIN = {int(model.ESTIMATE_GRACE.total_seconds() // 60)};",
+            app,
+            "site.html's EST_GRACE_MIN has drifted from model.ESTIMATE_GRACE",
+        )
 
     def test_every_band_the_model_grades_has_wording(self):
         """The wording is what a chip's title says, so a band with none is a
@@ -167,6 +184,185 @@ class TestTheMonthTable(CountyPageCase):
         self.assertIn("from 31 Jul", july)
         sept = re.search(r'<th scope="row">September 2026(.*?)</th>', self.page).group(1)
         self.assertIn("to 10 Sep", sept)
+
+
+class TestTheCompensationColumn(CountyPageCase):
+    """The footer has said since the tiles were settled that faults past the
+    charter's 24-hour mark are "counted separately on each county page". The
+    payload carried the count on every row and nothing read it."""
+
+    def test_a_fault_past_24_hours_is_counted_in_its_month(self):
+        self.observe(
+            detail("1", outageType="Restored", startTime="09/08/2026 08:00",
+                   restoreTime="10/08/2026 09:00"),
+            datetime(2026, 8, 10, 9, 30, tzinfo=UTC),
+        )
+        self.observe(detail("2", location="Drumcondra"),
+                     datetime(2026, 8, 12, 9, 30, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        self.assertEqual(self.column(page, "August 2026", "Over 24 h"), "1")
+        self.assertEqual(self.column(page, "August 2026", "Faults"), "2")
+        self.assertEqual(self.column(page, "September 2026", "Over 24 h"), "0")
+
+    def test_the_heading_says_what_the_mark_is(self):
+        """A bare "Over 24 h" beside "Faults" could be read as a duration
+        column; the hover names the charter, the way "Minutes lost" does."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, 0, 0, tzinfo=UTC), n_listed=1)
+        head = re.search(r'<th scope="col" title="([^"]*)">Over 24 h</th>',
+                         self.render_county())
+        self.assertIn("compensation", head.group(1))
+
+
+class TestTheEstimateColumn(CountyPageCase):
+    """The share of ESB's first estimates kept, beside the share back in four hours."""
+
+    def restored(self, i, restore):
+        # distinct places and starts, or the merge folds them into one event
+        self.observe(
+            detail(str(i), outageType="Restored", location=f"Place{i}",
+                   point={"c": f"53.3{i}858,-6.27098"},
+                   startTime=f"1{i}/08/2026 09:00", estRestoreTime=f"1{i}/08/2026 13:00",
+                   restoreTime=f"1{i}/08/2026 {restore}"),
+            datetime(2026, 8, 10 + i, 14, 0, tzinfo=UTC),
+        )
+
+    def test_the_share_is_per_outage_and_five_is_enough_to_show(self):
+        for i in range(4):
+            self.restored(i, "12:30")
+        self.restored(4, "15:00")
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=0)
+        page = self.render_county()
+        self.assertEqual(self.column(page, "August 2026", "Restored by first estimate"), "80%")
+        self.assertEqual(self.column(page, "September 2026", "Restored by first estimate"), "–")
+
+    def test_under_five_estimates_the_cell_is_blank(self):
+        for i in range(4):
+            self.restored(i, "12:30")
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=0)
+        page = self.render_county()
+        self.assertEqual(self.column(page, "August 2026", "Restored by first estimate"), "–")
+
+    def test_the_heading_says_what_counts(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, 0, 0, tzinfo=UTC), n_listed=1)
+        head = re.search(r'<th scope="col" title="([^"]*)">Restored by first estimate</th>',
+                         self.render_county())
+        self.assertIn("no later than five minutes after", head.group(1))
+        self.assertIn("Blank under five", head.group(1))
+
+
+class TestWhereFaultsKeepHappening(CountyPageCase):
+    """The county page ranks ESB's fault locations; nothing else on the site does."""
+
+    def fault(self, i, location, **over):
+        self.observe(
+            detail(str(i), location=location, point={"c": f"53.3{i % 10}858,-6.27098"},
+                   startTime=f"{1 + i:02d}/08/2026 09:00", **over),
+            datetime(2026, 8, 1 + i, 10, 0, tzinfo=UTC),
+        )
+
+    def spots(self):
+        outages, _, _ = self.load()
+        return render.fault_spots([o for o in outages if o.county == "Dublin"])
+
+    def test_ranked_by_faults_with_planned_and_one_offs_left_out(self):
+        for i in range(3):
+            self.fault(i, "Glasnevin", numCustAffected=50 + i)
+        self.fault(3, "Marino")
+        self.fault(4, "Marino")
+        self.fault(5, "Santry")
+        self.fault(6, "Santry", outageType="Planned")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual(self.spots(), [("Glasnevin", 3, 52), ("Marino", 2, 100)])
+
+    def test_the_card_caps_at_ten(self):
+        for i in range(2 * (render.SPOTS + 1)):
+            self.fault(i, f"Place{i // 2}")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual(len(self.spots()), render.SPOTS)
+
+    def test_the_card_names_spots_without_linking_them(self):
+        """ESB's location names straddle Census areas, so a row must not
+        pretend to be an area page."""
+        for i in range(2):
+            self.fault(i, "Glasnevin")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        outages, _, index = self.load()
+        data, by_county, months, _ = render.build(outages, index, SEPT, self.until)
+        page = render.county_page(
+            "Dublin", data, render.shard(by_county["Dublin"], months, self.until),
+            months, self.until, index.counties, spots=render.fault_spots(outages),
+        )
+        card = re.search(r'<h2>Where faults keep happening.*?</ul>', page, re.S).group(0)
+        self.assertIn("<li>Glasnevin<span", card)
+        self.assertIn("2 faults", card)
+        self.assertNotIn("<a ", card)
+
+    def test_esbs_bare_county_name_and_a_missing_name_are_not_spots(self):
+        """"Dublin" is ESB's string for a fault out in the country, and an
+        empty location falls back to the Census area for display; ranking
+        either would put an area under a heading that says these are not
+        areas."""
+        for i in range(2):
+            self.fault(i, "Dublin")
+        for i in range(2, 4):
+            self.fault(i, "")
+        for i in range(4, 6):
+            self.fault(i, "Glasnevin")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual([s[0] for s in self.spots()], ["Glasnevin"])
+
+    def test_an_outage_restored_before_the_first_poll_is_not_counted(self):
+        """The page lists nothing that ended before collection began, so the
+        card and the CSV built from the same county list must not either."""
+        self.fault(0, "Glasnevin")
+        self.fault(1, "Glasnevin")
+        self.observe(
+            detail("9", location="Glasnevin", outageType="Restored",
+                   startTime="31/07/2026 09:00", restoreTime="31/07/2026 12:00"),
+            datetime(2026, 7, 31, 21, 30, tzinfo=UTC),
+        )
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        outages, _, index = self.load()
+        _, by_county, _, _ = render.build(outages, index, SEPT, self.until)
+        self.assertEqual(len(by_county["Dublin"]), 2)
+        self.assertEqual(render.fault_spots(by_county["Dublin"])[0][1], 2)
+        rows = list(csv.DictReader(io.StringIO(render.county_csv(by_county["Dublin"]))))
+        self.assertEqual(len(rows), 2)
+
+    def test_no_spot_no_card(self):
+        self.fault(0, "Glasnevin")
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        self.assertEqual(self.spots(), [])
+        self.assertNotIn("Where faults keep happening", self.render_county())
+
+
+class TestTheCountyCsv(CountyPageCase):
+    def test_one_row_per_merged_event_with_every_id(self):
+        common = {"location": "Glasnevin", "startTime": "10/08/2026 10:00"}
+        at = datetime(2026, 8, 10, 11, 45, tzinfo=UTC)
+        self.observe(detail("1", outageType="Restored", restoreTime="10/08/2026 11:00",
+                            **common), at)
+        self.observe(detail("2", outageType="Restored", restoreTime="10/08/2026 11:30",
+                            **common), at)
+        self.observe(detail("3", location="Marino", startTime="12/08/2026 09:00"),
+                     datetime(2026, 8, 12, 9, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC))
+        outages, _, _ = self.load()
+        rows = list(csv.DictReader(io.StringIO(render.county_csv(outages))))
+        self.assertEqual([r["esb_ids"] for r in rows], ["1 2", "3"])
+        self.assertEqual(rows[0]["end_utc"], "2026-08-10T10:30:00Z")
+        self.assertEqual(rows[0]["end_source"], "restored")
+        self.assertEqual(rows[1]["type"], "fault")
+        self.assertEqual(rows[1]["location"], "Marino")
+        self.assertEqual(tuple(rows[0]), render.CSV_COLUMNS)
+
+    def test_the_page_links_its_csv(self):
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 1, tzinfo=UTC), n_listed=1)
+        self.assertIn('<a href="dublin.csv">', self.render_county())
 
 
 class TestAnUngradedMonthSaysWhy(CountyPageCase):
@@ -244,9 +440,71 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
         self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
         page = self.render_county()
-        self.assertIn("Too few faults in September 2026 to grade fairly", page)
-        # and no bare line under the chip: nothing here a hover cannot carry
-        self.assertNotIn('<div class="ungraded">', page)
+        self.assertIn(
+            '<div class="ungraded">Too few faults in September 2026 to grade '
+            "fairly.</div>",
+            page,
+        )
+
+    def test_the_county_gates_say_so_in_the_open_too(self):
+        """The day gate got this in September 2026 and the other two did not,
+        which left eight counties on 7 September showing a dash a phone had no
+        way to interrogate. Whichever gate shut, the sentence is on the page."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        self.assertIn("Too few faults in September 2026", self.text_of(page))
+
+    def test_the_app_carries_the_same_sentences(self):
+        """Three surfaces show the same dash - this page, the app's county view
+        and its list of 26 - and the JS half writes its own copy of the wording.
+        A drift leaves one of them blaming a gate the other rules out."""
+        app = render.SITE_HTML.read_text()
+        # one horizon and fault count per gate: inside the day gate, past a
+        # month that can never reach five days, and past both gates either side
+        # of the count. Read out of ungraded_reason rather than written here, or
+        # the two halves can be reworded together and still disagree.
+        gates = (
+            (datetime(2026, 9, 2, 20, 0, tzinfo=UTC), "2026-09", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-07", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-09", 0),
+            (datetime(2026, 9, 10, tzinfo=UTC), "2026-09", model.MIN_GRADED_FAULTS),
+        )
+        seen = set()
+        for until, ym, faults in gates:
+            said = render.ungraded_reason(ym, faults, until)
+            seen.add(said)
+            # the JS assembles the sentence around monthLabelLong(ym) and, for
+            # the day gate, the date out of D.daygate, so only the fixed parts
+            # between them are the same string in both halves
+            fixed = re.split(
+                rf"\d+ [A-Z][a-z]+|{re.escape(render.month_label(ym))}", said
+            )
+            # quoted, so a fragment that survives only inside some other JS
+            # string does not stand in for the literal that has to be there
+            for part in filter(None, fixed):
+                self.assertIn(
+                    f'"{part}"', app,
+                    f"site.html has drifted from ungraded_reason: {said}",
+                )
+        self.assertEqual(len(seen), len(gates), "a gate produced no sentence of its own")
+        # only the app can see every county at once, so only it counts them, and
+        # that one line is the site's only wording without a twin in render.py
+        self.assertIn('" not graded in "', app)
+        self.assertIn('"too few faults to grade fairly."', app)
+
+    def test_the_older_months_dashes_are_explained_under_the_table(self):
+        """Every month is a row, so the sentence under the county's name reaches
+        only the newest of them. July's dash is a different gate's."""
+        self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)
+        page = self.render_county()
+        table = page[page.index("Month by month"):]
+        note = table[table.index("</table>"):]
+        self.assertIn("Only part of July 2026 was watched", note)
+        self.assertIn("Too few faults in August 2026", note)
+        # said once: the chip at the top of the page already carries September
+        self.assertNotIn("Too few faults in September 2026", note)
 
 
 class TestThePageStandsAlone(CountyPageCase):
@@ -285,7 +543,7 @@ class TestTheHistoryListing(unittest.TestCase):
                 [
                     f"o{i}", "Somewhere", 0, 10,
                     f"2026-08-{1 + i % 28:02d}T09:00", f"2026-08-{1 + i % 28:02d}T11:00",
-                    "restored", "", [], [], None,
+                    "restored", "", [], [], None, 0,
                 ]
                 for i in range(n)
             ]

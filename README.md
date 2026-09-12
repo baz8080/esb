@@ -17,7 +17,7 @@ Every 30 minutes:
 
 1. Fetch the outage list (~20 outages on a calm day, far more during a storm).
 2. Write that response to an append-only JSONL log, verbatim, before anything else.
-3. Fetch the detail for each outage that is new or still changing, one second apart.
+3. Fetch the detail for each outage that is new or still changing, half a second apart.
 4. Fold everything into a SQLite database, recording every field that changed.
 
 Restored outages are immutable once they carry a restore time, so they are never
@@ -30,6 +30,14 @@ fetches by 58% and captures an identical change log.
 This is safe because the *list* is still fetched in full every run, and any
 change of outage type forces an immediate detail fetch however long that outage
 has been dormant. Only a quiet outage's descriptive fields are ever delayed.
+
+A storm can list more outages than one run can fetch. A run stops itself at
+24 minutes, about 2,800 details, records itself as cut short, and the next run
+fetches first whatever a purge would take: outages listed as restored that
+still need their detail, then live ones never seen, then re-checks. Every detail
+is committed as it lands, so even a run killed outright leaves the database
+knowing what it fetched. `sudo esb stats` counts cut-short runs, which is the
+sign a storm outran the budget.
 
 ### Storage
 
@@ -80,7 +88,7 @@ python -m esb_outages --data-dir ./data poll
 | --- | --- |
 | `poll` | One collection pass. This is the scheduled command. |
 | `check` | Verify the API key and connectivity. Writes nothing. |
-| `test-alert` | Send a test alert through `ESB_ALERT_WEBHOOK`. |
+| `test-alert` | Send a test alert through `ESB_ALERT_WEBHOOK` and ping `ESB_HEARTBEAT_URL`. |
 | `rebuild` | Drop the database and replay it from the raw logs. |
 | `stats` | Summarise what has been collected. |
 | `compact` | Gzip raw logs from previous months. |
@@ -91,8 +99,9 @@ Environment variables:
 | --- | --- | --- |
 | `ESB_DATA_DIR` | `/var/lib/esb-outages` | Storage root |
 | `ESB_API_KEY` | built-in public key | Override if ESB rotates it |
-| `ESB_POLL_DELAY_MS` | `1000` | Pause between detail requests |
+| `ESB_POLL_DELAY_MS` | `500` | Pause between detail requests |
 | `ESB_ALERT_WEBHOOK` | unset | Optional ntfy/Discord/Slack URL for failures |
+| `ESB_HEARTBEAT_URL` | unset | Optional dead-man's monitor ping URL, hit after every run that reached the feed |
 
 ### The API key
 
@@ -131,6 +140,24 @@ Neither loses data, because unfinalised outages stay listed for the retention
 window and are retried on the next run. Alerting on recoverable blips only trains
 you to ignore the ones that matter.
 
+### The heartbeat
+
+Every alert above needs the collector to be running and to have a network. A
+Pi that is off, a timer someone disabled, a dead SD card or a lost uplink sends
+nothing, and that is the failure that has happened silently before. So the
+collector also pings `ESB_HEARTBEAT_URL` after every run that reached the feed,
+and a dead-man's monitor alerts when the pings stop. [healthchecks.io](https://healthchecks.io)
+is one such service and its free tier is enough: create a check with a period of
+30 minutes and a grace of 90 minutes, so three missed polls in a row raise it and
+a single catch-up run after a reboot does not, then set its ping URL in
+`/etc/esb-outages.env`. `sudo esb test-alert` pings it too, so the same command
+proves both channels.
+
+The ping is sent for schema drift and partial runs as well as clean ones,
+because those still put the list on disk and the webhook already reports them.
+It is not sent when the key is rejected or ESB cannot be reached, so those
+failures raise both alarms, which is right: collection has stopped.
+
 ## Deploying on a Raspberry Pi (or any systemd host)
 
 The collector needs nothing but Python 3.11+ and the system timezone data.
@@ -149,7 +176,8 @@ from `scripts/systemd/`, and an `esb` command to `/usr/local/bin`. It is
 idempotent — re-run it after a `git pull` to deploy an update, and it re-arms the
 timers so a changed schedule actually takes effect.
 
-Then set `ESB_ALERT_WEBHOOK` in `/etc/esb-outages.env` and start it:
+Then set `ESB_ALERT_WEBHOOK` and `ESB_HEARTBEAT_URL` in `/etc/esb-outages.env`
+and start it:
 
 ```bash
 sudo esb test-alert && sudo esb check
@@ -174,7 +202,7 @@ environment file holding the webhook is root-only.
 | --- | --- |
 | `sudo esb stats` | What has been collected, plus the recent runs and how many fetches the dormancy back-off avoided |
 | `sudo esb check` | Whether the API key still works. Writes nothing |
-| `sudo esb test-alert` | Whether a failure would actually reach you |
+| `sudo esb test-alert` | Whether a failure would actually reach you, and whether the heartbeat lands |
 | `sudo esb rebuild` | Re-derive the database from the raw logs |
 | `sudo esb compact` | Gzip previous months (skip this if backing up via git) |
 | `systemctl list-timers` | When the collector and backup next run |
@@ -287,6 +315,12 @@ python -m esb_site --data-dir /var/lib/esb-outages     # writes out/site/
 
 It reads `esb.db`, so run `rebuild` first if the database is stale. Counties are
 derived from Census Small Area centroids, because the feed has no county field.
+
+Every county has a CSV of its outages at `c/<county>.csv`, linked from its
+page's outage history: one row per merged event, oldest first, with the columns
+named in `render.CSV_COLUMNS`. It is the site's own rows, so anyone studying the
+data gets what the page counts without rebuilding the database or
+re-implementing the merge.
 
 Each county-month is graded A–F on ESB Networks' own published service standard,
 from the CRU-approved Customer Charter: *"our aim is to restore supply within

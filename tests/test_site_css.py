@@ -86,9 +86,16 @@ class UngradedNoticeCase(unittest.TestCase):
     not open on a phone, so this line carries the reason instead. An unstyled
     one would render at body size, louder than the heading it explains."""
 
-    def test_the_notice_renders_inside_the_gate_and_not_outside_it(self):
-        self.assertIn('<div class="ungraded">', _day_gated_county_page())
-        self.assertNotIn('<div class="ungraded">', _county_page())
+    def test_the_notice_names_whichever_gate_shut(self):
+        """Both fixtures are ungraded and not for the same reason, so the notice
+        has to render for each and say a different thing."""
+        self.assertIn(
+            '<div class="ungraded">September 2026 is too new to grade',
+            _day_gated_county_page(),
+        )
+        self.assertIn(
+            '<div class="ungraded">Too few faults in August 2026', _county_page()
+        )
 
     def test_it_does_not_break_the_shared_sub_line_adjacency(self):
         """It sits after the customer count, so `.chead + .sub` still matches."""

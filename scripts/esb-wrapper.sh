@@ -30,5 +30,6 @@ fi
 exec sudo -u "$SERVICE_USER" env \
     ESB_DATA_DIR="$DATA_DIR" \
     ${ESB_ALERT_WEBHOOK:+ESB_ALERT_WEBHOOK="$ESB_ALERT_WEBHOOK"} \
+    ${ESB_HEARTBEAT_URL:+ESB_HEARTBEAT_URL="$ESB_HEARTBEAT_URL"} \
     ${ESB_API_KEY:+ESB_API_KEY="$ESB_API_KEY"} \
     sh -c 'cd "$1" && shift && exec python3 -m esb_outages "$@"' _ "$PREFIX" "$@"

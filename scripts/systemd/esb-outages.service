@@ -14,15 +14,19 @@ Group=esb
 StateDirectory=esb-outages
 Environment=ESB_DATA_DIR=/var/lib/esb-outages
 
-# ESB_ALERT_WEBHOOK, and ESB_API_KEY if ESB ever rotates the public one.
+# ESB_ALERT_WEBHOOK, ESB_HEARTBEAT_URL, and ESB_API_KEY if ESB ever rotates
+# the public one.
 # chmod 600, owned by root. The leading '-' allows the file not to exist.
 EnvironmentFile=-/etc/esb-outages.env
 
 WorkingDirectory=/opt/esb-outages
 ExecStart=/usr/bin/python3 -m esb_outages poll
 
-# A storm could take a while at one request per second; nothing here is urgent.
-TimeoutStartSec=900
+# The collector stops itself at 24 minutes (poll.RUN_BUDGET_S) and records
+# what a storm left for the next run. This is the backstop a minute beyond,
+# and it is a failed unit if it ever fires; the collector catches the SIGTERM
+# and still closes the run out (notes/storms.md).
+TimeoutStartSec=1500
 
 # It reads its own code and writes one state directory. Nothing else.
 NoNewPrivileges=true

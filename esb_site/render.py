@@ -10,7 +10,9 @@ only way to hold that line is to never put a per-outage record in `data.js`.
 
 from __future__ import annotations
 
+import csv
 import html
+import io
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -33,6 +35,22 @@ SITE_CSS = TEMPLATES / "site.css"
 # may be filed, since the pin is the fault and not everyone it cut off. Five
 # covers a plausible substation catchment without becoming a gazetteer.
 NEARBY_AREAS = 5
+
+# The spots card: this many faults makes a spot, and this many rows is the
+# card. Mayo's ten cover 83% of its faults; Dublin's cover 32%, over 51 spots.
+SPOT_MIN_FAULTS = 2
+SPOTS = 10
+
+# One row per merged event, oldest first. Times are UTC, `esb_ids` is every id
+# folded into the event, `location` is ESB's own string and empty where it gave
+# none, and the end carries its source because the three are not equally
+# trustworthy.
+CSV_COLUMNS = (
+    "esb_ids", "county", "area", "location", "type", "planned_reason",
+    "customers", "start_utc", "end_utc", "end_source", "estimate_utc",
+    "first_estimate_utc", "ongoing", "customer_minutes", "repeat_leg",
+    "repeat_chain", "lat", "lon",
+)
 
 # How far the data may lag the build before the page says so. Pushes land every
 # six hours, so with the timer's jitter and one poll interval the newest data can
@@ -98,9 +116,13 @@ def build(outages, sa_index, now, until):
     """
     months = model.month_list(model.COLLECTION_START, now)
 
+    # A county's record starts at the first poll: an outage restored before
+    # it overlaps no observed window, so the page never lists it and nothing
+    # derived from the county's list may count it either.
     by_county = defaultdict(list)
     for o in outages:
-        by_county[o.county].append(o)
+        if o.end > model.COLLECTION_START:
+            by_county[o.county].append(o)
 
     stats, national = {}, {}
     for county in sa_index.counties:
@@ -120,6 +142,8 @@ def build(outages, sa_index, now, until):
                 s["planned"],
                 s["customers_hit"],
                 s["over_compensation"],
+                None if s["est_kept"] is None else round(s["est_kept"], 1),
+                s["estimates"],
             ]
         stats[county] = per_month
 
@@ -136,6 +160,7 @@ def build(outages, sa_index, now, until):
             for o in judged
             if o.minutes / 60.0 <= model.CHARTER_TARGET_HOURS
         )
+        est_kept, estimates = model.estimate_share(judged)
         national[ym] = [
             round(model.national_cml(outages, until, ym, annualised=False), 1),
             len(faults),
@@ -143,6 +168,8 @@ def build(outages, sa_index, now, until):
             sum(o.customers for o in faults),
             round(sum(o.customer_minutes(lo, hi) for o in faults) / 60.0, 1),
             None if not seen else round(100.0 * within / seen, 1),
+            None if est_kept is None else round(est_kept, 1),
+            estimates,
         ]
 
     # Names a reader might type, grouped by county so the county name is stored
@@ -155,19 +182,28 @@ def build(outages, sa_index, now, until):
     # bare. Keyed on the name because `location` falls back to `town`, and the
     # slug is right for that name either way. Every page these address is
     # written from the same outages below, so a slug here always has a file.
+    #
+    # A name that is its county's enters only with a slug: paged, it is one of
+    # the fourteen towns named for their county and its page is somewhere the
+    # county row cannot go; bare, it is ESB writing "Sligo" for a fault
+    # somewhere in the county, and would be a second row to the same view.
     paged = {}
     search = {}
     for o in outages:
         if model.area_has_page(o.town_code):
             paged.setdefault(o.county, {})[o.town] = slug(o.town)
         names = search.setdefault(o.county, set())
-        for name in (o.town, o.location):
-            if name and name != o.county:
-                names.add(name)
-    search = {
-        c: [[n, paged[c][n]] if n in paged.get(c, ()) else n for n in sorted(names)]
-        for c, names in sorted(search.items())
-    }
+        names.update(n for n in (o.town, o.location) if n)
+
+    def entries(county, names):
+        p = paged.get(county, {})
+        return [
+            [n, p[n]] if n in p else n
+            for n in sorted(names)
+            if n != county or n in p
+        ]
+
+    search = {c: entries(c, names) for c, names in sorted(search.items())}
 
     data = {
         "generated": _stamp(now),
@@ -235,9 +271,14 @@ def case_record(o):
                 o.start, o.end, o.end_src, o.segments
             )
         ],
-        # Only a confirmed restore renders the estimate, and only when the two
-        # differ; anything else is payload the page can never show.
-        _short(o.est) if o.end_src == "restored" and o.est != o.end else None,
+        # Shipped only where the row shows it: beside a confirmed restore it
+        # differs from, or on an outage still out.
+        _short(o.est)
+        if o.est and (o.ongoing or (o.end_src == "restored" and o.est != o.end))
+        else None,
+        # Still listed at the last poll, so the end above is the horizon
+        # rather than an ending.
+        1 if o.ongoing else 0,
     ]
 
 
@@ -270,7 +311,7 @@ def _vs_estimate(end, est):
     delta = (
         datetime.fromisoformat(end) - datetime.fromisoformat(est)
     ).total_seconds() / 60.0
-    if abs(delta) < 5:
+    if abs(delta) < model.ESTIMATE_GRACE.total_seconds() / 60.0:
         return ""
     return (
         f"{_span_hm(abs(delta) / 60.0)} "
@@ -278,13 +319,20 @@ def _vs_estimate(end, est):
     )
 
 
-def _end_bits(k, hours):
+def _horizon(data):
+    """The horizon as a record timestamp, so a row can compare an estimate to it."""
+    return data["observed_iso"][:16]
+
+
+def _end_bits(k, hours, horizon):
     """How the outage ended and how long it ran, as one phrase per shape.
 
     Only a "restored" end is something ESB confirmed; the rest name the missing
     record rather than hedging. Mirrored in site.html (endBits).
     """
     planned, src = k[2], k[6]
+    if k[11]:
+        return _ongoing_bits(k, horizon)
     if src == "restored":
         bits = [f"restored {_when_at(k[5], k[4])} ({_span_hm(hours)})"]
         if k[10]:
@@ -307,7 +355,33 @@ def _end_bits(k, hours):
     return [f"off for {_span_hm(hours, about=True)}", "no restore time published"]
 
 
-def _case_html(k):
+def _ongoing_bits(k, horizon):
+    """An outage still listed at the last poll.
+
+    No span, because its end is the horizon. The row says whether ESB named a
+    time and whether that time has passed. Planned works keep their schedule
+    wording. Mirrored in site.html (ongoingBits).
+    """
+    planned, start, est = k[2], k[4], k[10]
+    if planned:
+        if not est:
+            return ["still listed when last checked", "no end time published"]
+        hours = (
+            datetime.fromisoformat(est) - datetime.fromisoformat(start)
+        ).total_seconds() / 3600.0
+        return [
+            f"scheduled until {_when_at(est, start)} ({_span_hm(hours)})",
+            "still listed when last checked",
+        ]
+    if not est:
+        return ["still out when last checked", "no estimate published"]
+    # against the horizon, not k[5]: that is a sighting up to a poll cycle earlier
+    if est > horizon:
+        return ["still out when last checked", f"expected back by {_when_at(est, start)}"]
+    return ["still out when last checked", f"past ESB's estimate of {_when_at(est, start)}"]
+
+
+def _case_html(k, horizon):
     planned = k[2]
     chain = k[8]
     bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s") + " affected"]
@@ -317,7 +391,7 @@ def _case_html(k):
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
         ).total_seconds() / 3600.0
-        bits.extend(_end_bits(k, hours))
+        bits.extend(_end_bits(k, hours, horizon))
     # in the chip rather than trailing the timings: it is the row's most human
     # fact and it was in its least-read position
     tag = "Planned" if planned else "Fault"
@@ -508,6 +582,21 @@ def _reason_for(m, ym, until):
     return None if m[1] else ungraded_reason(ym, m[4], until)
 
 
+def _ungraded_note(county, data, months, until):
+    """The dashes the sentence under the county's name does not reach.
+
+    Every month is a row here, and beside an ungraded one sits a Faults count,
+    which is the number two of the three gates are not about. The newest month
+    is left out because the chip at the top of the page has already said it.
+    """
+    said = [
+        ungraded_reason(ym, data["stats"][county][ym][4], until)
+        for ym in reversed(months[:-1])
+        if data["stats"][county][ym][1] is None
+    ]
+    return f'<p class="note">{html.escape(". ".join(said))}.</p>' if said else ""
+
+
 def _county_months_html(county, data, months, until):
     """One row per month, newest first.
 
@@ -524,7 +613,8 @@ def _county_months_html(county, data, months, until):
             + "</th>"
             f"<td>{_grade_chip(m[1], reason=_reason_for(m, ym, until))}</td>"
             f'<td>{"–" if m[2] is None else f"{m[2]:g}%"}</td>'
-            f"<td>{m[4]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
+            f'<td>{"–" if m[8] is None else f"{m[8]:g}%"}</td>'
+            f"<td>{m[4]:,}</td><td>{m[7]:,}</td><td>{m[5]:,}</td><td>{m[6]:,}</td>"
             f"<td>{m[3]:,.1f}</td></tr>"
         )
     return (
@@ -532,15 +622,28 @@ def _county_months_html(county, data, months, until):
         '<table class="mtable"><thead><tr>'
         '<th scope="col">Month</th><th scope="col">Grade</th>'
         '<th scope="col">Restored in 4h</th>'
-        '<th scope="col">Faults</th><th scope="col">Planned</th>'
+        '<th scope="col" title="Faults back no later than five minutes after the '
+        "first restore time ESB named for them, of those with a confirmed restore "
+        'and an estimate. Blank under five estimates">Restored by first estimate</th>'
+        '<th scope="col">Faults</th>'
+        # The charter's other number. Counted here and nowhere else: the
+        # footer has promised it on the county page since the tiles were
+        # settled, and the payload carried it unread.
+        '<th scope="col" title="Faults lasting more than 24 hours, the point at '
+        "which the Customer Charter pays compensation. One still out past that "
+        'mark counts too">Over 24 h</th>'
+        '<th scope="col">Planned</th>'
         '<th scope="col">Customers hit</th>'
         '<th scope="col" title="Customer Minutes Lost: minutes off supply for '
         'the average customer that month, faults only">Minutes lost</th>'
-        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div></div>'
+        f'</tr></thead><tbody>{"".join(rows)}</tbody></table></div>'
+        f"{_ungraded_note(county, data, months, until)}</div>"
     )
 
 
-def county_page(county, data, by_month, months, until, all_counties, areas=()):
+def county_page(
+    county, data, by_month, months, until, all_counties, areas=(), spots=()
+):
     """The whole body of c/<slug>.html.
 
     Every month, not only the latest. The URL names a county, so what it
@@ -572,18 +675,23 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
         "and businesses · estimated from Census 2022</div>",
     ]
     # A `title` does not open on a touch screen and a bare dash reads as a
-    # verdict, so the day gate - alone among the three - is said in the open.
-    if grade is None and model.days_gate(months[-1], until) is not None:
+    # verdict. Which gate shut is not the reader's problem: all three are said
+    # in the open, and the older months' are under the table.
+    if reason:
         body.append(f'<div class="ungraded">{html.escape(reason)}.</div>')
     # Straight to the months: the newest month's card duplicated the table's
     # first row (notes/design-alignment.md § The county page became an archive).
     body.append(_county_months_html(county, data, months, until))
+    if spots:
+        body.append(_spots_html(spots, data["start"]))
     if cases:
         body.append(
             f'<div class="card"><h2>Outage history <span class="n">'
             f'· {len(cases):,} outage{"" if len(cases) == 1 else "s"}</span></h2>'
+            f'<p class="note"><a href="{slug(county)}.csv">This list as a CSV '
+            "file</a>, one row per outage, times in UTC.</p>"
         )
-        body.append("".join(_case_html(k) for k in cases))
+        body.append("".join(_case_html(k, _horizon(data)) for k in cases))
         body.append("</div>")
     else:
         body.append(
@@ -615,6 +723,65 @@ def county_page(county, data, by_month, months, until, all_counties, areas=()):
             "BODY": "".join(body),
         },
     )
+
+
+def fault_spots(outages):
+    """[(location, faults, peak customers)], most faults first.
+
+    ESB's own location names: 222 of the 422 in the corpus straddle more than
+    one Census area, so a spot is not an area and links to no page.
+    """
+    by = defaultdict(list)
+    for o in outages:
+        # ESB's bare county name is its string for a fault out in the country,
+        # the same reading the search box gives it, and not a spot
+        if not o.planned and o.esb_location and o.esb_location != o.county:
+            by[o.esb_location].append(o)
+    spots = [
+        (loc, len(v), max(o.customers for o in v))
+        for loc, v in by.items()
+        if len(v) >= SPOT_MIN_FAULTS
+    ]
+    spots.sort(key=lambda s: (-s[1], -s[2], s[0]))
+    return spots[:SPOTS]
+
+
+def _spots_html(spots, since):
+    rows = "".join(
+        f"<li>{html.escape(loc)}"
+        '<span class="fill"></span>'
+        f'<span class="n">{n} faults</span>'
+        f'<span class="p">up to {peak:,} customers</span></li>'
+        for loc, n, peak in spots
+    )
+    return (
+        '<div class="card"><h2>Where faults keep happening '
+        f'<span class="n">· since {since}</span></h2>'
+        '<p class="note">The places ESB names on its faults, counted over every '
+        "month. A name can sit in more than one Census area, so these are not "
+        "the areas listed below.</p>"
+        f'<ul class="areas">{rows}</ul></div>'
+    )
+
+
+def county_csv(outages):
+    """One county's merged events as CSV, oldest first; the columns are
+    CSV_COLUMNS. The site's own rows, so a reader gets what the page counts
+    rather than raw ESB ids."""
+    buf = io.StringIO()
+    out = csv.writer(buf, lineterminator="\n")
+    out.writerow(CSV_COLUMNS)
+    for o in sorted(outages, key=lambda o: (o.start, int(o.id))):
+        out.writerow([
+            " ".join(o.ids), o.county, o.town, o.esb_location,
+            "planned" if o.planned else "fault", model.reason_label(o.reason),
+            o.customers, model.fmt_utc(o.start), model.fmt_utc(o.end), o.end_src,
+            model.fmt_utc(o.est), model.fmt_utc(o.first_est), int(o.ongoing),
+            round(o.customer_minutes(o.start, o.end)),
+            o.chain[0] if o.chain else "", o.chain[1] if o.chain else "",
+            o.lat, o.lon,
+        ])
+    return buf.getvalue()
 
 
 def area_path(county, name):
@@ -758,7 +925,7 @@ def area_page(county, name, pop, events, nearby, data):
         "under a neighbouring area, and one listed here may reach far beyond "
         f"it - which is why a row can count more customers than "
         f"{html.escape(name)} has people.</p>",
-        "".join(_case_html(k) for k in cases),
+        "".join(_case_html(k, _horizon(data)) for k in cases),
         "</div>",
     ]
     if near:
@@ -845,9 +1012,13 @@ def write(site_dir, outages, sa_index, now, until):
         (site_dir / "c" / f"{slug(county)}.html").write_text(
             county_page(
                 county, data, by_month, months, until, sa_index.counties,
-                county_areas.get(county, ()),
+                county_areas.get(county, ()), fault_spots(by_county.get(county, [])),
             ),
             encoding="utf-8",
+        )
+        # Every county, an empty one too: the URL is stable, like the shard's.
+        (site_dir / "c" / f"{slug(county)}.csv").write_text(
+            county_csv(by_county.get(county, [])), encoding="utf-8"
         )
 
     area_paths = []
@@ -887,7 +1058,11 @@ def size_report(site_dir):
     # empty is invisible from the field
     site_dir = Path(site_dir)
     pages = list((site_dir / "a").glob("*/*.html"))
+    csvs = list((site_dir / "c").glob("*.csv"))
     report += (
+        f"\n  {'county csv':<16}"
+        f"{sum(p.stat().st_size for p in csvs) / 1024:8.1f} KB"
+        f"   ({len(csvs)} files, on request)"
         f"\n  {'areas.html':<16}"
         f"{(site_dir / 'areas.html').stat().st_size / 1024:8.1f} KB   (standalone)"
         f"\n  {'area pages':<16}"

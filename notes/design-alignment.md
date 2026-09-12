@@ -387,3 +387,217 @@ rebuild: the month table's `CML` column became **Minutes lost** carrying the
 month's own figure (3451f8f), and the case rows got the sentence treatment
 (73be525) — the static county page renders through the same `_case_html` as
 every other page, so it was never a separate fix.
+
+## The county table carries the 24-hour count the footer promised - 2026-09-05
+
+The footer has said since 2026-08-28 that outages past the charter's 24-hour
+compensation mark "are counted separately on each county page". They were not.
+`county_month` computed `over_compensation`, `render.build` packed it as the
+eighth field of every county-month row in `data.js`, and neither the app nor the
+county page read it. The sentence was written for a count the tiles decision
+above then declined to show (§ The tiles say what they mean: replacing the
+customer-hours tile with it "was raised and declined by the owner"), and nobody
+went back to the footer.
+
+**It is now a column in the county page's month table**, `Over 24 h`, between
+Faults and Planned, with the charter named in the heading's hover the way
+"Minutes lost" carries its own definition. Read off the same payload row as the
+rest of the table, so the app and the page cannot disagree about a month. The
+count is the one `grading.md` settled: a fault still out past the mark counts,
+because the time it has already run is a lower bound.
+
+On the corpus to 5 September: 6 faults over 24 hours across 1,387, 3 of them
+with a confirmed restore. A column that is 0 on nearly every row is legible in a
+table, which is where a rare count belongs.
+
+Rejected:
+
+- **A fifth tile in the app's county view.** Twenty-five counties would carry a
+  tile reading 0 most months, and a tile exists to be read. The national tile
+  was declined on the same day for the same reason, and that decision stands.
+- **Dropping the footer sentence instead.** The count is the most useful
+  independent fact the payload already held, and the sentence was right about
+  where it belongs: the county page is the archive, and the 24-hour mark is an
+  archive fact.
+- **A bare "24 h" heading.** Beside "Restored in 4h" and "Faults" it reads as a
+  duration; "Over 24 h" plus the hover reads as a count of faults.
+
+## An outage still out says so - 2026-09-05
+
+`Outage.ongoing` has decided since 2026-08-18 whether a fault is judged on the
+charter (grading.md § An outage still listed), and `case_record` dropped it. A
+fault still out at the horizon rendered as "off for about 2 h · no restore time
+published", the same words as one that had quietly left the feed, and its
+estimate was thrown away with it: `case_record` shipped `est` only beside a
+confirmed restore. So the one row a reader most wants to read, the live one,
+was the row that told them least.
+
+The record carries a twelfth field, `ongoing`, and ships the estimate whenever
+that is set. `_end_bits` and its mirror `endBits` take the flag before any
+other shape, and the row says what is known:
+
+| Shape | Fault | Planned |
+|---|---|---|
+| no estimate | still out when last checked · no estimate published | still listed when last checked · no end time published |
+| estimate ahead | still out when last checked · expected back by 07:30 | scheduled until Wed 9 Sep, 17:00 (7 days) · still listed when last checked |
+| estimate passed | still out when last checked · past ESB's estimate of 00:15 | the same schedule wording; a listing is not an observed outage |
+
+The three faults ongoing at the 5 September horizon happened to be one of each:
+Kilkee with no estimate, Kilcock expected back at 07:30, and Carrigaline five
+hours past its 00:15 estimate. Templeogue's planned works had read "listed for
+about 3 days · no end time published" while ESB had them scheduled to the 9th
+all along.
+
+**No span for a live fault.** "Off for about 2 h so far" was the first draft.
+The end of an ongoing outage is the collection horizon, and where the model
+ended it on a passed estimate (`end_src == "estimated"`) the span would stop at
+the estimate rather than at the last sighting, understating by up to the
+distance between them. The row already says when it began; the age of the data
+is on the banner and in the month table's "to 5 Sep". Planned works keep their
+span because theirs measures the schedule, which is the one duration ESB
+actually states.
+
+**"When last checked", not the horizon's clock time.** The exact horizon left
+the county page on 2026-08-28 and this does not bring it back; the phrase names
+the fact without a timestamp the page has decided not to carry.
+
+### What review of the first cut found
+
+Three shapes the single-id tests did not reach, all fixed at the source rather
+than in the wording:
+
+- **A merged event with a restored ender and a sibling still listed** was
+  `ongoing` by `any()` over its members, so the row said "still out when last
+  checked · past ESB's estimate of 01:52" for an outage ESB confirmed restored
+  at 01:52, and the event sat out of the grade for one build. Seven groups in
+  the corpus hit this shape at the build after their restore. `_merge_group`
+  already treats a sibling lingering a poll cycle past a confirmed restore as
+  the feed catching up; `ongoing` now follows the ender, as `end` always did.
+- **"No estimate published" when the ender had none and a sibling did.** The
+  ender is the record listed latest, not the one ESB put a time on; seven
+  unrestored groups had that shape. A live event now borrows the latest
+  estimate over its members when its ender carries none. The settled rule that
+  the ender's estimate wins (grading.md, stale figures resurrected by `max()`)
+  is about records that closed and is untouched.
+- **"Expected back by" was judged against the row's end**, which for a listed
+  outage is the last sighting, up to a poll cycle before the horizon. An
+  estimate in that gap has passed by the data's own clock. The comparison is
+  now against the horizon, which the app has as `D.observed_iso` and the static
+  pages take from the same payload field; `_case_html` takes it as an argument
+  rather than defaulting, so a caller cannot fall back to the sighting by
+  accident.
+
+Rejected: a tag label ("Fault · still out"), the way a planned reason rides in
+the tag. The tag names what the outage is and the summary line says what
+happened to it, and a live fault is a state of the second kind.
+
+Residue: 167 of the 179 delisted faults carried an estimate that lay *after*
+their last sighting - ESB dropped them before the time it had named - and that
+estimate is still not shipped for them. A row for one says "off for about 4 h ·
+no restore time published"; whether it should also say what ESB had expected is
+a separate question with a separate shape.
+
+## The site says how good ESB's estimates are - 2026-09-05
+
+Every outage row has said "2 h later than ESB estimated" since 2026-08-28, and
+nothing added those up. The estimate is the one number a customer actually
+plans around, and nobody publishes how often it holds. On the corpus to
+5 September, 1,079 of 1,129 restored faults carried one.
+
+**The figure is "restored by ESB's first estimate"**: the share of faults,
+among those with a confirmed restore and an estimate, back no later than five
+minutes after the first restore time ESB named. It sits beside "restored within
+4 hours" everywhere that appears: a tile on the national view and the county
+view, and a column in the county page's month table. The footer's method
+disclosure defines it in two sentences.
+
+Choices, with the numbers behind them:
+
+| Choice | Taken | Measured |
+|---|---|---|
+| First estimate or last | **first**, `Outage.first_est` | 63.6% against the first, 74.4% against the last. 192 of the 973 single-id faults had their estimate revised, and 156 of those revisions came after the previous time had already passed: a revision is mostly ESB pushing back a time it missed, and scoring against it credits the miss. "Kept unless some estimate passed while still out" was measured too, at 67.3%, and rejected as a rule nobody could state in a tile's label |
+| Per outage or per customer | **per outage** | 74.6% per outage against 83.4% customer-weighted, on the last estimate: large faults keep their estimates more often, and weighting by customers would report the big outages' record as everyone's. An estimate is one statement about one outage, and that is how a customer meets it |
+| Grace | **five minutes**, `ESTIMATE_GRACE`, one-sided | 73.3% at zero, 74.6% at five, 78.9% at fifteen, 82.3% at thirty, on the last estimate. Five is the line the row already draws: it prints no "later than ESB estimated" inside it, so the share cannot count that a miss. Early is always kept; the wording says "no later than five minutes after" because "within five minutes" read as a band, and under a band the figure would be 3.7%. Defined once in the model; the JS mirror is asserted by the same test that guards `MIN_FAULTS` |
+| Floor | **five estimates**, `MIN_ESTIMATES = MIN_GRADED_FAULTS` | August's smallest county sample was 10 and its largest 99; a September six days old ranged 1 to 25. Under five the cell is blank and the tile a dash, as the grade does. No day gate: this is a plain share of a sample, and the floor is the whole of what a small sample needs |
+| Population | the faults the grade judges | started and restored in the observed window and not ongoing; the same list feeds `county_month` and the national row, so the two tiles cannot count different sets |
+
+**The row and the share use different estimates, on purpose.** The row's
+"28 min earlier than ESB estimated" compares against ESB's last word, the
+estimate carried by the record that ended the event (grading.md § One ESB event
+is one row), and the ongoing row's "expected back by" must be the latest. The
+share holds ESB to its first word, because that is the promise a customer acted
+on. A row can therefore read "earlier than ESB estimated" for a fault the share
+counts as a miss; the tile's label says "first" so a reader can tell which
+question each answers. For a merged event the first estimate is the earliest
+any member named; the envelope timeline carries no estimates, so it is taken
+per record before the merge.
+
+August, as the page shows it: nationally 59.2% of 982 first estimates were
+kept, Leitrim 33% of 27 and Meath 46% of 35 at one end, Kilkenny 75% of 20 and
+Waterford 77% of 30 at the other. Misses are long when they happen: against the
+last estimate, a median of 55 minutes late and a tenth over four hours.
+
+Rejected: an all-time national figure in the footer beside the CML comparison.
+That paragraph argues the site's credibility against ESB's published numbers,
+and ESB publishes nothing to compare an estimate share with. The tiles carry it
+month by month, which is the clock everything else on the page runs on.
+
+## The county page ranks its fault spots, and hands out its rows - 2026-09-06
+
+Two additions to `c/<slug>.html`, both static and neither on the initial load.
+
+### Where faults keep happening
+
+Nothing on the site ranked anything: the directory is alphabetical, the history
+is chronological. Westport has 26 faults in five weeks, Killinick 23, Milltown
+16, and a reader had to count rows to find that out. The card lists the ten
+locations with the most faults over every month, two faults or more, each with
+its count and the most customers any one of them took out.
+
+**The rows are ESB's own location names and link nowhere.** The obvious link
+is the area page, and it would be wrong: a location name is where ESB says the
+fault is, and 222 of the 422 names in the corpus have been pinned to more than
+one Census area. Westport's 26 faults sit in "Around Killavally"; Wexford's 12
+in "Around Whitechurch". The note under the heading says so, in the same words
+the area pages use for the same problem.
+
+**Two of ESB's strings are not spots.** ESB files a fault out in the country
+under the bare county name ("Wexford", twelve faults spread over four areas),
+which the search box already reads that way, and eleven records carry no
+location at all, which the page fills with the Census area for display. The
+card counts `Outage.esb_location`, ESB's own string, and skips the county name;
+six county pages had themselves as a top spot before it did.
+
+**And nothing restored before the first poll.** ESB was still listing fourteen
+outages at 21:02 on 31 July that it had already restored. They overlap no
+observed window, so the page never lists them, but a county's raw list held
+them and the first cut of the card and the CSV counted them: Monaghan's page
+said 74 outages and its CSV had 77 rows. `render.build` now drops them where
+the county lists are made, so the shard, the card and the CSV read one list.
+
+Measured on the corpus to 5 September: 308 of 422 locations have two or more
+faults, every county has at least two such spots, the median county has nine
+and Dublin 51. Ten rows cover 83% of Mayo's faults and 32% of Dublin's, which
+is the range a fixed cap has to live with; a count is a proxy for bytes and
+this is 10 rows, so no byte budget was needed.
+
+Rejected: a repeat-chain count per row. The top eight spots hold one chain
+between them; chains are a within-the-hour phenomenon (grading.md § Repeat
+faults are not splits) and a spot is a within-the-month one.
+
+### The CSV
+
+The README has always said the point is to study Irish outages over time, and
+the only way to do it was to clone `esb-data`, rebuild, and re-implement
+`merge_events`. Each county page now links `c/<slug>.csv`: one row per merged
+event, oldest first, the columns in `render.CSV_COLUMNS`. Every id folded into
+an event is in `esb_ids`, the end carries its source, both estimates ride
+along, `location` is ESB's own string and empty where it gave none, and
+`customer_minutes` is the integrated figure the page uses, so a reader gets what
+the page counts rather than raw records.
+
+Per county rather than one national file, because the link sits on the county
+page and that is the unit a reader arrives at; 534 KB in 26 files, listed in
+the size report as "on request" and outside the budget. Written for every
+county, an empty one included, so the link cannot 404. Not in the sitemap: a
+CSV is not a page.

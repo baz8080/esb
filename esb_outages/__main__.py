@@ -8,7 +8,7 @@ import sys
 
 from . import __version__, alert
 from .client import EsbClient
-from .poll import run_check, run_poll
+from .poll import DEFAULT_DELAY_MS, run_check, run_poll
 from .store import Store
 
 DEFAULT_DATA_DIR = os.environ.get("ESB_DATA_DIR", "/data")
@@ -43,6 +43,9 @@ def cmd_stats(args) -> int:
         print(
             f"\ndetail fetches  : {fetched} made, {skipped} skipped ({pct:.0f}% avoided)"
         )
+    if s["cut_short"]:
+        # The storm signal: runs the service timeout stopped with work left.
+        print(f"runs cut short  : {s['cut_short']}")
     if s["recent_runs"]:
         print("\nrecent runs:")
         print(
@@ -86,6 +89,17 @@ def cmd_test_alert(args) -> int:
         print("alert delivery FAILED - see the warning above", file=sys.stderr)
         return 1
     print("alert delivered")
+    if not os.environ.get("ESB_HEARTBEAT_URL"):
+        print(
+            "ESB_HEARTBEAT_URL is not set, so a collector that stops running\n"
+            "would reach nobody. Set it to a dead-man's monitor's ping URL.",
+            file=sys.stderr,
+        )
+        return alert.EXIT_OK
+    if not alert.heartbeat():
+        print("heartbeat delivery FAILED - see the warning above", file=sys.stderr)
+        return 1
+    print("heartbeat delivered")
     return alert.EXIT_OK
 
 
@@ -117,10 +131,12 @@ def main(argv=None) -> int:
     p_poll = sub.add_parser("poll", help="run one collection pass (the scheduled command)")
     p_poll.add_argument(
         "--delay-ms", type=int, default=None,
-        help="pause between detail requests (env: ESB_POLL_DELAY_MS, default 1000)",
+        help=f"pause between detail requests (env: ESB_POLL_DELAY_MS, default {DEFAULT_DELAY_MS})",
     )
     sub.add_parser("check", help="verify the API key and connectivity; writes nothing")
-    sub.add_parser("test-alert", help="send a test alert through ESB_ALERT_WEBHOOK")
+    sub.add_parser(
+        "test-alert", help="send a test alert through ESB_ALERT_WEBHOOK and ESB_HEARTBEAT_URL"
+    )
     sub.add_parser("rebuild", help="rebuild the database from the raw JSONL logs")
     sub.add_parser("stats", help="summarise what has been collected")
     sub.add_parser("compact", help="gzip raw logs from previous months")
