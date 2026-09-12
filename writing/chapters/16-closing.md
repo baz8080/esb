@@ -1,8 +1,8 @@
-# 11. Closing: two feeds, two sites, one discipline
-*~12 min read · with the side-by-side table and a glossary*
+# 16. Closing: two feeds, two sites, one discipline
+*~20 min read · with the side-by-side table and a glossary*
 
-*Where we are:* the end of the account, on 3 September 2026, with the repository at pull
-request #35 - 159 commits, 236 tests, and a month and three days of continuously collected
+*Where we are:* the end of the account, on 7 September 2026, with the repository at pull
+request #44 - 178 commits, 285 tests, and five and a half weeks of continuously collected
 data.
 
 ## The question, answered as far as it can be
@@ -44,8 +44,17 @@ control.
   derived from the push arithmetic rather than hope (chapter 6b).
 - **What has happened near a named town**, on its own page, for every settlement the Census
   names and every outage the archive holds, uncapped (chapter 7a).
-- **Why a letter is missing**, when one is, in the reader's own view and naming which of the
-  three gates withheld it (chapter 10).
+- **Why a letter is missing**, when one is, in the reader's own view, naming which of the three
+  gates withheld it, and reachable without a pointing device (chapters 10 and 15).
+- **Which outages are still out right now**, said in those words, with whatever ESB has published
+  about when they will be back (chapter 11).
+- **How often ESB's own restore estimate holds** - 59.2% of 982 first estimates kept in August -
+  which is a question nobody else publishes an answer to (chapter 12).
+- **Where faults keep happening**, ranked, county by county, in ESB's own names for the places
+  (chapter 13).
+- **Its own rows, to anyone who wants them**: a CSV per county of merged events with the ends,
+  both estimates and the integrated customer-minutes, so the page's arithmetic can be checked
+  rather than reproduced (chapter 13).
 
 ## What it cannot say, and says so
 
@@ -70,6 +79,12 @@ control.
   it, so an area page lists what was *pinned near* the area and can look quiet while the next
   village sat in the dark. The page says so, and points at its neighbours, rather than
   modelling a footprint (chapter 7a).
+- **Where exactly a named fault spot is.** ESB's location strings are its own account of where a
+  fault is, and 222 of the 422 in the corpus have been pinned to more than one Census area, so
+  the ranked spots are printed with their counts and link nowhere (chapter 13).
+- **Whether its estimate score is right**, by anybody else's figure. The grade has ESB's published
+  CML, CI and CAIDI to be checked against; the promise score has nothing at all, which is the
+  position the water site is in for almost everything it publishes (chapter 12).
 
 ## The two sites, side by side
 
@@ -93,6 +108,12 @@ site, each traceable to a property of the feed it serves.
 | A new grade band | Fitted against its own distribution | Set by arithmetic, then checked for a band nobody can reach |
 | A thin month | Graded anyway: the denominator is time, so a short window is a complete short fact | Ungraded behind three gates: the denominator is a sample of what the weather delivered, and is undefined at zero faults |
 | The smallest published place | A town, with the people in a 500 m circle around each pin | A town, with the outages *pinned near* it and a card pointing at its neighbours |
+| An outage in progress | The default state: a notice is open until it is lifted, and the *end* is the hard part | Carried as a flag all the way to the row, because the ends are structured and the liveness was the thing dropped |
+| The operator's own promise | Stated times are re-stamped in place and scheduled ends are kept out of the headline; there is no promise left to score | Scored: 59.2% of first estimates kept, recoverable only because every field change was written down |
+| The feed's own place string | 3,866 values; discarded entirely, geography rebuilt on Census settlements | 422 values; ranked as ESB's own account of where faults are, and never turned into a link |
+| What it hands a reader who wants the data | The inference JSONL, committed on every build: the step nobody can reproduce from the feed | A CSV per county of the site's own merged rows, beside a public archive of the raw bytes |
+| Watching the collector | A hosted runner records a failed run, in a system the author does not operate | A dead man's switch: the Pi pings an outside monitor, and silence is the alarm |
+| A day the feed is too big to fetch | The notices linger, so the collector catches up tomorrow | The unfetched tail is lost at the purge, so a run has a budget and fetches first what a purge would take |
 
 And the identical column, which is the deeper finding: both sites keep decisions in dated
 notes with the rejected alternatives and their numbers; both publish single-file pages
@@ -139,9 +160,18 @@ it - the convention inherited unchanged from the water site. In plain language:
 | Explain three different gates with one sentence | "Too few faults" sent readers hunting for outages that were not the reason; one sentence per gate, each naming its month (chapter 10). |
 | Put the explanation in a hover | A `title` does not open on a touch screen, and the readers are on phones checking their power; a national gate is stated once, in the open (chapter 10). |
 | Raise the five-day gate until the letter settles | Measured: five days buys a defined letter, and nine counties were still moving band after a fortnight. A gate that waited for stability would withhold half the month (chapter 10). |
-| Explain three different gates with one sentence | "Too few faults" sent readers hunting for outages that were not the reason; one sentence per gate, each naming its month (chapter 10). |
-| Put the explanation in a hover | A `title` does not open on a touch screen, and the readers are on phones checking their power; a national gate is stated once, in the open (chapter 10). |
-| Raise the five-day gate until the letter settles | Measured: five days buys a defined letter, and nine counties were still moving band after a fortnight. A gate that waited for stability would withhold half the month (chapter 10). |
+| Show the 24-hour count as a tile | 6 faults in 1,387: a tile reading 0 in most counties most months is furniture, where a table column is a legible rarity (chapter 11). |
+| Score restorations against ESB's latest estimate | 156 of 192 revisions came after the previous time had already passed; scoring against the latest converts a miss into a hit at the moment it is admitted (chapter 12). |
+| Weight the estimate score by customers | 83.4% against 74.6%: large faults keep their estimates more often, and weighting reports the big outages' record as everyone's (chapter 12). |
+| Say the estimate is kept "within five minutes" | It reads as a band either side, and under a band - where being early also fails - the figure is 3.7% (chapter 12). |
+| Link the ranked fault spots to area pages | 222 of the 422 location names have been pinned to more than one Census area; the ranking is honest, the link would not be (chapter 13). |
+| Rank ESB's bare county name as a fault spot | It is ESB's string for a fault out in the country, and six county pages listed themselves as a top spot (chapter 13). |
+| Build the card and the CSV from a county's raw list | Fourteen outages ESB had already restored at the first poll reached the export and not the page: Monaghan said 74 outages and shipped 77 rows (chapter 13). |
+| Fetch a storm's details in the feed's own order | The head of the list consumes the budget every run and the tail is never reached; order by what a purge would destroy instead (chapter 14). |
+| Let systemd's timeout enforce the run budget | A unit systemd has to stop is a failed unit whatever the process exits with, so every busy run would read as a broken collector (chapter 14). |
+| Ping the heartbeat from the six-hourly backup | Too coarse to notice a stopped collector, and the backup can succeed with the collector dead, which is the case the heartbeat exists to catch (chapter 14). |
+| Leave a county's own ungraded reason in a hover | The argument for printing the national gate once decided *where* a sentence goes and was read as a rule about *whether* (chapter 15). |
+| Guard two renderers by restating their shared wording | A third statement of the sentence fires when one side is edited carefully and stays silent when both are edited carelessly; read one side, assert the other (chapter 15). |
 
 If the water series' summary lesson was *measure before you build, and write down what you
 rejected*, this series adds the corollary that made this repository cheap to build: **collect
@@ -207,3 +237,29 @@ are the water series' boxes, borrowed and marked (→ u14, u16).
 - **A denominator that is time versus one that is a sample** - time accrues whether or not
   anything happens, so a short window is a complete fact; a sample sized by events is
   undefined when there are none, and needs a small-sample floor (10).
+- **A claim in the prose is a claim in the code** - a sentence in the footer asserts something
+  about the build and nothing in the toolchain checks it; read the site's own prose against the
+  site (11).
+- **Absent state renders as the default state** - a fact the renderer never receives does not
+  come out blank, it comes out as whatever the code prints anyway, so the page reads calm rather
+  than uncertain (11).
+- **Scoring a promise against its first statement** - when the target can be edited, "the latest
+  version" converts a miss into a hit at the moment it is admitted (12).
+- **A one-sided tolerance** - the natural English for a tolerance is symmetric and most real
+  tolerances are not; say which direction is forgiven or the reader computes a different
+  number (12).
+- **A ranking is a claim about its labels** - sorting is the easy part; the list asserts that each
+  row names a distinct thing of one kind, which is why these rows carry counts and no links (13).
+- **Publish the rows the page counts** - raw bytes make a project reproducible, the site's own
+  derived rows make it checkable, and the interesting claims live between the two (13).
+- **An alarm that fires on silence** - every self-raised alarm shares a point of failure with the
+  thing it watches; a dead man's switch inverts the evidence and works precisely when the machine
+  is gone (14).
+- **Order the work by what a delay would destroy** - with less budget than work, arrival order and
+  novelty both optimise for the wrong thing; rank by what is unrecoverable if it waits (14).
+- **Reasoning about where, read later as a rule about whether** - a narrow reason for not doing
+  something is remembered as a principle, which is why the reason gets written down and not just
+  the outcome (15).
+- **A test that restates what it guards** - a third statement of a shared wording fires on a
+  careful one-sided edit and stays silent on a careless two-sided one; derive the expectation from
+  one side (15).

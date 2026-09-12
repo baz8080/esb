@@ -130,5 +130,14 @@ renumbering the closing to 9. The trigger was a scheduled check on the open pull
 finding `main` had moved; the rule the series runs on is that a chapter is owed whenever a
 merged change contradicts or extends what an existing chapter says.
 
+Sessions 3 to 5 (3 and 12 September 2026) kept it current as the repository moved roughly a
+pull request a day: chapter 9 for the publishing schedule, chapter 10 for the missing grades,
+and chapters 11 to 15 for pull requests #36 to #44, with the closing renumbered to 16. Three
+of those sessions corrected an earlier chapter as well as extending the account, which is the
+rule working rather than failing - a merged change that *contradicts* a chapter earns a
+pointer or a chapter of its own, and one that merely adds needs only a mention. `PROGRESS.md`
+carries the full ledger, including which chapters now carry forward pointers and the guard
+against annotating one of them a third time.
+
 Figures are registered in `figures.md` as quoted; the few re-run against the working tree say
 so, with the date. `PROGRESS.md` is the ledger for any later session.

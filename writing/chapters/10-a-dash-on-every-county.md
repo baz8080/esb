@@ -55,7 +55,9 @@ The day-gate sentence is now printed in the open - above the county list, under 
 the static county page, and in the app's county view - and said **once** rather than in 26
 chips, because that gate is national and the other two are not. Where a message is displayed
 follows from whose fact it is. The per-county fault case stays in the tooltip, since that row
-already shows its own fault count beside the dash.
+already shows its own fault count beside the dash. (That last sentence was wrong, and chapter 15
+is about why: the argument above decides *where* a sentence goes, and was read four days later as
+a rule about *whether* it is printed at all.)
 
 ### Worked example: what five days is actually for
 

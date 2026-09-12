@@ -6,17 +6,17 @@ writing session). Chapters quote from here rather than re-deriving. Figures are 
 measured on their stated date; where the corpus moved between measurements (the CI ratio, the
 CML), the chapter quotes one snapshot and names it.
 
-## Verified against the working tree: 27 Aug (S0), 31 Aug (S1), 2 Sep (S2), 3 Sep (S3, S4)
+## Verified against the working tree: 27 Aug (S0), 31 Aug (S1), 2 Sep (S2), 3 Sep (S3, S4), 12 Sep (S5)
 
 | Figure | Value | How | Verified |
 |---|---|---|---|
-| Commits on `main` | 159 (152 at S3, 144 at S2, 138 at S1, 98 at S0) | `git log --oneline \| wc -l` | Y (3 Sep, S4) |
-| Commits with a `Co-Authored-By` trailer | 103 (72 Claude Opus 5, 26 Claude Fable 5, 5 unversioned) | `git log --format='%b' \| grep -o 'Co-Authored-By: [^<]*' \| sort \| uniq -c` | Y (3 Sep, S4) |
-| Merged pull requests | numbered to #35 (#28 unused) | GitHub, `baz8080/esb` | Y (3 Sep, S4) |
-| Test count | 236 (`Ran 236 tests`; 16 skipped without `../esb-data`) | `uv run python -m unittest discover -s tests -t .` | Y (3 Sep, S4) |
+| Commits on `main` | 178 (159 at S4, 152 at S3, 144 at S2, 138 at S1, 98 at S0) | `git rev-list --count origin/main` | Y (12 Sep, S5) |
+| Commits with a `Co-Authored-By` trailer | 118 (72 Claude Opus 5, 24 Claude Fable 5, 17 Claude Fable 5.1, 5 unversioned) | `git log --format='%b' \| grep -o 'Co-Authored-By: [^<]*' \| sort \| uniq -c` | Y (12 Sep, S5) |
+| Merged pull requests | numbered to #44; #28 and #43 are issue numbers, and #30 is this series' own draft | GitHub, `baz8080/esb` | Y (12 Sep, S5) |
+| Test count | 285 (`Ran 285 tests`; 17 skipped without `../esb-data`) | `uv run python -m unittest discover -s tests -t .` | Y (12 Sep, S5) |
 | `STALE_AFTER` | 10 hours (16 until PR #32) | `esb_site/render.py:40` | Y (3 Sep) |
 | `sort_keys=True` in the raw append | present | `esb_outages/store.py:201` | Y |
-| `notes/` files | grading · polling · design-alignment · area-pages (27 Aug) · publish-cadence (2 Sep) | `ls notes/` | Y (3 Sep) |
+| `notes/` files | grading · polling · design-alignment · area-pages (27 Aug) · publish-cadence (2 Sep) · alerting · storms (6 Sep) | `ls notes/` | Y (12 Sep) |
 | Em dashes in `writing/` after the sweep | 0 (339 before it) | `grep` for U+2014 across `writing/`; house rule in CLAUDE.md § Punctuation | Y (31 Aug) |
 
 ## Lifted figures by chapter (source + date measured; not re-run)
@@ -159,7 +159,65 @@ CML), the chapter quotes one snapshot and names it.
 | Chip contrast upstream | B measured Lc 38.6 on dark ink against 69.2 on white | PR #29 / statusui #11 |
 | At the end of the stretch | 221 tests; initial load 60.0 KB against the 500 KB budget | PR #29, 30 Aug 2026 |
 
-### Ch 11 (closing)
+### Ch 11
+| Figure | Value | Source |
+|---|---|---|
+| County-named towns | 14 named for their county, 12 paged on today's data | `notes/area-pages.md` "The county-named towns reach the box", 3 Sep 2026 |
+| Search index cost | `search.js` 37,398 to 37,666 bytes; initial load unmoved at 63.9 KB | same |
+| The upstream fix | statusui `eecdf2d`: `searchHits` dedup keyed `name|county` to `name|county|target` | same |
+| Faults past 24 hours | 6 of 1,387, 3 with a confirmed restore (corpus to 5 Sep) | `notes/design-alignment.md` "The county table carries the 24-hour count the footer promised", 5 Sep 2026 |
+| The unread field | `over_compensation` computed and shipped as the 8th field of every county-month row since 28 Aug | same |
+| Ongoing rows at the 5 Sep horizon | 3 faults: Kilkee (no estimate), Kilcock (expected 07:30), Carrigaline (5 h past 00:15) | `notes/design-alignment.md` "An outage still out says so", 5 Sep 2026 |
+| Merged-event review findings | 7 groups with a restored ender and a listed sibling; 7 unrestored groups whose ender carried no estimate | same |
+| Row shapes checked across both renderers | 14 | same |
+| Residue | 167 of 179 delisted faults carry an estimate after their last sighting | same |
+
+### Ch 12
+| Figure | Value | Source |
+|---|---|---|
+| Faults carrying an estimate | 1,079 of 1,129 restored faults (corpus to 5 Sep) | `notes/design-alignment.md` "The site says how good ESB's estimates are", 5 Sep 2026 |
+| First estimate vs last | 63.6% against the first, 74.4% against the last | same |
+| Revisions | 192 of 973 single-id faults revised; 156 of those after the previous time had passed | same |
+| The rejected middle rule | "kept unless some estimate passed while still out" = 67.3% | same |
+| Per outage vs per customer | 74.6% vs 83.4% (on the last estimate) | same |
+| Grace ladder | 73.3% at 0 min, 74.6% at 5, 78.9% at 15, 82.3% at 30 (on the last estimate) | same |
+| Under a two-sided band | 3.7% | same |
+| Floor | `MIN_ESTIMATES = MIN_GRADED_FAULTS` = 5; August county samples 10 to 99, September (6 days) 1 to 25 | same |
+| August, as published | national 59.2% of 982; Leitrim 33% of 27, Meath 46% of 35, Kilkenny 75% of 20, Waterford 77% of 30 | same |
+| Misses | median 55 min late, a tenth over 4 h (against the last estimate) | same |
+| Payload cost | `data.js` +0.6 KB; initial load 65.9 KB | PR #39, 6 Sep 2026 |
+
+### Ch 13
+| Figure | Value | Source |
+|---|---|---|
+| Top spots | Westport 26 faults, Killinick 23, Milltown 16 (five weeks) | `notes/design-alignment.md` "The county page ranks its fault spots, and hands out its rows", 6 Sep 2026 |
+| Why the rows do not link | 222 of 422 location names pinned to more than one Census area | same |
+| ESB strings that are not spots | the bare county name (Wexford: 12 faults over 4 areas) and 11 records with no location; 6 county pages had themselves as a top spot | same |
+| The pre-first-poll restorations | 14 outages already restored at 21:02 on 31 Jul; Monaghan's page said 74 outages against a 77-row CSV | same |
+| Coverage | 308 of 422 names have 2+ faults; median county 9 spots, Dublin 51; ten rows cover 83% of Mayo's faults and 32% of Dublin's | same |
+| The CSV | one row per merged event, `render.CSV_COLUMNS`; 534 KB across 26 files, off the budget and out of the sitemap (the PR body says 536 KB) | same; PR #40, 6 Sep 2026 |
+
+### Ch 14
+| Figure | Value | Source |
+|---|---|---|
+| What the collector had never met | largest list in five calm weeks 120 records; longest run 2 minutes against a 15-minute unit timeout (~880 details at 1 s apart) | `notes/storms.md`, 6 Sep 2026 |
+| Storm Éowyn | 768,000 customers off (Jan 2025); ~3,000 records at this corpus's ~260 customers per fault, labelled an inference | same |
+| The simulation, before | 1,000 outages, run cut at 300 fetches: 300 / 0 / 0 / 0 newly fetched over four runs, no run record | same |
+| The simulation, after | 300 / 300 / 300 / 100, all 1,000 in four runs (hard kill, ordering and per-detail commits alone) | same |
+| The new limits | `RUN_BUDGET_S` 24 min, 25-minute systemd backstop, 500 ms between fetches, ~2,800 details a run | same |
+| Heartbeat timings | period 30 min, grace 90; timer jitter up to 3 min; banner trips 10 h after the last push, up to 16 h after the last poll | `notes/alerting.md` "The heartbeat", 6 Sep 2026 |
+| CI test-server fix | 11 server-backed tests 3.6 s to 0.6 s | PR #41, 6 Sep 2026 |
+| The open gap | issue #43: 6 consecutive empty runs proposed; in 1,644 runs the list has never been below 2 outages, 86 runs listed fewer than 5 | issue #43, 6 Sep 2026 |
+
+### Ch 15
+| Figure | Value | Source |
+|---|---|---|
+| The eight ungraded counties | Carlow 1, Longford 1, Offaly 2, Waterford 2, Westmeath 2, Limerick 3, Cavan 4, Tipperary 4 (faults in September to the 7th) | `notes/grading.md` "The other two gates were hover-only", 7 Sep 2026 |
+| August's clearance of the fault gate | no county under 5; quietest Longford at 12, 2.4× the floor | same |
+| New wordings added | 1 (the counted line above the county list); the rest come from `render.ungraded_reason` | same |
+| The mirror test | asserts each sentence as a quoted JS string literal, verified by mutating `site.html` | PR #44 review commit, 7 Sep 2026 |
+
+### Ch 16 (closing)
 Aggregates of the above; no new figures except the CAIDI restatement (92.2 vs 85.1, ch 4b),
 the 0.65 h median of coarse-poll-lost ids restated as 39 minutes (ch 2), and the six-band
 distribution restated from ch 7b. The August 2026 five-band split (A 9 · B 6 · C 4 · D 4 ·

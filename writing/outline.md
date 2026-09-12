@@ -1,4 +1,4 @@
-# Outline - 13 posts plus intro and closing, chronological
+# Outline - 18 posts plus intro and closing, chronological
 
 Each entry: PRs/commits · thesis · concepts boxed · worked example · the uisce contrast the
 chapter must state. The repo's history is small enough to read directly - its commits, pull
@@ -159,9 +159,68 @@ lifts divide by time, which accrues regardless, so a two-day answer is a complet
 this site divides by a sample that is undefined at zero faults. They also name their
 denominator to the reader, and a single letter cannot say "C, from one outage".
 
-## Ch 11 - Closing
+## Ch 11 - What the page already knew · PRs #36 to #38 · 5 Sep
 
-What the site can/cannot say (including the attribution limit and what an area page adds); the
-full side-by-side table, the series' deliverable, now 15 rows; the settled-decisions table in
+**Thesis.** Three defects of one shape, none of them a failing test: a search guard written for a
+site without area pages kept 14 county-named towns out of the box (fixed in three places, statusui
+`eecdf2d` included, and safe to merge in either order); the footer had promised the 24-hour count
+for eight days while `over_compensation` shipped in every payload unread (now a column, 6 of 1,387);
+and `case_record` dropped `ongoing`, so a live fault read exactly like a delisted one and its
+estimate was thrown away. **Concepts.** A claim in the prose is a claim in the code · absent state
+renders as the default state. **Example.** The merged event whose lingering sibling made it "still
+out · past ESB's estimate of 01:52" for an outage restored at 01:52. **Contrast.** The search bug
+is one dedup rule eating a row on two sites; the live row has no counterpart, because there a notice
+is open by default and it is the *end* that is hard.
+
+## Ch 12 - How often does ESB's estimate hold? · PR #39 · 5 to 6 Sep
+
+**Thesis.** The one number a household plans around, added up for the first time. Scored against
+ESB's *first* estimate (63.6% vs 74.4%), because 156 of 192 revisions came after the previous time
+had passed; per outage not per customer; a one-sided five-minute grace (a band would read 3.7%);
+blank under five. The first estimate exists only in the change log, which is chapter 1's invariant
+paying out in a number. **Concepts.** Scoring a promise against its first statement · a one-sided
+tolerance. **Example.** The row and the tile disagreeing on purpose. **Contrast.** The sites swap
+chairs: no external figure exists to check this one, which is the water site's usual position; and
+where its feed re-stamps a stated time out of existence, this one keeps every version.
+
+## Ch 13 - Where faults keep happening · PR #40 · 6 Sep
+
+**Thesis.** The site's first ranked list, and the first export. Ten location names per county with
+their fault counts and peak; no links, because 222 of 422 names straddle Census areas; ESB's bare
+county name and the 11 empty locations excluded; and a CSV per county of the site's own merged rows.
+**Concepts.** A ranking is a claim about its labels · publish the rows the page counts. **Example.**
+Monaghan's page saying 74 outages while its CSV shipped 77, from 14 outages ESB had already restored
+at the first poll. **Contrast.** 422 names you can rank against 3,866 the water site had to discard;
+its export is the inference JSONL, each site publishing its own riskiest step.
+
+## Ch 14 - The storm it had never seen · PRs #41 and #42 · 6 Sep
+
+**Thesis.** Two assumptions tested by simulation rather than by an incident. Every alarm the
+collector had was one it raised itself, so a Pi that is simply off says nothing: a heartbeat to a
+dead-man's monitor, with rules about which runs ping. And a storm outruns a run: the old order
+re-fetched the head of the list every run and never reached the tail (300 of 1,000 after four runs),
+so the ranking is by what a purge would take, details commit as they land, and the run stops itself
+at 24 minutes rather than letting systemd record a failed unit. **Concepts.** An alarm that fires on
+silence · order the work by what a delay would destroy. **Example.** The two simulation tables, and
+the test suite that would have pinged the real monitor green. **Contrast.** A hosted runner records
+its own failures; and on a feed that does not purge, an unfinished run is deferred work rather than
+a hole.
+
+## Ch 15 - The hover that was read as a rule · PR #44 · 7 Sep
+
+**Thesis.** Eight counties with a dash and no explanation a phone could reach, all of them the fault
+gate, all of them with the right sentence already computed into a `title`. The cause is a sentence
+in chapter 10: an argument about *where* to print a national sentence was read as a rule about
+*whether* to print a county one. Now in the open on every surface, one new wording in the whole
+change. **Concepts.** Reasoning about where, read later as a rule about whether · a test that
+restates what it guards. **Example.** The mirror test that stayed green while both halves drifted,
+and the mutation that proved the new one fails. **Contrast.** Light: the guard-quality lesson is the
+sibling of chapter 7b's shrinking guard, and it is the third in the series.
+
+## Ch 16 - Closing
+
+What the site can/cannot say (including the attribution limit, the ranked names that cannot be
+links, and the estimate score nobody can check); the full side-by-side table, the series'
+deliverable, now 21 rows; the settled-decisions table in
 plain language; "collect first, interpret later, keep the bytes"; glossary (15 boxes + 3
 borrowed).

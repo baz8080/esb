@@ -20,6 +20,11 @@ later session) → `final`.
   the closing 10 → 11. Ch 4b's one-sentence ungraded rule gains a pointer, being the sentence
   ch 10 takes apart. The closing passed the 3,000-word ceiling here, so `README.md` rule 6 was
   amended to exempt it as a reference chapter with a different guard (it must stay an index).
+- **Session 5 (12 Sep 2026)** merged `main` for PRs #36 to #42 and #44 - eight merged pull
+  requests in two days of repo time - and added chapters 11 to 15, renumbering the closing
+  11 → 16. Ch 10 gains a pointer: its closing sentence about leaving the county gates in the
+  tooltip is the sentence ch 15 takes apart. Also fixed a real defect in the closing: session 4's
+  edit had left the three chapter-10 rows duplicated in the settled-decisions table.
 
 A later session should do the continuity/review pass and check every `figures.md` "lifted" row
 it quotes against its stated source.
@@ -39,11 +44,16 @@ it quotes against its stated source.
 | 07b | The units a reader thinks in | #25 to #29 | drafted | 2,670 |
 | 08 | The month that would not start | #31 | drafted | 1,081 |
 | 09 | The cron that never ran in the morning | #32 to #34 | drafted | 1,563 |
-| 10 | A dash on every county | #35 | drafted | 1,568 |
-| 11 | Closing: two feeds, two sites, one discipline | - | drafted | 3,356 |
+| 10 | A dash on every county | #35 | drafted | 1,603 |
+| 11 | What the page already knew | #36 to #38 | drafted | 2,558 |
+| 12 | How often does ESB's estimate hold? | #39 | drafted | 2,086 |
+| 13 | Where faults keep happening | #40 | drafted | 1,748 |
+| 14 | The storm it had never seen | #41, #42 | drafted | 2,703 |
+| 15 | The hover that was read as a rule | #44 | drafted | 1,626 |
+| 16 | Closing: two feeds, two sites, one discipline | - | drafted | 4,510 |
 
-Total ~29,400 words, two SVGs (`envelope-not-sum.svg`, `horizon.svg`), one mermaid flow
-(ch 1). Companion series: uisce PR #43 (`writing/` on its `writing-series` branch); its
+Total ~40,100 words across 20 files, two SVGs (`envelope-not-sum.svg`, `horizon.svg`), one
+mermaid flow (ch 1). Companion series: uisce PR #43 (`writing/` on its `writing-series` branch); its
 chapters 14 and 16 narrate 19 to 26 August from the water site's side, and chapters here cite
 uisce chapters by number, not by URL, so links survive that PR's merge.
 
@@ -124,10 +134,43 @@ uisce chapters by number, not by URL, so links survive that PR's merge.
   the fix re-committing the same sin with the gates swapped. Boxes: a shared sentence for
   unrelated causes; a denominator that is time vs one that is a sample (the sharpest uisce
   contrast in the series, written into `notes/grading.md` itself).
-- **11** Question answered with dates (both scales); can-say / cannot-say lists incl.
-  attribution and the missing-letter reason; the 17-row side-by-side table + the identical
-  column; settled-decisions table (28 rows) in plain language; "collect first, interpret
-  later, keep the bytes"; glossary of 19 own + 3 borrowed boxes.
+- **11** PRs #36 to #38, three defects of one shape and no failing test: the search guard from the
+  pre-area-pages site kept 14 county-named towns out of the box (fixed in statusui `eecdf2d` plus
+  this site's index, inert until the pin moved, so either merge order was safe); the footer had
+  promised the 24-hour count for eight days while `over_compensation` shipped unread in every
+  payload (now a column, 6 of 1,387); `case_record` dropped `ongoing`, so a live fault read like a
+  delisted one and lost its estimate. Review found three merged-event shapes, best of them the row
+  saying "still out · past ESB's estimate of 01:52" for an outage restored at 01:52. Boxes: a claim
+  in the prose is a claim in the code; absent state renders as the default state.
+- **12** PR #39: the estimate share, the first figure on the site nobody else publishes. First
+  estimate not last (63.6 vs 74.4; 156 of 192 revisions came after the time had passed), per outage
+  not per customer (74.6 vs 83.4), one-sided five-minute grace (a band reads 3.7%), floor of five.
+  `Outage.first_est` is recoverable only from the change log, which is ch 1's invariant paying out.
+  August: 59.2% of 982. Boxes: scoring a promise against its first statement; a one-sided
+  tolerance. Contrast: the sites swap chairs, since nothing external exists to check this one.
+- **13** PR #40: the site's first ranking and first export. Ten location names per county, no links
+  (222 of 422 names straddle Census areas), ESB's bare county name and the 11 empty locations out.
+  Monaghan's 74 against 77 from 14 outages already restored at the first poll. CSV per county,
+  534 KB, off the budget and out of the sitemap. Boxes: a ranking is a claim about its labels;
+  publish the rows the page counts.
+- **14** PRs #41 and #42, both written against simulations rather than an incident: a heartbeat to a
+  dead-man's monitor, because every existing alarm needs the collector to be alive; and a storm
+  budget, because the old ordering re-fetched the head of the list every run and reached 300 of
+  1,000 in four runs. `RUN_BUDGET_S` 24 min with systemd as a backstop (a unit systemd stops is a
+  failed unit), 500 ms between fetches, details committed as they land. Best cautionary tale: the
+  test suite that would have pinged the real monitor green. Issue #43 still open. Boxes: an alarm
+  that fires on silence; order the work by what a delay would destroy.
+- **15** PR #44: eight counties with a dash and no explanation a phone could reach, all the fault
+  gate, the right sentence already computed into a `title`. Cause is ch 10's own closing sentence -
+  an argument about *where* to print a national line read as a rule about *whether* to print a
+  county one. Four placements, one new wording. The mirror test restated its literals and so could
+  not catch a two-sided edit; it now reads `ungraded_reason` and asserts quoted JS literals, proved
+  by mutation. Boxes: reasoning about where, read later as a rule about whether; a test that
+  restates what it guards.
+- **16** Question answered with dates (both scales); can-say / cannot-say lists incl.
+  attribution and the missing-letter reason; the 21-row side-by-side table + the identical
+  column; settled-decisions table (41 rows) in plain language; "collect first, interpret
+  later, keep the bytes"; glossary of 29 own + 3 borrowed boxes.
 
 ## Open threads
 
@@ -138,13 +181,16 @@ uisce chapters by number, not by URL, so links survive that PR's merge.
   `notes/grading.md` "When to refresh".
 - A root README pointer to `writing/` is deliberately left for the publish decision, as the
   water series did.
-- Anything landing after PR #35 needs a new chapter or an extension to an existing one; the
+- Anything landing after PR #44 needs a new chapter or an extension to an existing one; the
   repo moves roughly a pull request a day, so check `git log origin/main` before assuming the
   account is current. A chapter is owed when a merged change *contradicts* what a chapter says
   (the E band did, the county-page cap did, the publish cadence did, the ungraded rule did); a
   passing mention suffices when it merely adds.
-- Ch 4b, 6b and 8 now carry parenthetical corrections pointing forward. 4b has two (the E band
-  to 7b, the ungraded rule to 10). If a third lands on the same chapter, rewrite it rather than
-  annotating again.
+- Ch 4b, 6b, 8 and 10 now carry parenthetical corrections pointing forward. 4b has two (the E
+  band to 7b, the ungraded rule to 10); 10 has one (the tooltip sentence, to 15). If a third
+  lands on the same chapter, rewrite it rather than annotating again.
+- The last three corrections have all overturned a chapter's *closing* decision within a week.
+  Worth watching rather than fixing: if a fourth lands, the series wants one standing note about
+  how fast a settled layout decision moves, rather than four pointers.
 - The closing is over the length ceiling by design now (README rule 6, amended). Watch that it
   stays an index: rows, not new prose sections.

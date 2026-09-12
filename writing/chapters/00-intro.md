@@ -1,5 +1,5 @@
 # 0. Ask the grid the same question
-*~6 min read · an introduction to the series*
+*~8 min read · an introduction to the series*
 
 ## The question
 
@@ -70,14 +70,19 @@ read alone.
 | **8** | *The month that would not start* | A stray clock time inside a date, and twenty-one hours of September that reached no page. |
 | **9** | *The cron that never ran in the morning* | A publishing schedule that had never been keeping its own times, and a staleness threshold re-derived around the fix. |
 | **10** | *A dash on every county* | The morning no county had a grade, and the three different reasons a letter can be missing. |
-| **11** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
+| **11** | *What the page already knew* | Three facts the site had computed, shipped or promised in writing and was showing nobody, including the row for an outage still out. |
+| **12** | *How often does ESB's estimate hold?* | The one number a household actually plans around, added up for the first time, and why it is scored against ESB's first word. |
+| **13** | *Where faults keep happening* | The first ranked list on the site, the reason its rows link nowhere, and a CSV of the site's own rows for anyone who wants to check it. |
+| **14** | *The storm it had never seen* | An alarm that fires on silence, and what a collector does on the day the feed is bigger than a run. |
+| **15** | *The hover that was read as a rule* | Eight counties with no explanation a phone could reach, from a sentence in chapter 10 that was about something else. |
+| **16** | *Closing* | What the site can and cannot say, the two sites side by side in one table, and a glossary. |
 
 ## How it was built, said once
 
 Like the water site, this project was written with an AI assistant - Claude, in Anthropic's
-Claude Code - from the first commit. Most of the repository's 158 commits carry a
+Claude Code - from the first commit. 118 of the repository's 178 commits carry a
 `Co-Authored-By` trailer naming the model that wrote them: Opus 5 for the collector and the
-first site, Fable 5 for the later passes - and Fable 5 also drafted this series from the
+first site, Fable 5 and 5.1 for the later passes - and Fable 5 also drafted this series from the
 repository's own history under my direction, as it did the water series. I chose what to
 build and what to reject, and I read every diff. The wrong turns recounted here - the relative
 grade that handed out an F for ordinary service, the lookup grid that filed every centroid one
