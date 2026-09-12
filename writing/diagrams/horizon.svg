@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 560 200" width="560" height="200" font-family="system-ui, sans-serif" font-size="13">
+  <!-- the collection horizon vs the build clock -->
+  <line x1="40" y1="120" x2="540" y2="120" stroke="#333" stroke-width="1.5"/>
+  <!-- poll ticks up to the horizon -->
+  <g stroke="#3b6ea5" stroke-width="2">
+    <line x1="60" y1="112" x2="60" y2="128"/><line x1="90" y1="112" x2="90" y2="128"/>
+    <line x1="120" y1="112" x2="120" y2="128"/><line x1="150" y1="112" x2="150" y2="128"/>
+    <line x1="180" y1="112" x2="180" y2="128"/><line x1="210" y1="112" x2="210" y2="128"/>
+    <line x1="240" y1="112" x2="240" y2="128"/><line x1="270" y1="112" x2="270" y2="128"/>
+  </g>
+  <text x="60" y="105" fill="#1f3a5a">polls, every 30 min</text>
+  <!-- horizon -->
+  <line x1="270" y1="55" x2="270" y2="150" stroke="#1f3a5a" stroke-width="3"/>
+  <text x="270" y="45" fill="#1f3a5a" font-weight="600" text-anchor="middle">the horizon: 16 Aug, 23:00</text>
+  <text x="270" y="168" fill="#1f3a5a" text-anchor="middle">last run that reached the feed</text>
+  <!-- the gap and the build -->
+  <line x1="470" y1="70" x2="470" y2="135" stroke="#7a3e00" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="470" y="60" fill="#7a3e00" font-weight="600" text-anchor="middle">the build runs: 18 Aug</text>
+  <rect x="285" y="126" width="170" height="14" fill="#d98c2b" opacity="0.35"/>
+  <text x="370" y="188" fill="#7a3e00" text-anchor="middle">36 unwatched hours: rendered green before, "no data" after</text>
+</svg>

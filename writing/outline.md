@@ -1,0 +1,226 @@
+# Outline - 18 posts plus intro and closing, chronological
+
+Each entry: PRs/commits · thesis · concepts boxed · worked example · the uisce contrast the
+chapter must state. The repo's history is small enough to read directly - its commits, pull
+request bodies and four `notes/` files - so there is no `sources/` extraction as the uisce
+series needed; `figures.md` is the registry.
+
+The series' standing mandate, on top of the uisce series' rules: **every fork from the water
+site is stated as (their approach, our approach, the data fact that forced it).**
+
+---
+
+## Ch 0 - Ask the grid the same question · intro
+
+The water site's question grew a sibling; the feed purges within hours, so collection had to
+precede design. First-month answer: 88.4% against ESB's 95% aim. AI process named once.
+
+## Ch 1 - Write it down before you read it · pre-PR commits · 31 Jul to 1 Aug
+
+**Thesis.** Raw JSONL verbatim-before-parse; DB disposable; rebuild replays the live code
+path. **Concepts.** Source of truth vs derived index · idempotent merge (sorted keys +
+`sort -u`). **Example.** Outage 2826455, the 17:34/17:26 timezone proof. **Contrast.**
+uisce's archive *is* its DB (upsert; a rewrite costs the archive); its feed is slow, this one
+purges - sightings vs ledger. Mermaid pipeline diagram.
+
+## Ch 2 - A collector in the hall · commits to 3 Aug + notes/polling.md (18 Aug)
+
+**Thesis.** A Pi, not CI: 48 passes/day against a purging feed. 30-min interval decided by
+data (83-min median, 58% caught live hourly); dormancy back-off (58% fetch cut, byte-identical
+replay); exit-code alerting; 15-min polling measured and declined. **Concepts.** Exit code as
+the alerting stack · the poll interval is a filter. **Example.** The dormancy arithmetic.
+**Contrast.** uisce's "CI as a scheduled clerk"; its cadence floor is the utility's 75.7-h
+closure lag, ours is the collector - same experiment, opposite bottleneck.
+
+## Ch 3 - The feed that knows when it happened · PR #1 branch · 17–18 Aug
+
+**Thesis.** `startTime` is back-dated and immutable (8/1,460; 0 records pre-date their start)
+- durations measure the outage, not the notice. Structured fields still need interpreting
+(restoreTime `""`; Restored overwrites type; planned never restore). Ends bounded: estimate
+vs last sighting (1.13× vs 2.26× on 648 known ends). Timelines anchored on ESB's clock.
+**Concept.** A back-dated start. **Example.** Roosky (15:15 / 18:17 / first seen 21:02).
+**Contrast.** The central one of the series: uisce's floors vs our measured durations; their
+extraction problem (prose → rules/LLM) vs our selection problem (three candidate ends).
+
+## Ch 4a - One fault, five records · PR #1 branch · 17–18 Aug
+
+**Thesis.** No event key in the feed; merge on identical (location, start); 1,457 ids → 1,333
+events; chains (Tycor ×4 in 90 min) are separate interruptions, tagged never merged;
+tolerance relaxation measured and rejected. **Concepts.** Envelope, not a sum · a chain is
+not a split. **Example.** Bealistown's five records. SVG `envelope-not-sum.svg`.
+**Contrast.** uisce's feed *gives* identity (`reference_num`, the 18-night event); ours
+withholds it - same governing sentence, opposite operations.
+
+## Ch 4b - Grade them on their own promise · PR #1 branch · 17–18 Aug
+
+**Thesis.** Electricity is regulated in public: grade = ESB's own 4-h/95% charter aim.
+Relative CML grade retracted (Wexford F→C). `numCustAffected` bias 1.3× cancels in a share;
+CAIDI 92.2 vs 85.1 validates timing; denominator corrected to 2.5M (false citation); Census
+as bit part (nearest centroid; `int()` vs `floor` bug). **Concepts.** Absolute vs relative
+scale · a bias that cancels in a share. **Example.** The denominator correction. **Contrast.**
+uisce had no published standard to grade against and led with Census population; we have both
+a charter and per-outage counts, so Census does placement only; their radius footprint
+deliberately not carried over.
+
+## Ch 5 - What the page may claim · PR #1 · 18 Aug
+
+**Thesis.** 500 KB enforced budget, shards, day cells by magnitude (66% of days had a fault),
+update disclosure from the measured distribution; the collection horizon replaces `now`
+(green ghost days; CML −9%; ongoing outages unjudged - 15/16 replayed days had one open;
+peak defined before it matters; short days say so). **Concepts.** The collection horizon ·
+magnitude, not presence (in prose). **Example.** Monaghan's 15-over-14. SVG `horizon.svg`.
+**Contrast.** uisce's data-clock/build-clock box arrived via build gaps; ours via a separate
+collector - same invariant.
+
+## Ch 6a - The third site of the family · PRs #2–#11 · 19–21 Aug
+
+**Thesis.** The statusui story from the receiving end: hand-porting dropped uisce's contrast
+pass here; vendored on the 19th, drifted by the 20th, pinned in `uv.lock` by the 21st; the
+Pi's empty-`dependencies` contract shapes the adoption; first rollout deletes the status dot.
+**Concept.** Empty dependency list as a deployment contract (+ u14's boxes restated in a
+line). **Example.** The drift measurement. **Contrast.** Explicit twin of uisce ch 14 - same
+days, other bank.
+
+## Ch 6b - Reading like one product · PRs #12–#20 · 25–26 Aug
+
+**Thesis.** Plain-reader pass (fmtDay promoted - esb was the second user); the 25 Aug false
+"collection has stopped" and the 16-h threshold arithmetic; freshness against the reader's
+clock; the owner's element-by-element alignment (banner/heading from uisce, county rows/card
+from esb); county pages become archives with promise-keeping links and truncation-safe
+descriptions; the applies-tests. **Concepts.** A threshold sized to a cadence · ordered so
+truncation cannot make it false. **Example.** The staleness arithmetic; the link-wording
+triple. **Contrast.** Explicit twin of uisce ch 16.
+
+
+## Ch 7a - A page for every place · PRs #21 to #24 · 27 to 28 Aug
+
+**Thesis.** Area pages transfer from uisce almost free (the Small Area lookup already resolved
+settlements and the site was discarding it): 384 pages + a 179 KB directory, initial load
+still 56 KB. What does *not* transfer is attribution - ESB's point is the fault, not who is
+off - so wording ("pinned near"), a disclaimer, and a nearest-neighbours card instead of a
+footprint. Search hits become real links; the in-app area view reconsidered and declined
+again. County page cap removed entirely. Overview goes alphabetical. **Concept.** Attribution,
+and why this feed cannot do it. **Example.** The lazily-fetched index rename and the stale
+tab. **Contrast.** uisce's 500 m circle is an approximation of something real; here the same
+move would invent one.
+
+## Ch 7b - The units a reader thinks in · PRs #25 to #29 · 28 to 30 Aug
+
+**Thesis.** One question asked of every figure: is this in a unit the reader already holds?
+Annualised CML beside a month's figures → `cml_month` (12.8); customer-years → customer-hours
+(473,067, decomposed three ways and shown to be plausible); outage rows become sentences with
+the span inside the phrase (five shapes, shares measured; restore vs estimate, 69% early);
+county page loses card, age line and all JS (1,840 → 1,349 KB); the globals guard stops
+parsing a file that had halved; the no-em-dash rule written down (and applied to this series);
+the scale grows an E at 60%. **Concepts.** A guard that shrinks silently (+ the units rule in
+prose). **Example.** Is half a million customer-hours plausible? **Contrast.** uisce had to
+*fit* a new band against its distribution; anchored bands mean arithmetic sets the cut.
+
+## Ch 8 - The month that would not start · PR #31 · 1 Sep
+
+**Thesis.** `month_list` walked datetimes seeded with `start.replace(day=1)`, which replaces
+the day and keeps the time, so `COLLECTION_START`'s 21:02:11 rode the cursor and a month could
+not appear until its first evening; builds run 05:40 and 12:40 UTC. Not cosmetic: the same
+list drives per-county stats, national stats and `render.shard`'s month filing, so a fault on
+the 1st reached no shard and no table. Fixed by walking `(year, month)`, the shape uisce
+already uses. **Concept.** A date comparison that is secretly a time comparison (and its tie
+back to ch 5: both failures make the site look calmer than the data). **Example.** The
+twenty-one hours, with the two build times. **Contrast.** Third borrowing from the water site,
+and the first that is a loop rather than a component.
+
+## Ch 9 - The cron that never ran in the morning · PRs #32 to #34 · 2 Sep
+
+**Thesis.** The banner said "collection has stopped" over 9-hour-old data while the collector
+ran fine; the build had stopped. Two findings: the banner cannot name a cause (from a browser a
+stalled build and a stalled collector are identical, so `freshness()` loses its note), and the
+crons had been running 4-10 h late every day, the morning slot never in the morning (normal
+jitter before 26 Aug was 18-26 min). Retiming rejected. Fix: esb-data dispatches the build on
+push, crons demoted to a fallback at `0 7`/`0 14` UTC (hour boundaries because DST). Pushes go
+six-hourly, so the legitimate max age is ~7h not ~13h, and STALE_AFTER follows 16h → 10h.
+Deploy ordering matters: the Pi must take the new timer first. **Concept.** A schedule you
+asked for is not a schedule you have. **Example.** The threshold re-derived, ch 6b's arithmetic
+one cadence later. **Contrast.** The lift site broke the same way and carries the same note.
+
+## Ch 10 - A dash on every county · PR #35 · 3 Sep
+
+**Thesis.** September opened with a dash on all 26 counties: the month held 1.83 of the five
+observed days the grade needs, and the site had never crossed a month boundary before. Nothing
+broken; the *explanation* was. Ch 4b's one-sentence rule is really three gates (five days is
+national and about the calendar; five faults is the county's; "nothing scoreable" is a county
+that cleared both), and none counts "days with faults". Four sentences now, each naming its
+month, printed in the open rather than in a `title` a touch screen cannot open, and the
+national one said once rather than 26 times. Gate re-examined and kept: the August replay
+shows five days buys a *defined* letter (day 1: 14/26 defined, 3/26 matching the settled
+letter) but not a stable one (nine counties still moving at day 14). Review caught the fix
+committing the same sin with the gates swapped. **Concepts.** A shared sentence for unrelated
+causes · a denominator that is time versus one that is a sample. **Example.** The replay table.
+**Contrast.** The sharpest in the series, and written into `notes/grading.md` itself: uisce and
+lifts divide by time, which accrues regardless, so a two-day answer is a complete two-day fact;
+this site divides by a sample that is undefined at zero faults. They also name their
+denominator to the reader, and a single letter cannot say "C, from one outage".
+
+## Ch 11 - What the page already knew · PRs #36 to #38 · 5 Sep
+
+**Thesis.** Three defects of one shape, none of them a failing test: a search guard written for a
+site without area pages kept 14 county-named towns out of the box (fixed in three places, statusui
+`eecdf2d` included, and safe to merge in either order); the footer had promised the 24-hour count
+for eight days while `over_compensation` shipped in every payload unread (now a column, 6 of 1,387);
+and `case_record` dropped `ongoing`, so a live fault read exactly like a delisted one and its
+estimate was thrown away. **Concepts.** A claim in the prose is a claim in the code · absent state
+renders as the default state. **Example.** The merged event whose lingering sibling made it "still
+out · past ESB's estimate of 01:52" for an outage restored at 01:52. **Contrast.** The search bug
+is one dedup rule eating a row on two sites; the live row has no counterpart, because there a notice
+is open by default and it is the *end* that is hard.
+
+## Ch 12 - How often does ESB's estimate hold? · PR #39 · 5 to 6 Sep
+
+**Thesis.** The one number a household plans around, added up for the first time. Scored against
+ESB's *first* estimate (63.6% vs 74.4%), because 156 of 192 revisions came after the previous time
+had passed; per outage not per customer; a one-sided five-minute grace (a band would read 3.7%);
+blank under five. The first estimate exists only in the change log, which is chapter 1's invariant
+paying out in a number. **Concepts.** Scoring a promise against its first statement · a one-sided
+tolerance. **Example.** The row and the tile disagreeing on purpose. **Contrast.** The sites swap
+chairs: no external figure exists to check this one, which is the water site's usual position; and
+where its feed re-stamps a stated time out of existence, this one keeps every version.
+
+## Ch 13 - Where faults keep happening · PR #40 · 6 Sep
+
+**Thesis.** The site's first ranked list, and the first export. Ten location names per county with
+their fault counts and peak; no links, because 222 of 422 names straddle Census areas; ESB's bare
+county name and the 11 empty locations excluded; and a CSV per county of the site's own merged rows.
+**Concepts.** A ranking is a claim about its labels · publish the rows the page counts. **Example.**
+Monaghan's page saying 74 outages while its CSV shipped 77, from 14 outages ESB had already restored
+at the first poll. **Contrast.** 422 names you can rank against 3,866 the water site had to discard;
+its export is the inference JSONL, each site publishing its own riskiest step.
+
+## Ch 14 - The storm it had never seen · PRs #41 and #42 · 6 Sep
+
+**Thesis.** Two assumptions tested by simulation rather than by an incident. Every alarm the
+collector had was one it raised itself, so a Pi that is simply off says nothing: a heartbeat to a
+dead-man's monitor, with rules about which runs ping. And a storm outruns a run: the old order
+re-fetched the head of the list every run and never reached the tail (300 of 1,000 after four runs),
+so the ranking is by what a purge would take, details commit as they land, and the run stops itself
+at 24 minutes rather than letting systemd record a failed unit. **Concepts.** An alarm that fires on
+silence · order the work by what a delay would destroy. **Example.** The two simulation tables, and
+the test suite that would have pinged the real monitor green. **Contrast.** A hosted runner records
+its own failures; and on a feed that does not purge, an unfinished run is deferred work rather than
+a hole.
+
+## Ch 15 - The hover that was read as a rule · PR #44 · 7 Sep
+
+**Thesis.** Eight counties with a dash and no explanation a phone could reach, all of them the fault
+gate, all of them with the right sentence already computed into a `title`. The cause is a sentence
+in chapter 10: an argument about *where* to print a national sentence was read as a rule about
+*whether* to print a county one. Now in the open on every surface, one new wording in the whole
+change. **Concepts.** Reasoning about where, read later as a rule about whether · a test that
+restates what it guards. **Example.** The mirror test that stayed green while both halves drifted,
+and the mutation that proved the new one fails. **Contrast.** Light: the guard-quality lesson is the
+sibling of chapter 7b's shrinking guard, and it is the third in the series.
+
+## Ch 16 - Closing
+
+What the site can/cannot say (including the attribution limit, the ranked names that cannot be
+links, and the estimate score nobody can check); the full side-by-side table, the series'
+deliverable, now 21 rows; the settled-decisions table in
+plain language; "collect first, interpret later, keep the bytes"; glossary (15 boxes + 3
+borrowed).
