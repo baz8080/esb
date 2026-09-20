@@ -440,6 +440,40 @@ the customers actually in that county, and merging would attribute one county's
 outage to its neighbour. The cost is that a handful of physical incidents are
 counted once per county at national level.
 
+### The id ceiling is two numbers, not one (2026-09-20)
+
+`test_one_esb_event_is_one_row` asserted that no merged event carries 12 ids or
+more. On 2026-09-12 a planned job broke it at 21, and the test went red on a
+docs-only PR because it reads the live corpus. The feed moved, not the model:
+all 21 ids are `Planned`, share the start time 08:36Z, the estimate 16:00Z and
+the reason `IMPROVE THE NETWORK`, and sit at 20 distinct coordinates inside 1.7
+km around Ramstown, Co. Wexford. That is one staged network-improvement job
+published one id per feeder section, and `merge_events` folding it into one row
+is the behaviour this file argues for everywhere else. Their counts sum to 1,619
+customers for an event that never had more than 725 off, which is exactly the
+inflation the merge exists to remove.
+
+What had stopped holding is the ceiling, because the two kinds do not spread
+their ids alike. On the corpus to 2026-09-20:
+
+| | Events | Max ids | Next largest |
+|---|---:|---:|---:|
+| Faults | 1,907 | 7 | 6 |
+| Planned | 2,332 | 21 | 4 |
+
+So the assertion is now two: faults stay under 12, where the old number was
+already loose against a maximum of 7, and planned works go under 30. Raising the
+single ceiling to 30 instead was rejected - it would have taken the fault side,
+the half where a bad merge actually damages the grade, from 1.7× its observed
+maximum to 4.3×, and the check is only worth running while it is tight enough to
+trip.
+
+30 is headroom over one observed job, not a measured limit: nothing in the feed
+says how many sections ESB will stage at once, and a planned job half again the
+size of Ramstown is nobody's surprise. If it trips, the question is the same one
+asked here - is this one job or a merge that has started swallowing neighbours -
+and the answer is a re-cut number with its own row in this table, not a nudge.
+
 ## Day cells
 
 Coloured by magnitude, not presence: 66% of county-days carried at least one
