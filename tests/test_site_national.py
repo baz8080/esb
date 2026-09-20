@@ -97,8 +97,11 @@ class NationalCase(unittest.TestCase):
         self.assertGreater(len(merged), 0)
         ids = sum(len(o.ids) for o in self.outages)
         self.assertGreater(ids, len(self.outages))
-        # No event should swallow an implausible number of ids.
-        self.assertLess(max(len(o.ids) for o in self.outages), 12)
+        # Faults only: 12 is tight against a maximum of 7, and this is the half
+        # where an over-merge moves the grade. A planned ceiling loose enough to
+        # hold a staged job (21 ids at Ramstown) would catch nothing, and the
+        # merge key is one rule for both kinds. See notes/grading.md.
+        self.assertLess(max(len(o.ids) for o in self.faults), 12)
 
     def test_national_restoration_is_near_but_under_esbs_aim(self):
         """The grade's own scale, sanity-checked against lived experience.
