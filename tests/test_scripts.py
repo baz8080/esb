@@ -231,5 +231,44 @@ class TestBackupUnit(unittest.TestCase):
         self.assertIn("-o ServerAliveInterval=", ssh)
 
 
+class TestWrapper(unittest.TestCase):
+    """esb-wrapper.sh with stand-ins for id and sudo that record what sudo got."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.bin = Path(self._tmp.name)
+        (self.bin / "id").write_text("#!/bin/sh\necho 0\n")
+        (self.bin / "sudo").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$@" > "$RECORD.argv"\nenv > "$RECORD.env"\n'
+        )
+        for name in ("id", "sudo"):
+            (self.bin / name).chmod(0o755)
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def test_secrets_reach_sudo_in_the_environment_not_its_command_line(self):
+        secrets = {
+            "ESB_ALERT_WEBHOOK": "https://ntfy.sh/secret-topic",
+            "ESB_HEARTBEAT_URL": "https://hc-ping.com/secret-uuid",
+            "ESB_API_KEY": "secret-key",
+        }
+        record = self.bin / "record"
+        env = {**os.environ, **secrets, "RECORD": str(record),
+               "PATH": f"{self.bin}:{os.environ['PATH']}"}
+        subprocess.run(
+            ["sh", str(REPO / "scripts" / "esb-wrapper.sh"), "stats"],
+            env=env, check=True, timeout=30,
+        )
+        argv = Path(f"{record}.argv").read_text()
+        self.assertNotIn("secret", argv)
+        self.assertIn("stats", argv.splitlines())
+        [preserved] = [a for a in argv.splitlines() if a.startswith("--preserve-env=")]
+        passed = Path(f"{record}.env").read_text().splitlines()
+        for name, value in secrets.items():
+            self.assertIn(name, preserved)
+            self.assertIn(f"{name}={value}", passed)
+
+
 if __name__ == "__main__":
     unittest.main()
