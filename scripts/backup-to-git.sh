@@ -15,13 +15,20 @@ set -eu
 
 DATA_DIR="${ESB_DATA_DIR:-/var/lib/esb-outages}"
 
+notified=""
 notify() {
+    notified=1
     printf '%s\n' "$1" >&2
     if [ -n "${ESB_ALERT_WEBHOOK:-}" ]; then
         curl -fsS -m 10 -H "Title: ESB backup failure" \
             -d "$1" "$ESB_ALERT_WEBHOOK" >/dev/null 2>&1 || true
     fi
 }
+
+# set -e stops the script at any other failed step (a stale .git/index.lock
+# after a power cut, a full disk), which would otherwise exit unannounced.
+trap 'rc=$?; [ "$rc" -eq 0 ] || [ -n "$notified" ] || notify "ESB backup: failed (exit $rc), so what is new may not be offsite.
+See: journalctl -u esb-backup.service -n 20"' EXIT
 
 cd "$DATA_DIR" || {
     notify "ESB backup: $DATA_DIR does not exist. Nothing is being backed up."
