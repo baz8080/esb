@@ -413,6 +413,18 @@ class TestEventMerging(SiteModelCase):
         outages, _, _ = self.load()
         self.assertEqual(len(outages), 2)
 
+    def test_planned_sections_listed_before_they_begin_still_merge(self):
+        # A staged job announced in advance: neither record has a segment yet,
+        # and the envelope over nothing crashed the whole build.
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        common = {"outageType": "Planned", "startTime": "12/08/2026 09:00"}
+        self.observe(detail("1", **common), t)
+        self.observe(detail("2", **common), t)
+        self.poll(t, n_listed=2)
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 1)
+        self.assertEqual(outages[0].customers, 0)
+
     def test_the_merged_timeline_reports_customers_still_off(self):
         """Not one line per restored section, which says nothing to a reader."""
         self.split_fault()

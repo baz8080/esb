@@ -522,7 +522,8 @@ def _merge_group(members):
         ongoing=ongoing,
         est=est,
         first_est=first_est,
-        customers=max(c for _, _, c in segments),
+        # planned works listed before they begin have no segments at all
+        customers=max((c for _, _, c in segments), default=0),
         updates=_envelope_updates(members, segments, end, end_src, lead.planned),
         segments=segments,
     )
