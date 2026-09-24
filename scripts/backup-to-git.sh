@@ -29,6 +29,8 @@ notify() {
 # after a power cut, a full disk), which would otherwise exit unannounced.
 trap 'rc=$?; [ "$rc" -eq 0 ] || [ -n "$notified" ] || notify "ESB backup: failed (exit $rc), so what is new may not be offsite.
 See: journalctl -u esb-backup.service -n 20"' EXIT
+# The unit's timeout sends SIGTERM, which would otherwise skip the trap above.
+trap 'exit 143' TERM
 
 cd "$DATA_DIR" || {
     notify "ESB backup: $DATA_DIR does not exist. Nothing is being backed up."
@@ -71,8 +73,9 @@ $err"
 
 # The poll appends to raw/ while it holds this lock, so under it a commit never
 # carries a half-written line and the merge never meets a file mid-write. A
-# poll holds it for up to its unit's 26-minute backstop. Every git run under it
-# closes the descriptor, or a detached auto-gc would keep the lock afterwards.
+# poll holds it for up to its unit's backstop plus its stop timeout, 27.5
+# minutes. Every git run under it closes the descriptor, or a detached auto-gc
+# would keep the lock afterwards.
 lock() {
     exec 9>>.poll.lock
     if ! flock -w 1800 9; then

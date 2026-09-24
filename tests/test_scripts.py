@@ -1,5 +1,6 @@
 import os
 import re
+import signal
 import subprocess
 import tempfile
 import time
@@ -80,7 +81,6 @@ class TestBackup(BackupTestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("ESB backup: failed", result.stderr)
 
-
     def test_a_failed_fetch_carries_git_s_own_error(self):
         git(self.data, "remote", "set-url", "origin", str(self.origin) + "-gone")
         result = self.backup()
@@ -91,7 +91,6 @@ class TestBackup(BackupTestCase):
     def test_no_fixed_file_in_the_shared_tmp(self):
         # A leftover file there that the esb user cannot write failed every backup.
         self.assertNotIn("/tmp/", BACKUP.read_text())
-
 
     def test_it_waits_for_a_poll_to_finish_writing(self):
         env = {**GIT_ENV, "ESB_DATA_DIR": str(self.data)}
@@ -175,6 +174,23 @@ class TestBackup(BackupTestCase):
         self.assertIn('"b"', log)
         self.assertIn('"c"', log)
 
+    def test_the_unit_s_timeout_is_announced(self):
+        env = {**GIT_ENV, "ESB_DATA_DIR": str(self.data)}
+        env.pop("ESB_ALERT_WEBHOOK", None)
+        with poll_lock(self.data):
+            proc = subprocess.Popen(
+                ["sh", str(BACKUP)], env=env, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, text=True, start_new_session=True,
+            )
+            time.sleep(1)
+            # systemd signals the unit's whole control group.
+            os.killpg(proc.pid, signal.SIGTERM)
+            _, err = proc.communicate(timeout=30)
+        self.assertNotEqual(proc.returncode, 0)
+        self.assertIn("ESB backup: failed", err)
+        # The timeout is as likely to land on a stalled push as before it.
+        self.assertNotIn("before the push", err)
+
     def test_nothing_git_leaves_running_keeps_the_lock(self):
         # As a detached auto-gc would: every poll meanwhile would skip its run.
         hook = self.data / ".git" / "hooks" / "post-commit"
@@ -184,8 +200,21 @@ class TestBackup(BackupTestCase):
         with poll_lock(self.data) as acquired:
             self.assertTrue(acquired)
 
-
 class TestBackupUnit(unittest.TestCase):
+    unit = (REPO / "scripts" / "systemd" / "esb-backup.service").read_text()
+
+    def test_a_stalled_push_cannot_hold_the_unit_forever(self):
+        [timeout] = re.findall(r"^TimeoutStartSec=(\d+)$", self.unit, re.M)
+        [wait] = re.findall(r"flock -w (\d+)", BACKUP.read_text())
+        [connect] = re.findall(r"ConnectTimeout=(\d+)", self.unit)
+        [alive] = re.findall(r"ServerAliveInterval=(\d+)", self.unit)
+        [count] = re.findall(r"ServerAliveCountMax=(\d+)", self.unit)
+        dead_connection = int(connect) + int(alive) * int(count)
+        # A push retry waits for the lock a second time, and fetches and pushes
+        # twice; the rest is local git.
+        needed = 2 * int(wait) + 4 * dead_connection + 300
+        self.assertGreaterEqual(int(timeout), needed)
+
     def test_the_backup_outwaits_any_poll_systemd_allows(self):
         poll = (REPO / "scripts" / "systemd" / "esb-outages.service").read_text()
         [backstop] = re.findall(r"^TimeoutStartSec=(\d+)$", poll, re.M)
@@ -195,6 +224,11 @@ class TestBackupUnit(unittest.TestCase):
         [wait] = re.findall(r"flock -w (\d+)", BACKUP.read_text())
         # A poll holding it started before the wait did, so this is margin.
         self.assertGreaterEqual(int(wait), int(backstop) + int(stop) + 120)
+
+    def test_ssh_gives_up_on_a_dead_connection(self):
+        [ssh] = re.findall(r'GIT_SSH_COMMAND=([^"]*)"', self.unit)
+        self.assertIn("-o ConnectTimeout=", ssh)
+        self.assertIn("-o ServerAliveInterval=", ssh)
 
 
 if __name__ == "__main__":
