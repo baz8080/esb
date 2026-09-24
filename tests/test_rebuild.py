@@ -288,10 +288,14 @@ class TestRebuild(unittest.TestCase):
         code = self.poll(FakeClient(list_body=listed, details={fault["outageId"]: None}))
         self.assertEqual(code, alert.EXIT_SCHEMA_DRIFT)
         self.assertEqual(self.poll(FakeClient(list_body=[])), alert.EXIT_SCHEMA_DRIFT)
+        def runs(st):
+            return [tuple(r) for r in st.conn.execute("SELECT * FROM run ORDER BY run_id")]
+
         with Store(self.data_dir) as st:
-            before = st.snapshot()
+            before, runs_before = st.snapshot(), runs(st)
             st.rebuild()
             self.assertEqual(st.snapshot(), before)
+            self.assertEqual(runs(st), runs_before)
             self.assertEqual(
                 [r[0] for r in st.conn.execute("SELECT outage_id FROM outage")],
                 [fault["outageId"]],

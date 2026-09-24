@@ -601,12 +601,20 @@ class Store:
             # are all derivable from the raw log, and they are what tells you
             # whether the dormancy back-off is working.
             run_obs = observations.get(run_id, [])
-            fetched = sum(1 for o in run_obs if o.get("http_status") == 200)
+            fetched = sum(
+                1 for o in run_obs
+                if o.get("http_status") == 200 and isinstance(o.get("body"), dict)
+            )
             purged = sum(1 for o in run_obs if o.get("http_status") == 404)
             errors = sum(
                 1 for o in run_obs if o.get("http_status") not in (200, 404)
             )
-            listed = len(items) if isinstance(items, list) else None
+            # as poll counts them: object items only, and a list call that
+            # answered 200 with an unusable body still reached the feed
+            if isinstance(items, list):
+                listed = sum(isinstance(item, dict) for item in items)
+            else:
+                listed = 0 if rec.get("list_status") == 200 else None
             # Runs logged before the end record existed take the start line's
             # status and derived counters, which is all a rebuild ever had.
             end = ends.get(run_id, {})
