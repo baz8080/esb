@@ -139,6 +139,9 @@ COALESCE_WINDOW = timedelta(minutes=15)
 # One poll cycle plus the timer's jitter, used to decide whether two records
 # ending at different times ended at the same moment as far as we can tell.
 POLL_INTERVAL = timedelta(minutes=35)
+# Sections of one event either side of a county line sat at most 10.6 km apart
+# on the corpus to 24 September (Baltinglass); namesakes are counties apart.
+COUNTY_LINE_KM = 25.0
 
 # A fault returning to the same spot within this long of being restored is a
 # repeat, not a coincidence. Fifteen minutes is where the observed gaps cluster:
@@ -456,11 +459,31 @@ def merge_events(outages):
     """
     groups = defaultdict(list)
     for o in outages:
-        groups[(o.county, o.location, o.start, o.planned)].append(o)
+        groups[(o.county, *_event_key(o))].append(o)
     return sorted(
         (_merge_group(members) for members in groups.values()),
         key=lambda o: o.start,
     )
+
+
+def _event_key(o):
+    return o.location, o.start, o.planned
+
+
+def event_count(outages):
+    """ESB events, not rows: an event straddling a county line is merged per
+    county, so each page carries its own customers, but it is one event."""
+    groups = defaultdict(list)
+    for o in outages:
+        groups[_event_key(o)].append(o)
+    n = 0
+    for members in groups.values():
+        anchors = []
+        for o in members:
+            if not any(km(a.lat, a.lon, o.lat, o.lon) <= COUNTY_LINE_KM for a in anchors):
+                anchors.append(o)
+        n += len(anchors)
+    return n
 
 
 def _merge_group(members):
@@ -490,7 +513,9 @@ def _merge_group(members):
     # over the group instead can resurrect a stale figure from a sibling that
     # closed early, after ESB had already revised it down.
     est = ender.est
-    first_est = min((o.first_est for o in members if o.first_est), default=None)
+    # the first figure ESB named for any section, not the smallest
+    firsts = [(o.first_est_at, o.first_est) for o in members if o.first_est]
+    first_est_at, first_est = min(firsts) if firsts else (None, None)
     if ongoing and est is None:
         # A live event borrows a sibling's estimate rather than claiming ESB
         # published none. The stale-figure risk above is about closed records.
@@ -507,10 +532,12 @@ def _merge_group(members):
             (c for o in members for (s, e, c) in o.segments if s <= a and e >= b),
             default=0,
         )
-        if n and (not segments or segments[-1][2] != n):
-            segments.append((a, b, n))
-        elif n:
+        if not n:
+            continue
+        if segments and segments[-1][2] == n and segments[-1][1] == a:
             segments[-1] = (segments[-1][0], b, n)
+        else:
+            segments.append((a, b, n))
 
     segments = segments or lead.segments
     return lead._replace(
@@ -522,10 +549,32 @@ def _merge_group(members):
         ongoing=ongoing,
         est=est,
         first_est=first_est,
-        customers=max(c for _, _, c in segments),
+        first_est_at=first_est_at,
+        # planned works listed before they begin have no segments at all
+        customers=max((c for _, _, c in segments), default=0),
         updates=_envelope_updates(members, segments, end, end_src, lead.planned),
         segments=segments,
     )
+
+
+def _first_estimate(row, rows_changes, start):
+    """(when it was seen, the estimate) for the first estimate ESB published.
+
+    Read from the change log, not the updates: coalescing keeps only the last
+    state of a window, so an estimate revised inside it never reached them.
+    The same sanity rule as `est`: one before the start is not an estimate.
+    """
+    changes = [ch for ch in rows_changes if ch["field"] == "est_restore_time_utc"]
+    seen = [(
+        parse_utc(row["first_seen_utc"]),
+        changes[0]["old_value"] if changes else row["est_restore_time_utc"],
+    )]
+    seen += [(parse_utc(ch["observed_at_utc"]), ch["new_value"]) for ch in changes]
+    for at, value in seen:
+        est = parse_utc(value)
+        if est and est > start:
+            return at, est
+    return None
 
 
 def _envelope_updates(members, segments, end, end_src, planned):
@@ -537,11 +586,13 @@ def _envelope_updates(members, segments, end, end_src, planned):
     the envelope instead says the thing they want: how many customers were still
     without supply at each point, falling as sections came back.
     """
-    times = []
+    times, run_start = [], None
     for at in sorted({u.at for o in members for u in o.updates}):
-        if times and at - times[-1] <= COALESCE_WINDOW:
+        # anchored as in _build_updates, so a chain of close runs cannot slide
+        if times and at - run_start <= COALESCE_WINDOW:
             times[-1] = at
         else:
+            run_start = at
             times.append(at)
 
     kind = "Planned" if planned else "Fault"
@@ -599,6 +650,8 @@ class Outage(NamedTuple):
     # revisions come after the previous time has passed, so the share of
     # estimates kept has to be held to the first.
     first_est: datetime | None = None
+    # when it was first seen, which orders a merged event's members
+    first_est_at: datetime | None = None
     # ESB's own location string, "" where it gave none. `location` falls back
     # to the Census town for display, which no ranking of ESB's names may count.
     esb_location: str = ""
@@ -683,7 +736,8 @@ def _build_updates(row, rows_changes):
         )
 
     state = dict(initial)
-    updates = [snapshot(parse_utc(row["first_seen_utc"]), state)]
+    run_start = parse_utc(row["first_seen_utc"])
+    updates = [snapshot(run_start, state)]
     for ch in rows_changes:
         state[ch["field"]] = ch["new_value"]
         at = parse_utc(ch["observed_at_utc"])
@@ -691,10 +745,13 @@ def _build_updates(row, rows_changes):
         # inside a single run land seconds apart and record their changes
         # separately, so a plain Fault -> Restored transition would otherwise
         # read as two updates a few seconds apart. Polls are 30 minutes apart,
-        # so anything closer together than COALESCE_MINUTES came from one run.
-        if updates and (at - updates[-1].at) <= COALESCE_WINDOW:
+        # so anything closer together than COALESCE_WINDOW came from one run.
+        # Measured from the run's first change, or a chain of runs each under
+        # the window apart would slide it along and fold into one update.
+        if at - run_start <= COALESCE_WINDOW:
             updates[-1] = snapshot(max(at, updates[-1].at), state)
         else:
+            run_start = at
             updates.append(snapshot(at, state))
     # Collapse any consecutive states the rollback left identical (a field can
     # change and change back within one observation).
@@ -750,7 +807,8 @@ def load_outages(db_path, sa_index, now):
                 unplaced += 1
                 continue
             county, town_code, town = place
-            updates = _build_updates(row, changes.get(row["outage_id"], []))
+            row_changes = changes.get(row["outage_id"], [])
+            updates = _build_updates(row, row_changes)
 
             # `Restored` overwrites whatever the outage was, so the earliest
             # non-Restored type is the only record of what it started as.
@@ -762,40 +820,38 @@ def load_outages(db_path, sa_index, now):
             start = parse_utc(row["start_time_utc"])
             restore = parse_utc(row["restore_time_utc"])
             est = parse_utc(row["est_restore_time_utc"])
-            # the same sanity rule as `est` below: before the start is not an estimate
-            first_est = min(
-                (e for e in (parse_utc(u.est_restore) for u in updates if u.est_restore)
-                 if e > start),
-                default=None,
-            )
+            first_est_at, first_est = _first_estimate(row, row_changes, start) or (None, None)
             last_seen = parse_utc(row["last_seen_utc"]) or until
+            # An outage still listed when the collector last looked has not
+            # ended yet: the time it has been out so far is a lower bound, and
+            # scoring it as a restoration would count every fresh fault as a
+            # fast one.
+            ongoing = not restore and last_seen >= until - POLL_INTERVAL
             if restore:
                 end, end_src = restore, "restored"
-            elif est and start < est <= last_seen:
-                # No restore time, so the outage either vanished from the feed
-                # or is still running. ESB's own estimated restore time is by
-                # far the best stand-in: measured against the 648 outages whose
-                # true restore time we do know, it lands a median 0.7h late and
-                # overstates total time by 18%, where falling back to the last
-                # time the row was listed overstates it by 126% - ESB leaves
-                # restored outages sitting in the feed for hours.
+            elif est and start < est <= last_seen and (planned or not ongoing):
+                # No restore time, and the outage vanished from the feed. ESB's
+                # own estimated restore time is by far the best stand-in:
+                # measured against the 648 outages whose true restore time we
+                # do know, it lands a median 0.7h late and overstates total
+                # time by 18%, where falling back to the last time the row was
+                # listed overstates it by 126% - ESB leaves restored outages
+                # sitting in the feed for hours. A planned job still listed
+                # keeps its schedule too, because a listing is not an outage.
                 end, end_src = est, "estimated"
             else:
                 # No usable estimate: either there is none, or it lands before
                 # the outage started (which makes it nonsense rather than an
                 # estimate), or the outage stopped being listed before reaching
                 # it, which makes leaving the feed the tighter of the two bounds.
+                # A live fault lands here whatever it was estimated at: a passed
+                # estimate is a miss, not an ending.
                 end, end_src = max(start, last_seen), "listed"
             if end_src != "restored":
                 # Nothing can be *inferred* past the last poll, whatever the
                 # clock says. A restoreTime is ESB's own statement and stands
                 # even when it lands after the sighting that carried it.
                 end = min(end, until)
-            # An outage still listed when the collector last looked has not
-            # ended yet: the time it has been out so far is a lower bound, and
-            # scoring it as a restoration would count every fresh fault as a
-            # fast one.
-            ongoing = not restore and last_seen >= until - POLL_INTERVAL
 
             # The reported customer count as it changed over the outage's life,
             # so customer-minutes can be integrated rather than approximated.
@@ -839,6 +895,7 @@ def load_outages(db_path, sa_index, now):
                     # before the outage started is nonsense, not an estimate.
                     est=est if est and start < est else None,
                     first_est=first_est,
+                    first_est_at=first_est_at,
                     restored=bool(row["is_final"]),
                     ongoing=ongoing,
                     reason=row["planned_outage_reason"] or "",
@@ -906,11 +963,8 @@ def county_month(outages, county, customers, ym, now, until):
     fault_cm = planned_cm = 0.0
     faults = planned = 0
     customers_hit = 0
-    # The charter measure counts only outages that both started and finished
-    # inside the observed window: one that began earlier was judged already, and
-    # one still running has no restoration to judge. The window test alone
-    # cannot catch the second - a live outage ends at the horizon, and so does
-    # the window - so `ongoing` carries it.
+    # The charter measure judges a fault in the month it started, however long
+    # it ran, and never one still out: that has no restoration to judge.
     judged = judged_within = 0
     over_compensation = 0
     scoreable = []
@@ -930,7 +984,7 @@ def county_month(outages, county, customers, ym, now, until):
             faults += 1
             fault_cm += cm
             customers_hit += o.customers
-            if o.start >= lo and o.end <= hi:
+            if lo <= o.start < hi:
                 hours = o.minutes / 60.0
                 # Past 24 hours is true of an outage still out there: the clock
                 # it has already run is a lower bound, so this one still counts.

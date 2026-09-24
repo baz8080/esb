@@ -452,7 +452,10 @@ all along.
 The end of an ongoing outage is the collection horizon, and where the model
 ended it on a passed estimate (`end_src == "estimated"`) the span would stop at
 the estimate rather than at the last sighting, understating by up to the
-distance between them. The row already says when it began; the age of the data
+distance between them. (That was fixed in the model on 2026-09-24, and a live
+fault now ends at its last sighting: grading.md § A live fault runs to its last sighting.
+The span stays off the row regardless, because "so far" is the banner's job.)
+The row already says when it began; the age of the data
 is on the banner and in the month table's "to 5 Sep". Planned works keep their
 span because theirs measures the schedule, which is the one duration ESB
 actually states.
@@ -529,7 +532,7 @@ share holds ESB to its first word, because that is the promise a customer acted
 on. A row can therefore read "earlier than ESB estimated" for a fault the share
 counts as a miss; the tile's label says "first" so a reader can tell which
 question each answers. For a merged event the first estimate is the earliest
-any member named; the envelope timeline carries no estimates, so it is taken
+any member was seen to name; the envelope timeline carries no estimates, so it is taken
 per record before the merge.
 
 August, as the page shows it: nationally 59.2% of 982 first estimates were
@@ -541,6 +544,20 @@ Rejected: an all-time national figure in the footer beside the CML comparison.
 That paragraph argues the site's credibility against ESB's published numbers,
 and ESB publishes nothing to compare an estimate share with. The tiles carry it
 month by month, which is the clock everything else on the page runs on.
+
+### "First" was the smallest until 2026-09-24
+
+`first_est` was the `min()` of every estimate a record carried, and the merge
+took the `min()` across members. That is the first estimate only while ESB
+pushes times back. An estimate brought forward (18:00, then 15:00, restored at
+16:00) scored as a miss against a 15:00 nobody had been promised first.
+Caught by a retroactive review of `model.py`, and the figure is now the
+earliest-observed estimate, per record and then across the merged members.
+On the corpus to 24 September, 26 faults changed their first estimate and 6
+flipped from miss to kept. Nationally August went from 59.2% to 59.6% and
+September from 58.3% to 58.7%. Five county-months moved, the most being
+Offaly's September (55.6% to 77.8%, on 9 estimates). The 63.6% in the table
+above was measured under the old rule.
 
 ## The county page ranks its fault spots, and hands out its rows - 2026-09-06
 

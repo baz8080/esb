@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
@@ -178,9 +179,11 @@ class TestEndTime(SiteModelCase):
         self.assertEqual(o.end, datetime(2026, 8, 10, 10, 45, tzinfo=UTC))
 
     def test_estimate_is_used_when_it_precedes_the_last_sighting(self):
-        # Seen at 09:30 and 14:00 UTC, estimated back at 13:00 Dublin = 12:00 UTC.
+        # Seen at 09:30 and 14:00 UTC, estimated back at 13:00 Dublin = 12:00 UTC,
+        # and gone from the feed by the next poll.
         self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
         self.observe(detail("1"), datetime(2026, 8, 10, 14, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 10, 15, 0, tzinfo=UTC))
         outages, _, _ = self.load()
         o = outages[0]
         self.assertEqual(o.end_src, "estimated")
@@ -231,6 +234,27 @@ class TestUpdates(SiteModelCase):
         self.store.apply_detail(iso(later + timedelta(seconds=4)), normalize_detail(body))
         outages, _, _ = self.load()
         self.assertEqual(len(outages[0].updates), 2)
+
+    def test_runs_close_together_do_not_slide_the_window(self):
+        # Hand-run polls ten minutes apart: 00 and 10 are one run's worth,
+        # 20 and 30 the next. The window used to slide and fold all four.
+        t = datetime(2026, 8, 10, 8, tzinfo=UTC)
+        self.observe(detail("1", numCustAffected=100), t)
+        later = t + timedelta(hours=2)
+        for i, n in enumerate((90, 80, 70, 60)):
+            self.observe(detail("1", numCustAffected=n), later + timedelta(minutes=10 * i))
+        outages, _, _ = self.load()
+        self.assertEqual([u.customers for u in outages[0].updates], [100, 80, 60])
+
+    def test_the_merged_timeline_does_not_slide_the_window_either(self):
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
+        at = [t + timedelta(minutes=10 * i) for i in range(4)]
+        members = [
+            SimpleNamespace(updates=[SimpleNamespace(at=a)]) for a in at
+        ]
+        segments = [(a, a + timedelta(minutes=10), 400 - 100 * i) for i, a in enumerate(at)]
+        updates = model._envelope_updates(members, segments, at[-1], "listed", False)
+        self.assertEqual([u.at for u in updates], [at[1], at[3]])
 
     def test_customer_count_changes_are_updates(self):
         t = datetime(2026, 8, 10, 10, tzinfo=UTC)
@@ -413,6 +437,39 @@ class TestEventMerging(SiteModelCase):
         outages, _, _ = self.load()
         self.assertEqual(len(outages), 2)
 
+    def test_planned_sections_listed_before_they_begin_still_merge(self):
+        # A staged job announced in advance: neither record has a segment yet,
+        # and the envelope over nothing crashed the whole build.
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        common = {"outageType": "Planned", "startTime": "12/08/2026 09:00"}
+        self.observe(detail("1", **common), t)
+        self.observe(detail("2", **common), t)
+        self.poll(t, n_listed=2)
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 1)
+        self.assertEqual(outages[0].customers, 0)
+
+    def test_the_envelope_is_not_bridged_across_an_hour_nobody_was_off(self):
+        t = datetime(2026, 8, 10, 10, 0, tzinfo=UTC)
+        common = {"location": "Glasnevin", "startTime": "10/08/2026 11:00"}
+        self.observe(detail("1", numCustAffected=100, **common), t)
+        self.observe(
+            detail("1", numCustAffected=100, outageType="Restored",
+                   restoreTime="10/08/2026 12:00", **common),
+            t + timedelta(hours=1),
+        )
+        self.observe(detail("2", numCustAffected=0, **common), t)
+        self.observe(detail("2", numCustAffected=100, **common), t + timedelta(hours=2))
+        self.observe(
+            detail("2", numCustAffected=100, outageType="Restored",
+                   restoreTime="10/08/2026 14:00", **common),
+            t + timedelta(hours=3),
+        )
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 1)
+        day = (t, t + timedelta(days=1))
+        self.assertEqual(outages[0].customer_minutes(*day), 100 * 120)
+
     def test_the_merged_timeline_reports_customers_still_off(self):
         """Not one line per restored section, which says nothing to a reader."""
         self.split_fault()
@@ -466,6 +523,28 @@ class TestEventMerging(SiteModelCase):
         outages, _, _ = self.load()
         self.assertEqual({o.county for o in outages}, {"Wicklow", "Dublin"})
         self.assertEqual(len(outages), 2)
+
+    def test_the_national_row_counts_a_county_line_event_once(self):
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        common = {"location": "Little Bray", "startTime": "10/08/2026 10:00"}
+        self.observe(detail("1", point={"c": "53.20873,-6.12507"}, **common), t)
+        self.observe(detail("2", point={"c": "53.22514,-6.13477"}, **common), t)
+        self.poll(t + timedelta(days=2))
+        outages, _, index = self.load()
+        data = render.build(outages, index, NOW, self.until)[0]
+        faults, planned = data["national"]["2026-08"][1:3]
+        self.assertEqual((faults, planned), (1, 0))
+
+    def test_namesakes_in_distant_counties_are_two_events(self):
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        common = {"location": "Newtown", "startTime": "10/08/2026 10:00"}
+        self.observe(detail("1", point={"c": "53.36858,-6.27098"}, **common), t)
+        self.observe(detail("2", point={"c": "51.89851,-8.47561"}, **common), t)
+        self.poll(t + timedelta(days=2))
+        outages, _, index = self.load()
+        self.assertEqual({o.county for o in outages}, {"Dublin", "Cork"})
+        data = render.build(outages, index, NOW, self.until)[0]
+        self.assertEqual(data["national"]["2026-08"][1], 2)
 
     def test_an_outage_seen_only_after_it_ended(self):
         """6.4% of events are first seen already Restored: a short outage that
@@ -776,6 +855,40 @@ class TestOngoingOutages(SiteModelCase):
         self.assertFalse(outages[0].ongoing)
         self.assertIsNotNone(self.judged(outages, index)["within"])
 
+    def test_a_live_outage_past_its_estimate_runs_to_the_horizon(self):
+        # Estimated back at 13:00 Dublin on the 9th and still listed the next
+        # morning: out for 25.5 hours, not the 5 its estimate would say.
+        self.observe(
+            detail("1", startTime="09/08/2026 08:00", estRestoreTime="09/08/2026 13:00"),
+            datetime(2026, 8, 9, 7, 30, tzinfo=UTC),
+        )
+        horizon = datetime(2026, 8, 10, 8, 30, tzinfo=UTC)
+        self.observe(
+            detail("1", startTime="09/08/2026 08:00", estRestoreTime="09/08/2026 13:00"),
+            horizon,
+        )
+        self.poll(horizon, n_listed=1)
+        outages, _, index = self.load()
+        o = outages[0]
+        self.assertTrue(o.ongoing)
+        self.assertEqual((o.end, o.end_src), (horizon, "listed"))
+        self.assertEqual(o.minutes, 25.5 * 60)
+        self.assertEqual(self.judged(outages, index)["over_compensation"], 1)
+
+    def test_a_live_fault_missed_by_the_last_run_ends_at_its_sighting(self):
+        # Listed at 09:30, absent from the 10:00 run: still inside the ongoing
+        # grace, but nobody saw it out at 10:00.
+        seen = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(
+            detail("1", startTime="10/08/2026 08:00", estRestoreTime="10/08/2026 09:00"),
+            seen,
+        )
+        self.poll(seen, n_listed=1)
+        self.poll(seen + timedelta(minutes=30), n_listed=0)
+        o = self.load()[0][0]
+        self.assertTrue(o.ongoing)
+        self.assertEqual((o.end, o.end_src), (seen, "listed"))
+
     def test_a_long_live_outage_still_counts_against_compensation(self):
         """Past 24 hours is true of an outage that has not ended yet."""
         self.observe(
@@ -786,6 +899,34 @@ class TestOngoingOutages(SiteModelCase):
         outages, _, index = self.load()
         self.assertTrue(outages[0].ongoing)
         self.assertEqual(self.judged(outages, index)["over_compensation"], 1)
+
+
+class TestJudgedInTheMonthItStarted(SiteModelCase):
+    def month(self, outages, index, ym, now):
+        return model.county_month(
+            outages, "Dublin", index.customers["Dublin"], ym, now, self.until
+        )
+
+    def test_a_fault_across_the_month_end_is_judged_in_the_month_it_began(self):
+        # 7 hours across midnight into September: a miss, and it was judged in
+        # neither month, which flattered the grade with exactly the long ones.
+        self.observe(
+            detail("1", outageType="Restored", startTime="31/08/2026 23:00",
+                   estRestoreTime="01/09/2026 02:00", restoreTime="01/09/2026 06:00"),
+            datetime(2026, 9, 1, 5, 30, tzinfo=UTC),
+        )
+        now = datetime(2026, 9, 10, 6, tzinfo=UTC)
+        self.poll(now)
+        outages, _, index = self.load(now)
+        august = self.month(outages, index, "2026-08", now)
+        september = self.month(outages, index, "2026-09", now)
+        self.assertEqual(august["within"], 0.0)
+        self.assertEqual(august["est_kept"], None)
+        self.assertEqual(august["estimates"], 1)
+        self.assertEqual((september["faults"], september["within"]), (1, None))
+        national = render.build(outages, index, now, self.until)[0]["national"]
+        self.assertEqual(national["2026-08"][5], 0.0)
+        self.assertIsNone(national["2026-09"][5])
 
 
 class TestShardMonths(SiteModelCase):
@@ -1042,6 +1183,54 @@ class TestKeptEstimate(SiteModelCase):
         self.assertEqual(o.first_est, datetime(2026, 8, 10, 12, 0, tzinfo=UTC))
         self.assertEqual(o.est, datetime(2026, 8, 10, 16, 0, tzinfo=UTC))
         self.assertFalse(o.kept_estimate())
+
+    def test_an_estimate_brought_forward_is_not_the_first(self):
+        # Named 18:00, brought forward to 15:00, back at 16:00: the first held.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1", estRestoreTime="10/08/2026 18:00"), t)
+        self.observe(detail("1", estRestoreTime="10/08/2026 15:00"), t + timedelta(hours=1))
+        self.observe(
+            detail("1", outageType="Restored", estRestoreTime="10/08/2026 15:00",
+                   restoreTime="10/08/2026 16:00"),
+            t + timedelta(hours=6),
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        o = self.load()[0][0]
+        self.assertEqual(o.first_est, datetime(2026, 8, 10, 17, 0, tzinfo=UTC))
+        self.assertTrue(o.kept_estimate())
+
+    def test_an_estimate_revised_within_one_update_is_still_the_first(self):
+        # A hand-run poll ten minutes later: one update, two estimates.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1", estRestoreTime="10/08/2026 18:00"), t)
+        self.observe(detail("1", estRestoreTime="10/08/2026 15:00"), t + timedelta(minutes=10))
+        self.observe(
+            detail("1", outageType="Restored", estRestoreTime="10/08/2026 15:00",
+                   restoreTime="10/08/2026 16:00"),
+            t + timedelta(hours=6),
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        o = self.load()[0][0]
+        self.assertEqual(o.first_est, datetime(2026, 8, 10, 17, 0, tzinfo=UTC))
+        self.assertTrue(o.kept_estimate())
+
+    def test_a_merged_event_holds_esb_to_the_first_estimate_it_saw(self):
+        # The later section carries the smaller figure; ESB named 18:00 first.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1", estRestoreTime="10/08/2026 18:00"), t)
+        self.observe(
+            detail("2", numCustAffected=40, estRestoreTime="10/08/2026 15:00"),
+            t + timedelta(hours=1),
+        )
+        for i in ("1", "2"):
+            self.observe(
+                detail(i, outageType="Restored", restoreTime="10/08/2026 16:00"),
+                t + timedelta(hours=6),
+            )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        outages = self.load()[0]
+        self.assertEqual(len(outages), 1)
+        self.assertEqual(outages[0].first_est, datetime(2026, 8, 10, 17, 0, tzinfo=UTC))
 
     def test_nothing_to_hold_it_to(self):
         self.assertIsNone(self.kept(estRestoreTime=""))

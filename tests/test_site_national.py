@@ -113,7 +113,7 @@ class NationalCase(unittest.TestCase):
         judged = [
             o
             for o in self.faults
-            if o.start >= self.lo and o.end <= self.hi and not o.ongoing
+            if self.lo <= o.start < self.hi and not o.ongoing
         ]
         seen = sum(o.customers for o in judged)
         within = sum(
@@ -129,7 +129,7 @@ class NationalCase(unittest.TestCase):
         """ESB names a restore time on nearly every fault and keeps most of
         them. A share far outside this band means the estimate or the restore
         time is being read wrongly, not that ESB changed overnight."""
-        judged = [o for o in self.started if o.end <= self.hi and not o.ongoing]
+        judged = [o for o in self.started if not o.ongoing]
         share, estimates = model.estimate_share(judged)
         restored = sum(1 for o in judged if o.end_src == "restored")
         self.assertGreater(estimates / restored, 0.9, "most restored faults carry an estimate")

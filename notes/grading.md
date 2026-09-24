@@ -151,8 +151,8 @@ sentences, mirrored in site.html as `ungradedReason`:
   graded" - July can never reach five days and the month is over, so promising a
   date would be a lie
 - **too few faults**: unchanged, and now naming its month
-- **nothing judged**: "No fault in August 2026 was restored in the month it
-  started, so there is nothing to grade"
+- **nothing judged**: "No fault that started in August 2026 has been restored
+  yet, so there is nothing to grade" (reworded 2026-09-24, below)
 
 That fourth one is the correction below, and the reason there are three gates in
 the table above rather than two.
@@ -194,6 +194,29 @@ and read as legal boilerplate. The day-gate half is split out as `dayGateReason`
 because the two visible notices are national and have no county whose faults they
 could count; handing them a placeholder count is how the argument went unread in
 the first place.
+
+#### A fault is judged in the month it started (2026-09-24)
+
+`judged` required a fault to start *and* end inside the month's window, and the
+comment above it claimed that "one that began earlier was judged already". It
+was not: a fault from 31 August 22:00 to 1 September 05:00 failed August's test
+because it ended after the month, and September's because it began before it.
+It was judged nowhere. The faults that cross midnight at a month's end are the
+long ones, so the ones dropped were disproportionately the misses, and the bias
+ran towards a better grade. Caught by a retroactive review of `model.py`.
+
+The rule is now `lo <= start < hi and not ongoing`, in `county_month` and the
+national row alike: a fault belongs to the month it started, however long it
+ran. That is also what "the month it started" in the third gate's sentence
+already claimed. On the corpus to 24 September, three faults move. Dublin's
+August drops from 87.7% to 85.4% (no letter changes), national August from 89.1%
+to 88.6%, and one fault from July's three observed hours is now judged in July,
+which the day gate keeps ungraded anyway. The third-gate sentence now reads
+"No fault that started in X has been restored yet". Under the new rule that is
+the ordinary way to reach it. Two others exist. Every fault counted in the
+month began before it, which leaves the sentence true if empty. Or every
+restored one reported zero customers, which would make it false; no fault has,
+of 2,003 to 24 September.
 
 #### The other two gates were hover-only (2026-09-07)
 
@@ -440,6 +463,20 @@ the customers actually in that county, and merging would attribute one county's
 outage to its neighbour. The cost is that a handful of physical incidents are
 counted once per county at national level.
 
+That cost is no longer paid (2026-09-24, issue #47). The national row's fault and
+planned counts are `model.event_count`, which counts distinct
+`(location, start, planned)` within `COUNTY_LINE_KM` (25 km) of each other, so a
+county-line event is one event nationally and still one row per county. The
+distance guards against namesakes: the widest real county-line event was 10.6 km
+(Baltinglass), and two faults called "Newtown" starting the same minute in
+distant counties are two events. By 24 September there were 17 of them (15 faults, 2
+planned), and the national counts fell by 9 faults and 2 planned in August and
+6 faults in September. Customer figures were never double-counted, because each
+side carries its own customers, so nothing else in the national row moves. The
+estimate share still counts one estimate per county row: a split event is two
+statements to two sets of customers, and the sections can carry different
+estimates.
+
 ### The id ceiling is the fault side only (2026-09-20)
 
 `test_one_esb_event_is_one_row` asserted that no merged event carries 12 ids or
@@ -574,6 +611,32 @@ The question is whether the outage was *over*, not whether ESB said so.
 Kept deliberately: an ongoing outage past 24 hours still counts against the
 compensation threshold. The time it has already run is a lower bound, so "this
 has been out more than a day" is true whatever happens next.
+
+#### A live fault runs to its last sighting, not to its estimate (2026-09-24)
+
+That lower bound was not what the model computed. The end was chosen before
+`ongoing` was decided, so a fault still listed with an estimate that had
+already passed took the ordinary "estimated" branch and ended at the estimate:
+Carrigaline, five hours past its 00:15 estimate at the 5 September horizon, was
+five hours short in its customer-minutes and day cells, and a live fault whose
+estimate fell inside its first day could never reach the 24-hour count the
+paragraph above promises. Nobody chose that. The estimate stand-in exists
+for a fault that *left the feed* without a restore time, and a live fault has
+not left it. Caught by a retroactive review of `model.py`.
+
+`ongoing` is now decided first, and a live fault with no restore time never
+takes the estimate branch: it ends at its last sighting (`end_src` "listed",
+which the timeline shows as "Last seen still out"). For a fault listed in the
+final run that is the horizon. The first cut ended every live fault at the
+horizon itself, and review caught that `ongoing` allows a fault missing from
+the final run (it has a poll cycle's grace), which would then be stretched to a
+time nobody saw it out. The row wording was already keyed on `ongoing` and does
+not change. Planned works keep their schedule: a job still listed past its
+scheduled end (Kilcoole, listed on 24 September two weeks after its 10
+September end) is a listing, not an observed outage, and running it on would
+paint two weeks of planned days. Whether that is right is issue #49. At the 24 September horizon no figure moves, because the
+two live faults were both inside their estimates. It bites whenever one is not,
+which in a storm is most of them.
 
 ### The peak is the highest count while the outage was live
 
