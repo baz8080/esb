@@ -62,5 +62,17 @@ class TestBackup(BackupTestCase):
         self.assertIn("ESB backup: failed", result.stderr)
 
 
+    def test_a_failed_fetch_carries_git_s_own_error(self):
+        git(self.data, "remote", "set-url", "origin", str(self.origin) + "-gone")
+        result = self.backup()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("git fetch failed", result.stderr)
+        self.assertIn("does not appear to be a git repository", result.stderr)
+
+    def test_no_fixed_file_in_the_shared_tmp(self):
+        # A leftover file there that the esb user cannot write failed every backup.
+        self.assertNotIn("/tmp/", BACKUP.read_text())
+
+
 if __name__ == "__main__":
     unittest.main()

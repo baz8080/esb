@@ -65,22 +65,22 @@ fi
 # Pull in anything pushed to origin from elsewhere first, so a rejected
 # non-fast-forward push doesn't strand local commits until someone notices.
 branch="$(git rev-parse --abbrev-ref HEAD)"
-if ! git fetch -q origin 2>/tmp/esb-backup-fetch.err; then
+if ! err=$(git fetch -q origin 2>&1); then
     notify "ESB backup: git fetch failed, so it's unknown whether origin has
 commits this checkout lacks. Data is committed locally but not pushed.
 
-$(cat /tmp/esb-backup-fetch.err)"
+$err"
     exit 1
 fi
 
 if git rev-parse --verify -q "origin/$branch" >/dev/null &&
-    ! git -c user.name="esb-collector" -c user.email="esb-collector@localhost" \
-        merge -q --no-edit "origin/$branch" 2>/tmp/esb-backup-merge.err; then
+    ! err=$(git -c user.name="esb-collector" -c user.email="esb-collector@localhost" \
+        merge -q --no-edit "origin/$branch" 2>&1); then
     git merge --abort 2>/dev/null || true
     notify "ESB backup: origin has commits that conflict with $DATA_DIR.
 Resolve manually, then re-run this script.
 
-$(cat /tmp/esb-backup-merge.err)"
+$err"
     exit 1
 fi
 
@@ -88,12 +88,12 @@ fi
 # push may have failed and left commits sitting only on this disk; treating
 # "nothing to commit" as "nothing to do" would report success forever while the
 # data was never actually offsite. Pushing an up-to-date branch is a cheap no-op.
-if ! git push -q origin HEAD 2>/tmp/esb-backup-push.err; then
+if ! err=$(git push -q origin HEAD 2>&1); then
     notify "ESB backup: git push failed. The data is committed locally but is
 NOT offsite, so an SD card failure would still lose everything since the last
 successful push.
 
-$(cat /tmp/esb-backup-push.err)"
+$err"
     exit 1
 fi
 
