@@ -1,10 +1,13 @@
+import contextlib
 import copy
+import io
 import os
 import signal
 import sqlite3
 import tempfile
 import unittest
 import unittest.mock
+import urllib.error
 from pathlib import Path
 
 from esb_outages import alert
@@ -400,6 +403,28 @@ class TestWebhookAlerting(unittest.TestCase):
         ):
             self.assertFalse(alert.notify("hello"))
 
+    def test_a_url_missing_its_scheme_does_not_raise(self):
+        with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": "ntfy.sh/topic"}):
+            self.assertEqual(alert.fail("drift", alert.EXIT_SCHEMA_DRIFT), alert.EXIT_SCHEMA_DRIFT)
+
+
+    def test_a_failed_delivery_does_not_print_the_url(self):
+        for url in (
+            "hc-ping.com/0f3c9a1e-secret",
+            # a stray space: http.client quotes the path alone
+            "http://127.0.0.1:9/0f3c9a1e-secret x",
+            "http://127.0.0.1:9/0f3c9a1e-secret",
+        ):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertFalse(alert._deliver("heartbeat ping", url))
+            self.assertIn("heartbeat ping failed: ", err.getvalue())
+            self.assertNotIn("secret", err.getvalue(), url)
+
+    def test_a_reason_given_as_text_is_named_by_its_error(self):
+        error = urllib.error.URLError("unknown url type: secret")
+        self.assertEqual(alert._describe(error), "URLError")
+
 
 class TestHeartbeat(PollTestCase):
     """The ping a dead-man's monitor waits for: sent whenever a run reached
@@ -426,6 +451,16 @@ class TestHeartbeat(PollTestCase):
     def test_a_drifted_run_still_pings(self):
         # the list is on disk and the webhook carries the drift; silence would
         # raise a second alarm for a collector that is running
+        body = dict(detail("fault"))
+        body["brandNewField"] = "surprise"
+        client = FakeClient(
+            list_body=make_list(detail("fault")), details={body["outageId"]: body}
+        )
+        self.assertEqual(self.poll(client), alert.EXIT_SCHEMA_DRIFT)
+        self.assertEqual(self.paths(), ["/hook"])
+
+    def test_a_mistyped_webhook_does_not_cost_the_ping(self):
+        os.environ["ESB_ALERT_WEBHOOK"] = "ntfy.sh/topic"
         body = dict(detail("fault"))
         body["brandNewField"] = "surprise"
         client = FakeClient(

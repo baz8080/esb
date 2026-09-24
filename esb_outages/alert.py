@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 EXIT_OK = 0
@@ -125,15 +126,31 @@ def partial_banner(failed: int, attempted: int, errors: list[str]) -> str:
     )
 
 
-def _deliver(request, what: str) -> bool:
+def _deliver(what: str, url: str, data: bytes | None = None, headers=None) -> bool:
     """Best effort, in one place: a failure to report must never mask the
     problem being reported or change the exit code."""
     try:
+        # Built in here: a URL missing its scheme raises from the constructor.
+        request = urllib.request.Request(url, data=data, headers=headers or {})
         urllib.request.urlopen(request, timeout=10).close()
         return True
     except Exception as exc:
-        print(f"warning: {what} failed: {exc}", file=sys.stderr)
+        print(f"warning: {what} failed: {_describe(exc)}", file=sys.stderr)
         return False
+
+
+def _describe(exc: Exception) -> str:
+    # Never str(exc): the URL is the secret (an ntfy topic, a ping id), and
+    # urllib and http.client quote it, or its path, in their messages.
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTP {exc.code}"
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    if isinstance(reason, OSError):
+        return f"{type(reason).__name__}: {reason.strerror or 'no detail'}"
+    if isinstance(reason, ValueError):
+        return f"{type(reason).__name__} (check the URL's form)"
+    # A URLError's reason can be a bare string, which may quote the URL.
+    return type(reason if isinstance(reason, Exception) else exc).__name__
 
 
 def notify(message: str) -> bool:
@@ -146,8 +163,7 @@ def notify(message: str) -> bool:
     else:
         data = json.dumps({"content": message, "text": message}).encode("utf-8")
         headers = {"Content-Type": "application/json"}
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    return _deliver(req, "alert webhook")
+    return _deliver("alert webhook", url, data, headers)
 
 
 def heartbeat() -> bool:
@@ -160,7 +176,7 @@ def heartbeat() -> bool:
     url = os.environ.get("ESB_HEARTBEAT_URL")
     if not url:
         return False
-    return _deliver(url, "heartbeat ping")
+    return _deliver("heartbeat ping", url)
 
 
 def fail(message: str, code: int) -> int:
