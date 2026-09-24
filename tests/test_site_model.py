@@ -1588,3 +1588,17 @@ class TestTheBuildClock(unittest.TestCase):
         self.assertEqual(parse_now("2026-09-24T10:00:00+01:00"), expect)
         self.assertEqual(parse_now("2026-09-24T09:00:00Z"), expect)
         self.assertEqual(parse_now("2026-09-24T09:00:00"), expect)
+
+
+class TestTheAppScript(unittest.TestCase):
+    """CI runs no JS, so what matters about these call sites is held as text."""
+
+    page = (Path(model.__file__).parent / "site.html").read_text()
+
+    def test_no_name_is_spliced_into_an_inline_handler(self):
+        self.assertNotIn("onclick=\"go(\\''", self.page)
+        self.assertIn('data-county="\' + esc(r.name)', self.page)
+
+    def test_a_malformed_link_cannot_throw_out_of_route(self):
+        route = self.page.split("function route(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("try { curCounty = m ? decodeURIComponent(m[1])", route)

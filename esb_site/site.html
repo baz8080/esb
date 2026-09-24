@@ -330,7 +330,7 @@ function renderOverview() {
 
   document.getElementById("list").innerHTML = rows.map(function (r) {
     var m = r.m, g = m ? m[1] : null;
-    return '<div class="place"><div class="row" onclick="go(\'' + esc(r.name) + '\')">' +
+    return '<div class="place"><div class="row" data-county="' + esc(r.name) + '">' +
       '<div class="cname">' + gradeChip(g, m ? m[4] : 0) +
         '<a href="c/' + slug(r.name) + '.html" onclick="event.preventDefault()">' + esc(r.name) + "</a></div>" +
       '<div class="bar">' + bar(m ? m[0] : "", curMonth) + "</div>" +
@@ -508,7 +508,8 @@ function setMonth(m) { curMonth = m; render(); }
 
 function route() {
   var m = location.hash.match(/^#county\/(.+)$/);
-  curCounty = m ? decodeURIComponent(m[1]) : null;
+  // a hand-edited or truncated link falls back to the overview, not a throw
+  try { curCounty = m ? decodeURIComponent(m[1]) : null; } catch (e) { curCounty = null; }
   if (curCounty && !D.stats[curCounty]) curCounty = null;
   if (curCounty) loadCounty(curCounty, render);
   render();
@@ -570,6 +571,12 @@ function boot() {
   bindDayCaption();
   bindMonthReveal();
   addEventListener("hashchange", route);
+  // The name travels in an attribute, not in an inline handler's JS string,
+  // where HTML escaping is undone before the script sees it.
+  document.getElementById("list").addEventListener("click", function (e) {
+    var row = e.target.closest(".row[data-county]");
+    if (row) go(row.getAttribute("data-county"));
+  });
   route();
 }
 boot();
