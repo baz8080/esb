@@ -167,14 +167,18 @@ class TestRebuild(unittest.TestCase):
                     "outage_id": body["outageId"], "http_status": 200, "body": body,
                 }, sort_keys=True) + "\n")
 
-        # the earlier run's own line was lost, so its observation is orphaned
-        write("a", "2026-07-31T20:00:00Z", fault, with_run=False)
-        write("b", "2026-07-31T23:40:00Z", done)
-        with Store(self.data_dir) as st:
-            st.rebuild()
-            row = st.conn.execute("SELECT * FROM outage").fetchone()
-        self.assertEqual((row["outage_type"], row["is_final"]), ("Restored", 1))
-        self.assertEqual(row["last_seen_utc"], "2026-07-31T23:40:00Z")
+        # the earlier run's own line was lost, so its observation is orphaned;
+        # the later run starting in the same second must still win
+        for at in ("2026-07-31T20:00:00Z", "2026-07-31T23:40:00Z"):
+            for f in raw.glob("*.jsonl"):
+                f.unlink()
+            write("a", at, fault, with_run=False)
+            write("b", "2026-07-31T23:40:00Z", done)
+            with Store(self.data_dir) as st:
+                st.rebuild()
+                row = st.conn.execute("SELECT * FROM outage").fetchone()
+            self.assertEqual((row["outage_type"], row["is_final"]), ("Restored", 1), at)
+            self.assertEqual(row["last_seen_utc"], "2026-07-31T23:40:00Z")
 
     def test_a_truncated_final_line_does_not_destroy_the_history(self):
         """A power cut mid-append, or a backup snapshotting mid-write.

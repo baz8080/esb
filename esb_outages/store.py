@@ -580,13 +580,14 @@ class Store:
             for run_id, records in observations.items()
             if run_id not in run_ids
         ]
+        # On a tie the orphan goes first: its run started no later than it.
         timeline = sorted(
-            [(rec["started_at"], rec, None) for rec in run_records]
-            + [(at, None, records) for at, records in orphans],
-            key=lambda event: event[0],
+            [(rec["started_at"], 1, rec, None) for rec in run_records]
+            + [(at, 0, None, records) for at, records in orphans],
+            key=lambda event: event[:2],
         )
 
-        for _, rec, orphaned in timeline:
+        for _, _, rec, orphaned in timeline:
             if orphaned is not None:
                 for obs in orphaned:
                     n_obs += apply_observation(obs)
