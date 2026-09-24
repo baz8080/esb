@@ -1055,6 +1055,39 @@ class TestKeptEstimate(SiteModelCase):
         self.assertEqual(o.est, datetime(2026, 8, 10, 16, 0, tzinfo=UTC))
         self.assertFalse(o.kept_estimate())
 
+    def test_an_estimate_brought_forward_is_not_the_first(self):
+        # Named 18:00, brought forward to 15:00, back at 16:00: the first held.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1", estRestoreTime="10/08/2026 18:00"), t)
+        self.observe(detail("1", estRestoreTime="10/08/2026 15:00"), t + timedelta(hours=1))
+        self.observe(
+            detail("1", outageType="Restored", estRestoreTime="10/08/2026 15:00",
+                   restoreTime="10/08/2026 16:00"),
+            t + timedelta(hours=6),
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        o = self.load()[0][0]
+        self.assertEqual(o.first_est, datetime(2026, 8, 10, 17, 0, tzinfo=UTC))
+        self.assertTrue(o.kept_estimate())
+
+    def test_a_merged_event_holds_esb_to_the_first_estimate_it_saw(self):
+        # The later section carries the smaller figure; ESB named 18:00 first.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1", estRestoreTime="10/08/2026 18:00"), t)
+        self.observe(
+            detail("2", numCustAffected=40, estRestoreTime="10/08/2026 15:00"),
+            t + timedelta(hours=1),
+        )
+        for i in ("1", "2"):
+            self.observe(
+                detail(i, outageType="Restored", restoreTime="10/08/2026 16:00"),
+                t + timedelta(hours=6),
+            )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        outages = self.load()[0]
+        self.assertEqual(len(outages), 1)
+        self.assertEqual(outages[0].first_est, datetime(2026, 8, 10, 17, 0, tzinfo=UTC))
+
     def test_nothing_to_hold_it_to(self):
         self.assertIsNone(self.kept(estRestoreTime=""))
         self.observe(detail("2", location="Marino"), datetime(2026, 8, 10, 14, tzinfo=UTC))

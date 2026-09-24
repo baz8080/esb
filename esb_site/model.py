@@ -490,7 +490,9 @@ def _merge_group(members):
     # over the group instead can resurrect a stale figure from a sibling that
     # closed early, after ESB had already revised it down.
     est = ender.est
-    first_est = min((o.first_est for o in members if o.first_est), default=None)
+    # the first figure ESB named for any section, not the smallest
+    firsts = [f for f in (_first_estimate(o.updates, o.start) for o in members) if f]
+    first_est = min(firsts)[1] if firsts else None
     if ongoing and est is None:
         # A live event borrows a sibling's estimate rather than claiming ESB
         # published none. The stale-figure risk above is about closed records.
@@ -527,6 +529,18 @@ def _merge_group(members):
         updates=_envelope_updates(members, segments, end, end_src, lead.planned),
         segments=segments,
     )
+
+
+def _first_estimate(updates, start):
+    """(when it was seen, the estimate) for the first estimate ESB published.
+
+    The same sanity rule as `est`: one before the start is not an estimate.
+    """
+    for u in updates:
+        est = parse_utc(u.est_restore)
+        if est and est > start:
+            return u.at, est
+    return None
 
 
 def _envelope_updates(members, segments, end, end_src, planned):
@@ -763,12 +777,8 @@ def load_outages(db_path, sa_index, now):
             start = parse_utc(row["start_time_utc"])
             restore = parse_utc(row["restore_time_utc"])
             est = parse_utc(row["est_restore_time_utc"])
-            # the same sanity rule as `est` below: before the start is not an estimate
-            first_est = min(
-                (e for e in (parse_utc(u.est_restore) for u in updates if u.est_restore)
-                 if e > start),
-                default=None,
-            )
+            first = _first_estimate(updates, start)
+            first_est = first[1] if first else None
             last_seen = parse_utc(row["last_seen_utc"]) or until
             if restore:
                 end, end_src = restore, "restored"
