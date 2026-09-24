@@ -213,6 +213,17 @@ class TestRawLogAndCompaction(StoreTestCase):
         records = list(self.store.iter_raw("runs"))
         self.assertEqual([r["run_id"] for r in records], ["old"])
 
+    def test_a_month_written_to_after_compaction_keeps_its_archive(self):
+        self.store.write_run_raw("old", "2020-01-15T10:00:00Z", 200, {"outageMessage": []})
+        self.store.compact()
+        # a poll on a clock that booted in January again
+        self.store.write_run_raw("late", "2020-01-31T23:00:00Z", 200, {"outageMessage": []})
+        self.store.compact()
+        records = list(self.store.iter_raw("runs"))
+        self.assertEqual([r["run_id"] for r in records], ["old", "late"])
+        self.assertFalse((self.data_dir / "raw" / "runs-2020-01.jsonl").exists())
+        self.assertFalse((self.data_dir / "raw" / "runs-2020-01.jsonl.gz.tmp").exists())
+
 
 if __name__ == "__main__":
     unittest.main()

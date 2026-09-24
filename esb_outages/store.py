@@ -14,6 +14,7 @@ import gzip
 import io
 import json
 import os
+import shutil
 import sqlite3
 import sys
 from datetime import UTC, datetime
@@ -142,6 +143,15 @@ def _hours_between(earlier: str | None, later: str) -> float:
     except ValueError:
         return float("inf")
     return delta.total_seconds() / 3600.0
+
+
+def _fsync_dir(path: Path) -> None:
+    """Make a rename in `path` durable before anything relies on it."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
 
 
 def _month_of(iso_ts: str) -> str:
@@ -680,8 +690,20 @@ class Store:
                 if month >= current:
                     continue
                 target = Path(str(path) + ".gz")
-                with path.open("rb") as src, gzip.open(target, "wb") as dst:
-                    dst.write(src.read())
+                staged = Path(str(target) + ".tmp")
+                with staged.open("wb") as out:
+                    # A month written to after it was compacted - a Pi with no
+                    # clock battery boots in the past until NTP syncs - keeps
+                    # its archive and gains the late lines as a further gzip
+                    # member, which every gzip reader concatenates.
+                    if target.exists():
+                        out.write(target.read_bytes())
+                    with path.open("rb") as src, gzip.GzipFile(fileobj=out, mode="wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                    out.flush()
+                    os.fsync(out.fileno())
+                os.replace(staged, target)
+                _fsync_dir(self.raw_dir)
                 path.unlink()
                 compacted.append(target.name)
         return sorted(compacted)
