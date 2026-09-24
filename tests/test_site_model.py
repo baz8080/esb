@@ -12,6 +12,7 @@ import tempfile
 import unittest
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from esb_outages.parse import normalize_detail
 from esb_outages.store import Store
@@ -244,6 +245,16 @@ class TestUpdates(SiteModelCase):
             self.observe(detail("1", numCustAffected=n), later + timedelta(minutes=10 * i))
         outages, _, _ = self.load()
         self.assertEqual([u.customers for u in outages[0].updates], [100, 80, 60])
+
+    def test_the_merged_timeline_does_not_slide_the_window_either(self):
+        t = datetime(2026, 8, 10, 10, tzinfo=UTC)
+        at = [t + timedelta(minutes=10 * i) for i in range(4)]
+        members = [
+            SimpleNamespace(updates=[SimpleNamespace(at=a)]) for a in at
+        ]
+        segments = [(a, a + timedelta(minutes=10), 400 - 100 * i) for i, a in enumerate(at)]
+        updates = model._envelope_updates(members, segments, at[-1], "listed", False)
+        self.assertEqual([u.at for u in updates], [at[1], at[3]])
 
     def test_customer_count_changes_are_updates(self):
         t = datetime(2026, 8, 10, 10, tzinfo=UTC)

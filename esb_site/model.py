@@ -564,11 +564,13 @@ def _envelope_updates(members, segments, end, end_src, planned):
     the envelope instead says the thing they want: how many customers were still
     without supply at each point, falling as sections came back.
     """
-    times = []
+    times, run_start = [], None
     for at in sorted({u.at for o in members for u in o.updates}):
-        if times and at - times[-1] <= COALESCE_WINDOW:
+        # anchored as in _build_updates, so a chain of close runs cannot slide
+        if times and at - run_start <= COALESCE_WINDOW:
             times[-1] = at
         else:
+            run_start = at
             times.append(at)
 
     kind = "Planned" if planned else "Fault"
