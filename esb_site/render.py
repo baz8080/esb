@@ -153,9 +153,7 @@ def build(outages, sa_index, now, until):
 
     for ym in months:
         lo, hi = model.observed_window(ym, until)
-        live = [
-            o for o in outages if hi > lo and o.start and o.end and o.end > lo and o.start < hi
-        ]
+        live = [o for o in outages if o.start and o.end and model.overlaps(o, lo, hi)]
         faults = [o for o in live if not o.planned]
         # Same gate as county_month: an outage still out has no restoration to
         # judge, and its elapsed time would score as a fast one.
@@ -228,8 +226,6 @@ def build(outages, sa_index, now, until):
         # the Dublin month the data last reaches, for the "so far" wording;
         # a horizon on the stroke of midnight watched none of the new month
         "observed_month": f"{model.local(until - timedelta(microseconds=1)):%Y-%m}",
-        # months listed before any of their data exists: said once, here, so
-        # the app cannot work it out differently from the county page
         "nodata": [ym for ym in months if not model.month_watched(ym, until)],
         "stale_hours": round(STALE_AFTER.total_seconds() / 3600),
         # Two dates at most, and the same for every county, so they sit here
@@ -303,15 +299,12 @@ def shard(outages, months, until):
     tiles and missing from that month's list, so a reader could count the rows
     and come up one short of the headline.
     """
-    windows = [
-        (ym,) + model.observed_window(ym, until) for ym in months
-        if model.month_watched(ym, until)
-    ]
+    windows = [(ym,) + model.observed_window(ym, until) for ym in months]
     by_month = defaultdict(list)
     for o in sorted(outages, key=lambda o: o.start, reverse=True):
         record = None
         for ym, lo, hi in windows:
-            if o.end > lo and o.start < hi:
+            if model.overlaps(o, lo, hi):
                 record = case_record(o) if record is None else record
                 by_month[ym].append(record)
     return by_month
@@ -506,7 +499,9 @@ def _daygate(months, until):
 
     Absent means graded on days; "" means a month that can never reach five.
     """
-    gates = ((ym, model.days_gate(ym, until)) for ym in months)
+    gates = (
+        (ym, model.days_gate(ym, until)) for ym in months if model.month_watched(ym, until)
+    )
     return {
         ym: "" if when >= model.month_bounds(ym)[1] else f"{model.local(when):%-d %B}"
         for ym, when in gates
@@ -633,7 +628,8 @@ def _county_months_html(county, data, months, until):
         if not model.month_watched(ym, until):
             rows.append(
                 f'<tr><th scope="row">{month_label(ym)}<span class="part">{watched}</span></th>'
-                + "<td>–</td>" * 8 + "</tr>"
+                f"<td>{_grade_chip(None, reason=ungraded_reason(ym, 0, until))}</td>"
+                + "<td>–</td>" * 7 + "</tr>"
             )
             continue
         rows.append(

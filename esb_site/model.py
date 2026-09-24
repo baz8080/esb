@@ -962,6 +962,13 @@ def observed_window(ym, until):
     return max(lo, COLLECTION_START), min(hi, until)
 
 
+def overlaps(o, lo, hi):
+    """Whether outage `o` falls in the window [lo, hi). An end published past
+    the horizon passes a bare overlap test against the inverted window of a
+    month the data has not reached, so an empty window takes nothing."""
+    return hi > lo and o.end > lo and o.start < hi
+
+
 def month_watched(ym, until):
     """Whether the collected data reaches into month `ym` at all. A build just
     after the 1st, or one while the collector is down, lists a month before
@@ -1008,7 +1015,7 @@ def county_month(outages, county, customers, ym, now, until):
     for o in outages:
         if o.county != county or not o.start or not o.end:
             continue
-        if hi <= lo or o.end <= lo or o.start >= hi:
+        if not overlaps(o, lo, hi):
             continue
         cm = o.customer_minutes(lo, hi)
         if o.planned:

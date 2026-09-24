@@ -347,8 +347,10 @@ function renderOverview() {
 
   var n = D.national[curMonth] || [0, 0, 0, 0, 0, null, null, 0];
   var within = n[5];
-  // "so far" only while the viewed month is still collecting
-  var partial = D.observed_month === curMonth;
+  // "so far" only while the viewed month is still collecting: the newest
+  // listed month, and one the data has reached
+  var partial = curMonth === D.months[D.months.length - 1] && !noDataYet(curMonth) &&
+    D.observed_month === curMonth;
   var ungraded = ungradedNote(rows, curMonth);
   document.getElementById("natline").innerHTML =
     "<strong>" + monthLabelLong(curMonth) + (partial ? " so far" : "") + ":</strong> " +
@@ -386,9 +388,8 @@ function renderOverview() {
 }
 
 /* --- county -------------------------------------------------------------- */
-// A month listed before any of its data exists, as render.py decided it once
-// (model.month_watched); zeros there would read as a quiet month.
-function noDataYet(ym) { return (D.nodata || []).indexOf(ym) >= 0; }
+// A data.js cached from before `nodata` existed falls back to the month order.
+function noDataYet(ym) { return D.nodata ? D.nodata.indexOf(ym) >= 0 : ym > D.observed_month; }
 
 function renderCounty() {
   var el = document.getElementById("countyview"), c = curCounty;

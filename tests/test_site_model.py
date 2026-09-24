@@ -1576,8 +1576,10 @@ class TestDublinDisplay(SiteModelCase):
 
     def test_the_app_reads_no_data_yet_from_the_payload_everywhere(self):
         page = (Path(model.__file__).parent / "site.html").read_text()
-        self.assertIn("function noDataYet(ym) { return (D.nodata || []).indexOf(ym) >= 0; }",
-                      page)
+        self.assertIn("function noDataYet(ym) { return D.nodata ? D.nodata.indexOf(ym) >= 0", page)
+        # "so far" belongs to the newest listed month only, and only once data reaches it
+        self.assertIn("var partial = curMonth === D.months[D.months.length - 1] && "
+                      "!noDataYet(curMonth)", page)
         for surface in (
             '(none ? "no data yet" :',            # national headline
             'esc(none ? "–" : t[0])',             # national tiles
@@ -1633,6 +1635,26 @@ class TestAMonthTheDataHasNotReached(SiteModelCase):
         data = render.build(outages, index, now, self.until)[0]
         self.assertEqual(data["national"]["2026-10"][1:3], [0, 0])
         self.assertNotIn("2026-10", render.shard(outages, ["2026-09", "2026-10"], self.until))
+
+
+class TestTheCountyTableForAMonthWithNoData(unittest.TestCase):
+    def test_the_row_has_a_cell_per_column_and_shows_no_zeros(self):
+        import re
+
+        until = datetime(2026, 9, 30, 22, 45, tzinfo=UTC)
+        now = datetime(2026, 9, 30, 23, 20, tzinfo=UTC)  # 00:20 on 1 October
+        index = model.SmallAreaIndex.load()
+        data, _, months, _ = render.build([], index, now, until)
+        table = render._county_months_html("Dublin", data, months, until)
+        heads = len(re.findall(r'<th scope="col"', table))
+        rows = re.findall(r"<tr>(.*?)</tr>", table.split("</thead>")[1])
+        october = next(r for r in rows if "October 2026" in r)
+        for row in rows:
+            self.assertEqual(row.count("<th") + row.count("<td"), heads, row[:60])
+        self.assertIn("no data yet", october)
+        self.assertIn("gradechip", october)
+        self.assertNotIn(">0<", october)
+        self.assertNotIn("2026-10", data["daygate"])
 
 
 class TestTheBuildClock(unittest.TestCase):
