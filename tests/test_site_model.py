@@ -1568,6 +1568,17 @@ class TestDublinDisplay(SiteModelCase):
         until = datetime(2026, 9, 9, 23, 30, tzinfo=UTC)
         self.assertEqual(render._month_watched("2026-09", until), "to 10 Sep")
 
+    def test_a_month_the_data_has_not_reached_says_so(self):
+        # built at 00:20 on 1 October in Dublin, from data to 23:45 the night before
+        until = datetime(2026, 9, 30, 22, 45, tzinfo=UTC)
+        self.assertEqual(render._month_watched("2026-10", until), "no data yet")
+        self.assertEqual(render._month_watched("2026-09", until), "to 30 Sep")
+
+    def test_the_app_says_no_data_yet_too(self):
+        page = (Path(model.__file__).parent / "site.html").read_text()
+        self.assertIn("function noDataYet(ym) { return ym > D.observed_month; }", page)
+        self.assertIn('(none ? "no data yet" :', page)
+
     def test_the_horizon_is_shown_and_filed_in_dublin(self):
         until = datetime(2026, 8, 31, 23, 30, tzinfo=UTC)
         data = render.build([], model.SmallAreaIndex.load(), until, until)[0]

@@ -579,6 +579,10 @@ def _month_watched(ym, until):
     """
     lo, hi = model.month_bounds(ym)
     olo, ohi = model.observed_window(ym, until)
+    # Built after the month began, from data that has not reached it: zeros
+    # under "to 30 Sep" read as a quiet month. Mirrored in site.html.
+    if ohi <= olo:
+        return "no data yet"
     bits = []
     if olo > lo:
         bits.append(f"from {model.local(olo):%-d %b}")

@@ -335,8 +335,8 @@ function renderOverview() {
         '<a href="c/' + slug(r.name) + '.html" onclick="event.preventDefault()">' + esc(r.name) + "</a></div>" +
       '<div class="bar">' + bar(m ? m[0] : "", curMonth) + "</div>" +
       '<div class="stats"><div class="counts">' +
-        "<b>" + (m ? m[4] : 0) + "</b><span>faults</span>" +
-        "<b>" + (m ? m[5] : 0) + "</b><span>planned</span></div>" +
+        "<b>" + (noDataYet(curMonth) ? "–" : m ? m[4] : 0) + "</b><span>faults</span>" +
+        "<b>" + (noDataYet(curMonth) ? "–" : m ? m[5] : 0) + "</b><span>planned</span></div>" +
         '<div class="cml"><b>' + (m && m[2] != null ? m[2] + "%" : "–") +
           "</b><br>restored in 4h</div>" +
       '</div><span class="chev">›</span>' +
@@ -348,9 +348,10 @@ function renderOverview() {
   // "so far" only while the viewed month is still collecting
   var partial = D.observed_month === curMonth;
   var ungraded = ungradedNote(rows, curMonth);
+  var none = noDataYet(curMonth);
   document.getElementById("natline").innerHTML =
     "<strong>" + monthLabelLong(curMonth) + (partial ? " so far" : "") + ":</strong> " +
-    plural(n[1], "fault") + " and " + plural(n[2], "planned outage");
+    (none ? "no data yet" : plural(n[1], "fault") + " and " + plural(n[2], "planned outage"));
 
   document.getElementById("basis").innerHTML =
     "Counties are graded on ESB Networks' own published aim: <b>supply restored within " +
@@ -377,13 +378,17 @@ function renderOverview() {
     // the footer, and it already means faults alone.
     [fmtCml(n[0]), "customer minutes lost"]
   ].map(function (t) {
-    return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
+    return '<div class="tile"><div class="v">' + esc(none ? "–" : t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
   }).join("");
 
   document.getElementById("legend").innerHTML = legendHtml();
 }
 
 /* --- county -------------------------------------------------------------- */
+// The build ran after this month began, from data that has not reached it:
+// zeros would read as a quiet month. Mirrored in render.py (_month_watched).
+function noDataYet(ym) { return ym > D.observed_month; }
+
 function renderCounty() {
   var el = document.getElementById("countyview"), c = curCounty;
   var m = (D.stats[c] || {})[curMonth];
@@ -418,15 +423,16 @@ function renderCounty() {
       [m ? m[5] : 0, "planned outages"],
       [m ? num(m[6]) : 0, "customers hit by faults"]
     ].map(function (t) {
-      return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
+      return '<div class="tile"><div class="v">' + esc(noDataYet(curMonth) ? "–" : t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
     }).join("") + "</div></div>";
 
   var body;
   if (loading) body = '<div class="card"><div class="empty">Loading outages…</div></div>';
   else if (failed) body = '<div class="card"><div class="empty">Could not load the outages for ' +
     esc(c) + ". Try reloading the page.</div></div>";
-  else if (!cases.length) body = '<div class="card"><div class="empty">No outages recorded in ' +
-    esc(c) + " in " + monthLabel(curMonth) + ".</div></div>";
+  else if (!cases.length) body = '<div class="card"><div class="empty">' + (noDataYet(curMonth)
+    ? "No data yet for " + monthLabelLong(curMonth)
+    : "No outages recorded in " + esc(c) + " in " + monthLabel(curMonth)) + ".</div></div>";
   else body = '<div class="card">' + cases.map(caseHtml).join("") + "</div>";
 
   el.innerHTML = head + summary + body;

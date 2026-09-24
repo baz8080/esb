@@ -618,3 +618,22 @@ page and that is the unit a reader arrives at; 534 KB in 26 files, listed in
 the size report as "on request" and outside the budget. Written for every
 county, an empty one included, so the link cannot 404. Not in the sitemap: a
 CSV is not a page.
+
+## A month the data has not reached says "no data yet" - 2026-09-24
+
+A build that runs just after Dublin midnight on the 1st, from data that stops
+the night before, lists the new month with nothing in it. The county page's
+month table printed the previous month's last day under it ("October 2026 /
+to 30 Sep"), and the app headline read "October 2026: 0 faults and 0 planned
+outages" with no "so far", as though the month had come and gone quiet.
+Pushes land every six hours, so this is a few hours at the start of every
+month, and longer whenever the collector is down across one.
+
+Owner's call: say **no data yet**. The month table's caveat reads "no data
+yet" (`render._month_watched`, when the observed window is empty); the app
+(`noDataYet` in site.html, a month later than `observed_month`) puts it in the
+headline, shows "–" in the tiles and the county rows' counts, and says "No data
+yet for October 2026." where the county view would list outages. Rejected:
+leaving the month out until data arrives, which would make the month list
+depend on the collector rather than the calendar, the thing `month_list`
+was fixed to stop doing (2026-08-26).
