@@ -595,6 +595,28 @@ Kept deliberately: an ongoing outage past 24 hours still counts against the
 compensation threshold. The time it has already run is a lower bound, so "this
 has been out more than a day" is true whatever happens next.
 
+#### A live fault runs to the horizon, not to its estimate (2026-09-24)
+
+That lower bound was not what the model computed. The end was chosen before
+`ongoing` was decided, so a fault still listed with an estimate that had
+already passed took the ordinary "estimated" branch and ended at the estimate:
+Carrigaline, five hours past its 00:15 estimate at the 5 September horizon, was
+five hours short in its customer-minutes and day cells, and a live fault whose
+estimate fell inside its first day could never reach the 24-hour count the
+paragraph above promises. Nobody chose that. The estimate stand-in exists
+for a fault that *left the feed* without a restore time, and a live fault has
+not left it. Caught by a retroactive review of `model.py`.
+
+`ongoing` is now decided first, and a live fault with no restore time ends at
+the horizon (`end_src` "listed", which the timeline shows as "Last seen still
+out"). The row wording was already keyed on `ongoing` and does not change.
+Planned works keep their schedule: a job still listed past its scheduled end
+(Kilcoole, listed on 24 September two weeks after its 10 September end) is a
+listing, not an observed outage, and running it to the horizon would paint two
+weeks of planned days. At the 24 September horizon no figure moves, because the
+two live faults were both inside their estimates. It bites whenever one is not,
+which in a storm is most of them.
+
 ### The peak is the highest count while the outage was live
 
 The customer count is clipped to the outage's own window before empty segments

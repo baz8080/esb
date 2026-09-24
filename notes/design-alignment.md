@@ -452,7 +452,10 @@ all along.
 The end of an ongoing outage is the collection horizon, and where the model
 ended it on a passed estimate (`end_src == "estimated"`) the span would stop at
 the estimate rather than at the last sighting, understating by up to the
-distance between them. The row already says when it began; the age of the data
+distance between them. (That was fixed in the model on 2026-09-24, and a live
+fault now ends at the horizon: grading.md § A live fault runs to the horizon.
+The span stays off the row regardless, because "so far" is the banner's job.)
+The row already says when it began; the age of the data
 is on the banner and in the month table's "to 5 Sep". Planned works keep their
 span because theirs measures the schedule, which is the one duration ESB
 actually states.

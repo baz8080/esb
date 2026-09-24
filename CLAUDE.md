@@ -110,7 +110,7 @@ Every one of these has already cost someone an hour:
 | Poll interval stays at 30 min; 15 min was measured and is marginal | `notes/polling.md` |
 | `startTime` is immutable and back-dated, so durations measure the outage | `notes/grading.md` § Does startTime drift |
 | Every measured window ends at the collection horizon, not at the build clock | `notes/grading.md` § What the clock knows |
-| An outage still listed at the last poll is not judged on the charter | `notes/grading.md` § An outage still listed |
+| An outage still listed at the last poll is not judged on the charter, and a live fault runs to the horizon, not to a passed estimate (planned works keep their schedule) | `notes/grading.md` § An outage still listed; § A live fault runs to the horizon (2026-09-24) |
 | Peak customers means the most off while the outage was live | `notes/grading.md` § The peak is the highest count |
 | Part-observed days keep their colour and say so in the tooltip | `notes/grading.md` § Short days say so |
 | 2.5M customer denominator, and which DAPR figures are comparable | `notes/grading.md` § The customer denominator |

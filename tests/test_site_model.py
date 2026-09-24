@@ -178,9 +178,11 @@ class TestEndTime(SiteModelCase):
         self.assertEqual(o.end, datetime(2026, 8, 10, 10, 45, tzinfo=UTC))
 
     def test_estimate_is_used_when_it_precedes_the_last_sighting(self):
-        # Seen at 09:30 and 14:00 UTC, estimated back at 13:00 Dublin = 12:00 UTC.
+        # Seen at 09:30 and 14:00 UTC, estimated back at 13:00 Dublin = 12:00 UTC,
+        # and gone from the feed by the next poll.
         self.observe(detail("1"), datetime(2026, 8, 10, 9, 30, tzinfo=UTC))
         self.observe(detail("1"), datetime(2026, 8, 10, 14, 0, tzinfo=UTC))
+        self.poll(datetime(2026, 8, 10, 15, 0, tzinfo=UTC))
         outages, _, _ = self.load()
         o = outages[0]
         self.assertEqual(o.end_src, "estimated")
@@ -808,6 +810,26 @@ class TestOngoingOutages(SiteModelCase):
         outages, _, index = self.load()
         self.assertFalse(outages[0].ongoing)
         self.assertIsNotNone(self.judged(outages, index)["within"])
+
+    def test_a_live_outage_past_its_estimate_runs_to_the_horizon(self):
+        # Estimated back at 13:00 Dublin on the 9th and still listed the next
+        # morning: out for 25.5 hours, not the 5 its estimate would say.
+        self.observe(
+            detail("1", startTime="09/08/2026 08:00", estRestoreTime="09/08/2026 13:00"),
+            datetime(2026, 8, 9, 7, 30, tzinfo=UTC),
+        )
+        horizon = datetime(2026, 8, 10, 8, 30, tzinfo=UTC)
+        self.observe(
+            detail("1", startTime="09/08/2026 08:00", estRestoreTime="09/08/2026 13:00"),
+            horizon,
+        )
+        self.poll(horizon, n_listed=1)
+        outages, _, index = self.load()
+        o = outages[0]
+        self.assertTrue(o.ongoing)
+        self.assertEqual((o.end, o.end_src), (horizon, "listed"))
+        self.assertEqual(o.minutes, 25.5 * 60)
+        self.assertEqual(self.judged(outages, index)["over_compensation"], 1)
 
     def test_a_long_live_outage_still_counts_against_compensation(self):
         """Past 24 hours is true of an outage that has not ended yet."""

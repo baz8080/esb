@@ -782,16 +782,26 @@ def load_outages(db_path, sa_index, now):
             first = _first_estimate(updates, start)
             first_est = first[1] if first else None
             last_seen = parse_utc(row["last_seen_utc"]) or until
+            # An outage still listed when the collector last looked has not
+            # ended yet: the time it has been out so far is a lower bound, and
+            # scoring it as a restoration would count every fresh fault as a
+            # fast one.
+            ongoing = not restore and last_seen >= until - POLL_INTERVAL
             if restore:
                 end, end_src = restore, "restored"
+            elif ongoing and not planned:
+                # Out until the horizon, whatever ESB estimated: a passed
+                # estimate on a live fault is a miss, not an ending. A planned
+                # job keeps its schedule, because a listing is not an outage.
+                end, end_src = until, "listed"
             elif est and start < est <= last_seen:
-                # No restore time, so the outage either vanished from the feed
-                # or is still running. ESB's own estimated restore time is by
-                # far the best stand-in: measured against the 648 outages whose
-                # true restore time we do know, it lands a median 0.7h late and
-                # overstates total time by 18%, where falling back to the last
-                # time the row was listed overstates it by 126% - ESB leaves
-                # restored outages sitting in the feed for hours.
+                # No restore time, and the outage vanished from the feed. ESB's
+                # own estimated restore time is by far the best stand-in:
+                # measured against the 648 outages whose true restore time we
+                # do know, it lands a median 0.7h late and overstates total
+                # time by 18%, where falling back to the last time the row was
+                # listed overstates it by 126% - ESB leaves restored outages
+                # sitting in the feed for hours.
                 end, end_src = est, "estimated"
             else:
                 # No usable estimate: either there is none, or it lands before
@@ -804,11 +814,6 @@ def load_outages(db_path, sa_index, now):
                 # clock says. A restoreTime is ESB's own statement and stands
                 # even when it lands after the sighting that carried it.
                 end = min(end, until)
-            # An outage still listed when the collector last looked has not
-            # ended yet: the time it has been out so far is a lower bound, and
-            # scoring it as a restoration would count every fresh fault as a
-            # fast one.
-            ongoing = not restore and last_seen >= until - POLL_INTERVAL
 
             # The reported customer count as it changed over the outage's life,
             # so customer-minutes can be integrated rather than approximated.
