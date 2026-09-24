@@ -1556,9 +1556,48 @@ class TestDublinDisplay(SiteModelCase):
         line = render._update_line(["update", "2026-08-24T14:15", 40], False)
         self.assertIn("<time>24 Aug, 15:15</time>", line)
 
+    def test_a_fault_spot_of_one_customer_is_singular(self):
+        card = render._spots_html([("Skerries Road", 2, 1)], "31 July 2026")
+        self.assertIn("up to 1 customer<", card)
+
+    def test_one_customer_still_off_is_singular(self):
+        line = render._update_line(["update", "2026-08-24T14:15", 1], False)
+        self.assertIn("1 customer still off", line)
+
     def test_the_caveat_names_dublins_day(self):
         until = datetime(2026, 9, 9, 23, 30, tzinfo=UTC)
         self.assertEqual(render._month_watched("2026-09", until), "to 10 Sep")
+
+    def test_a_month_the_data_has_not_reached_says_so(self):
+        # built at 00:20 on 1 October in Dublin, from data to 23:45 the night before
+        until = datetime(2026, 9, 30, 22, 45, tzinfo=UTC)
+        self.assertEqual(render._month_watched("2026-10", until), "no data yet")
+        self.assertEqual(render._month_watched("2026-09", until), "to 30 Sep")
+
+    def test_the_app_reads_no_data_yet_from_the_payload_everywhere(self):
+        page = (Path(model.__file__).parent / "site.html").read_text()
+        self.assertIn("function noDataYet(ym) { return D.nodata ? D.nodata.indexOf(ym) >= 0", page)
+        # "so far" belongs to the newest listed month only, and only once data reaches it
+        self.assertIn("var partial = curMonth === D.months[D.months.length - 1] && "
+                      "!noDataYet(curMonth)", page)
+        for surface in (
+            '(none ? "no data yet" :',            # national headline
+            'esc(none ? "–" : t[0])',             # national tiles
+            '(none ? "–" : m ? m[4] : 0)',        # county rows
+            'esc(noDataYet(curMonth) ? "–" : t[0])',  # county tiles
+            '"No data yet for " + monthLabelLong(curMonth)',  # county list
+            'if (noDataYet(ym)) return "There is no data yet for "',  # gate sentence
+        ):
+            self.assertIn(surface, page)
+
+    def test_a_horizon_on_the_stroke_of_midnight_has_watched_none_of_the_month(self):
+        until = datetime(2026, 9, 30, 23, 0, tzinfo=UTC)  # 00:00 on 1 October in Dublin
+        data = render.build([], model.SmallAreaIndex.load(), until, until)[0]
+        self.assertEqual((data["observed_month"], data["nodata"]), ("2026-09", ["2026-10"]))
+        self.assertEqual(render._month_watched("2026-10", until), "no data yet")
+        self.assertEqual(
+            render.ungraded_reason("2026-10", 0, until), "There is no data yet for October 2026"
+        )
 
     def test_the_horizon_is_shown_and_filed_in_dublin(self):
         until = datetime(2026, 8, 31, 23, 30, tzinfo=UTC)
@@ -1578,3 +1617,68 @@ class TestDublinDisplay(SiteModelCase):
         self.assertIn("when(local(r[1]))", body("updateLine"))
         self.assertIn('timeZone: "Europe/Dublin"', page)
         self.assertIn("D.observed_month === curMonth", page)
+
+
+class TestAMonthTheDataHasNotReached(SiteModelCase):
+    def test_a_restore_published_past_the_horizon_is_not_counted_in_it(self):
+        # listed at 22:45 UTC on 30 Sep, with ESB naming a restore at 00:30 on
+        # 1 October, which is after the data stops
+        seen = datetime(2026, 9, 30, 22, 45, tzinfo=UTC)
+        self.observe(detail("1", outageType="Restored", startTime="30/09/2026 21:00",
+                            restoreTime="01/10/2026 00:30"), seen)
+        self.poll(seen)
+        outages, _, index = self.load(datetime(2026, 10, 1, 0, 20, tzinfo=UTC))
+        now = datetime(2026, 10, 1, 0, 20, tzinfo=UTC)
+        s = model.county_month(outages, "Dublin", index.customers["Dublin"], "2026-10",
+                               now, self.until)
+        self.assertEqual((s["faults"], s["planned"]), (0, 0))
+        data = render.build(outages, index, now, self.until)[0]
+        self.assertEqual(data["national"]["2026-10"][1:3], [0, 0])
+        self.assertNotIn("2026-10", render.shard(outages, ["2026-09", "2026-10"], self.until))
+
+
+class TestTheCountyTableForAMonthWithNoData(unittest.TestCase):
+    def test_the_row_has_a_cell_per_column_and_shows_no_zeros(self):
+        import re
+
+        until = datetime(2026, 9, 30, 22, 45, tzinfo=UTC)
+        now = datetime(2026, 9, 30, 23, 20, tzinfo=UTC)  # 00:20 on 1 October
+        index = model.SmallAreaIndex.load()
+        data, _, months, _ = render.build([], index, now, until)
+        table = render._county_months_html("Dublin", data, months, until)
+        heads = len(re.findall(r'<th scope="col"', table))
+        rows = re.findall(r"<tr>(.*?)</tr>", table.split("</thead>")[1])
+        october = next(r for r in rows if "October 2026" in r)
+        for row in rows:
+            self.assertEqual(row.count("<th") + row.count("<td"), heads, row[:60])
+        self.assertIn("no data yet", october)
+        self.assertIn("gradechip", october)
+        self.assertNotIn(">0<", october)
+        self.assertNotIn("2026-10", data["daygate"])
+
+
+class TestTheBuildClock(unittest.TestCase):
+    def test_an_offset_is_converted_not_dropped(self):
+        from esb_site.__main__ import parse_now
+
+        expect = datetime(2026, 9, 24, 9, 0, tzinfo=UTC)
+        self.assertEqual(parse_now("2026-09-24T10:00:00+01:00"), expect)
+        self.assertEqual(parse_now("2026-09-24T09:00:00Z"), expect)
+        self.assertEqual(parse_now("2026-09-24T09:00:00"), expect)
+
+
+class TestTheAppScript(unittest.TestCase):
+    """CI runs no JS, so what matters about these call sites is held as text."""
+
+    page = (Path(model.__file__).parent / "site.html").read_text()
+
+    def test_no_name_is_spliced_into_an_inline_handler(self):
+        self.assertNotIn("onclick=\"go(\\''", self.page)
+        self.assertIn('data-county="\' + esc(r.name)', self.page)
+        # and something still listens, or no row opens its county
+        self.assertIn('getElementById("list").addEventListener("click"', self.page)
+        self.assertIn('go(row.getAttribute("data-county"))', self.page)
+
+    def test_a_malformed_link_cannot_throw_out_of_route(self):
+        route = self.page.split("function route(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn("try { curCounty = m ? decodeURIComponent(m[1])", route)

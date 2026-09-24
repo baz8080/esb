@@ -16,6 +16,7 @@ import io
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import statusui
 
@@ -123,13 +124,9 @@ def build(outages, sa_index, now, until):
     """
     months = model.month_list(model.COLLECTION_START, now)
 
-    # A county's record starts at the first poll: an outage restored before
-    # it overlaps no observed window, so the page never lists it and nothing
-    # derived from the county's list may count it either.
     by_county = defaultdict(list)
     for o in outages:
-        if o.end > model.COLLECTION_START:
-            by_county[o.county].append(o)
+        by_county[o.county].append(o)
 
     stats, national = {}, {}
     for county in sa_index.counties:
@@ -156,7 +153,7 @@ def build(outages, sa_index, now, until):
 
     for ym in months:
         lo, hi = model.observed_window(ym, until)
-        live = [o for o in outages if o.start and o.end and o.end > lo and o.start < hi]
+        live = [o for o in outages if o.start and o.end and model.overlaps(o, lo, hi)]
         faults = [o for o in live if not o.planned]
         # Same gate as county_month: an outage still out has no restoration to
         # judge, and its elapsed time would score as a fast one.
@@ -226,8 +223,10 @@ def build(outages, sa_index, now, until):
         # reader's clock rather than the build's. STALE_AFTER travels with it,
         # so a page served from cache can still go stale.
         "observed_iso": f"{until:%Y-%m-%dT%H:%M:00Z}",
-        # the Dublin month the horizon falls in, for the "so far" wording
-        "observed_month": f"{model.local(until):%Y-%m}",
+        # the Dublin month the data last reaches, for the "so far" wording;
+        # a horizon on the stroke of midnight watched none of the new month
+        "observed_month": f"{model.local(until - timedelta(microseconds=1)):%Y-%m}",
+        "nodata": [ym for ym in months if not model.month_watched(ym, until)],
         "stale_hours": round(STALE_AFTER.total_seconds() / 3600),
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
@@ -305,7 +304,7 @@ def shard(outages, months, until):
     for o in sorted(outages, key=lambda o: o.start, reverse=True):
         record = None
         for ym, lo, hi in windows:
-            if o.end > lo and o.start < hi:
+            if model.overlaps(o, lo, hi):
                 record = case_record(o) if record is None else record
                 by_month[ym].append(record)
     return by_month
@@ -452,7 +451,7 @@ def _update_line(row, key, planned=False):
         bits.append(f"<b>{label}</b>")
     if customers is not None:
         bits.append(
-            f"{customers:,} customers"
+            f"{customers:,} customer{'' if customers == 1 else 's'}"
             + (" still off" if kind == "update" else "")
         )
     cls = ' class="key"' if key else ""
@@ -500,7 +499,9 @@ def _daygate(months, until):
 
     Absent means graded on days; "" means a month that can never reach five.
     """
-    gates = ((ym, model.days_gate(ym, until)) for ym in months)
+    gates = (
+        (ym, model.days_gate(ym, until)) for ym in months if model.month_watched(ym, until)
+    )
     return {
         ym: "" if when >= model.month_bounds(ym)[1] else f"{model.local(when):%-d %B}"
         for ym, when in gates
@@ -514,6 +515,8 @@ def ungraded_reason(ym, faults, until):
     Three gates withhold it and naming the wrong one sends a reader after
     outages that are not the reason. Mirrored in site.html (ungradedReason).
     """
+    if not model.month_watched(ym, until):
+        return f"There is no data yet for {month_label(ym)}"
     when = model.days_gate(ym, until)
     if when is not None:
         # past the month's end: it can never reach five days, so promise no date
@@ -580,6 +583,8 @@ def _month_watched(ym, until):
     months are short, and a row of zeros for three hours of July reads as a
     quiet month rather than an absent collector.
     """
+    if not model.month_watched(ym, until):
+        return "no data yet"
     lo, hi = model.month_bounds(ym)
     olo, ohi = model.observed_window(ym, until)
     bits = []
@@ -620,6 +625,13 @@ def _county_months_html(county, data, months, until):
     for ym in reversed(months):
         m = data["stats"][county][ym]
         watched = _month_watched(ym, until)
+        if not model.month_watched(ym, until):
+            rows.append(
+                f'<tr><th scope="row">{month_label(ym)}<span class="part">{watched}</span></th>'
+                f"<td>{_grade_chip(None, reason=ungraded_reason(ym, 0, until))}</td>"
+                + "<td>–</td>" * 7 + "</tr>"
+            )
+            continue
         rows.append(
             f'<tr><th scope="row">{month_label(ym)}'
             + (f'<span class="part">{watched}</span>' if watched else "")
@@ -764,7 +776,7 @@ def _spots_html(spots, since):
         f"<li>{html.escape(loc)}"
         '<span class="fill"></span>'
         f'<span class="n">{n} faults</span>'
-        f'<span class="p">up to {peak:,} customers</span></li>'
+        f'<span class="p">up to {peak:,} customer{"" if peak == 1 else "s"}</span></li>'
         for loc, n, peak in spots
     )
     return (
@@ -777,6 +789,14 @@ def _spots_html(spots, since):
     )
 
 
+def _cell(text):
+    """A text cell, defused: one opening with a formula character, even
+    behind spaces a spreadsheet trims, runs as a formula when opened."""
+    if text and (text[0] in "\t\r" or text.lstrip()[:1] in ("=", "+", "-", "@")):
+        return "'" + text
+    return text
+
+
 def county_csv(outages):
     """One county's merged events as CSV, oldest first; the columns are
     CSV_COLUMNS. The site's own rows, so a reader gets what the page counts
@@ -786,8 +806,8 @@ def county_csv(outages):
     out.writerow(CSV_COLUMNS)
     for o in sorted(outages, key=lambda o: (o.start, int(o.id))):
         out.writerow([
-            " ".join(o.ids), o.county, o.town, o.esb_location,
-            "planned" if o.planned else "fault", model.reason_label(o.reason),
+            " ".join(o.ids), o.county, _cell(o.town), _cell(o.esb_location),
+            "planned" if o.planned else "fault", _cell(model.reason_label(o.reason)),
             o.customers, model.fmt_utc(o.start), model.fmt_utc(o.end), o.end_src,
             model.fmt_utc(o.est), model.fmt_utc(o.first_est), int(o.ongoing),
             round(o.customer_minutes(o.start, o.end)),
@@ -917,7 +937,7 @@ def area_page(county, name, pop, events, nearby, data):
     faults = sum(1 for o in events if not o.planned)
     planned = len(events) - faults
     near = "".join(
-        f'<li><a href="../{slug(c)}/{slug(n)}.html">{html.escape(n)}</a>'
+        f'<li><a href="../../{area_path(c, n)}">{html.escape(n)}</a>'
         '<span class="fill"></span>'
         f'<span class="n">{_km_label(d)}</span>'
         f'<span class="p">{"" if c == county else f"County {html.escape(c)}"}</span></li>'
@@ -952,7 +972,7 @@ def area_page(county, name, pop, events, nearby, data):
         '<div class="card"><h2>Elsewhere</h2><p class="nav">'
         f'<a href="../../c/{slug(county)}.html">County {html.escape(county)}’s '
         "whole record</a> "
-        f'<a href="../../index.html#county/{county}">County&nbsp;'
+        f'<a href="../../index.html#county/{html.escape(quote(county))}">County&nbsp;'
         f"{html.escape(county)}’s interactive view</a></p></div>"
     )
     # the record first, what the page holds last - truncation must not turn

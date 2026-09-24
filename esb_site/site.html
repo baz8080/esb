@@ -267,6 +267,7 @@ function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 // counties' fault counts and so can use none of them. "" once the month has
 // five days.
 function dayGateReason(ym) {
+  if (noDataYet(ym)) return "There is no data yet for " + monthLabelLong(ym);
   var from = D.daygate && D.daygate[ym];
   if (from === undefined) return "";
   if (!from) return "Only part of " + monthLabelLong(ym) + " was watched, so it is not graded";
@@ -328,15 +329,16 @@ function renderOverview() {
   });
   rows.sort(function (a, b) { return a.name.localeCompare(b.name); });
 
+  var none = noDataYet(curMonth);
   document.getElementById("list").innerHTML = rows.map(function (r) {
     var m = r.m, g = m ? m[1] : null;
-    return '<div class="place"><div class="row" onclick="go(\'' + esc(r.name) + '\')">' +
+    return '<div class="place"><div class="row" data-county="' + esc(r.name) + '">' +
       '<div class="cname">' + gradeChip(g, m ? m[4] : 0) +
         '<a href="c/' + slug(r.name) + '.html" onclick="event.preventDefault()">' + esc(r.name) + "</a></div>" +
       '<div class="bar">' + bar(m ? m[0] : "", curMonth) + "</div>" +
       '<div class="stats"><div class="counts">' +
-        "<b>" + (m ? m[4] : 0) + "</b><span>faults</span>" +
-        "<b>" + (m ? m[5] : 0) + "</b><span>planned</span></div>" +
+        "<b>" + (none ? "–" : m ? m[4] : 0) + "</b><span>faults</span>" +
+        "<b>" + (none ? "–" : m ? m[5] : 0) + "</b><span>planned</span></div>" +
         '<div class="cml"><b>' + (m && m[2] != null ? m[2] + "%" : "–") +
           "</b><br>restored in 4h</div>" +
       '</div><span class="chev">›</span>' +
@@ -345,12 +347,14 @@ function renderOverview() {
 
   var n = D.national[curMonth] || [0, 0, 0, 0, 0, null, null, 0];
   var within = n[5];
-  // "so far" only while the viewed month is still collecting
-  var partial = D.observed_month === curMonth;
+  // "so far" only while the viewed month is still collecting: the newest
+  // listed month, and one the data has reached
+  var partial = curMonth === D.months[D.months.length - 1] && !noDataYet(curMonth) &&
+    D.observed_month === curMonth;
   var ungraded = ungradedNote(rows, curMonth);
   document.getElementById("natline").innerHTML =
     "<strong>" + monthLabelLong(curMonth) + (partial ? " so far" : "") + ":</strong> " +
-    plural(n[1], "fault") + " and " + plural(n[2], "planned outage");
+    (none ? "no data yet" : plural(n[1], "fault") + " and " + plural(n[2], "planned outage"));
 
   document.getElementById("basis").innerHTML =
     "Counties are graded on ESB Networks' own published aim: <b>supply restored within " +
@@ -377,13 +381,16 @@ function renderOverview() {
     // the footer, and it already means faults alone.
     [fmtCml(n[0]), "customer minutes lost"]
   ].map(function (t) {
-    return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
+    return '<div class="tile"><div class="v">' + esc(none ? "–" : t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
   }).join("");
 
   document.getElementById("legend").innerHTML = legendHtml();
 }
 
 /* --- county -------------------------------------------------------------- */
+// A data.js cached from before `nodata` existed falls back to the month order.
+function noDataYet(ym) { return D.nodata ? D.nodata.indexOf(ym) >= 0 : ym > D.observed_month; }
+
 function renderCounty() {
   var el = document.getElementById("countyview"), c = curCounty;
   var m = (D.stats[c] || {})[curMonth];
@@ -418,15 +425,16 @@ function renderCounty() {
       [m ? m[5] : 0, "planned outages"],
       [m ? num(m[6]) : 0, "customers hit by faults"]
     ].map(function (t) {
-      return '<div class="tile"><div class="v">' + esc(t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
+      return '<div class="tile"><div class="v">' + esc(noDataYet(curMonth) ? "–" : t[0]) + '</div><div class="k">' + esc(t[1]) + "</div></div>";
     }).join("") + "</div></div>";
 
   var body;
   if (loading) body = '<div class="card"><div class="empty">Loading outages…</div></div>';
   else if (failed) body = '<div class="card"><div class="empty">Could not load the outages for ' +
     esc(c) + ". Try reloading the page.</div></div>";
-  else if (!cases.length) body = '<div class="card"><div class="empty">No outages recorded in ' +
-    esc(c) + " in " + monthLabel(curMonth) + ".</div></div>";
+  else if (!cases.length) body = '<div class="card"><div class="empty">' + (noDataYet(curMonth)
+    ? "No data yet for " + monthLabelLong(curMonth)
+    : "No outages recorded in " + esc(c) + " in " + monthLabel(curMonth)) + ".</div></div>";
   else body = '<div class="card">' + cases.map(caseHtml).join("") + "</div>";
 
   el.innerHTML = head + summary + body;
@@ -469,7 +477,7 @@ function updateLine(r, key, planned) {
   var bits = [];
   var label = (planned && PLANNED_ROW_LABEL[r[0]]) || ROW_LABEL[r[0]];
   if (label) bits.push("<b>" + label + "</b>");
-  if (r[2] != null) bits.push(num(r[2]) + " customers" + (r[0] === "update" ? " still off" : ""));
+  if (r[2] != null) bits.push(plural(r[2], "customer") + (r[0] === "update" ? " still off" : ""));
   return '<li class="' + (key ? "key" : "") + '"><time>' + when(local(r[1])) + "</time>" + bits.join(" · ") + "</li>";
 }
 
@@ -508,7 +516,8 @@ function setMonth(m) { curMonth = m; render(); }
 
 function route() {
   var m = location.hash.match(/^#county\/(.+)$/);
-  curCounty = m ? decodeURIComponent(m[1]) : null;
+  // a hand-edited or truncated link falls back to the overview, not a throw
+  try { curCounty = m ? decodeURIComponent(m[1]) : null; } catch (e) { curCounty = null; }
   if (curCounty && !D.stats[curCounty]) curCounty = null;
   if (curCounty) loadCounty(curCounty, render);
   render();
@@ -570,6 +579,12 @@ function boot() {
   bindDayCaption();
   bindMonthReveal();
   addEventListener("hashchange", route);
+  // The name travels in an attribute, not in an inline handler's JS string,
+  // where HTML escaping is undone before the script sees it.
+  document.getElementById("list").addEventListener("click", function (e) {
+    var row = e.target.closest(".row[data-county]");
+    if (row) go(row.getAttribute("data-county"));
+  });
   route();
 }
 boot();

@@ -618,3 +618,28 @@ page and that is the unit a reader arrives at; 534 KB in 26 files, listed in
 the size report as "on request" and outside the budget. Written for every
 county, an empty one included, so the link cannot 404. Not in the sitemap: a
 CSV is not a page.
+
+## A month the data has not reached says "no data yet" - 2026-09-24
+
+A build that runs just after Dublin midnight on the 1st, from data that stops
+the night before, lists the new month with nothing in it. The county page's
+month table printed the previous month's last day under it ("October 2026 /
+to 30 Sep"), and the app headline read "October 2026: 0 faults and 0 planned
+outages" with no "so far", as though the month had come and gone quiet.
+Pushes land every six hours, so this is a few hours at the start of every
+month, and longer whenever the collector is down across one.
+
+Owner's call: say **no data yet**. Whether a month is watched at all is
+decided once, `model.month_watched`, and shipped as `D.nodata`: a first cut
+let the app work it out again from `observed_month`, and the two disagreed on
+a horizon landing exactly on Dublin midnight. The month table's caveat reads
+"no data yet" and its figures are dashes; the gate sentence says "There is no
+data yet for October 2026" rather than promising a grade date; the app puts it
+in the headline, shows "–" in the tiles and the county rows' counts, and says
+so where the county view would list outages. Nothing is counted or filed in
+such a month, including an outage whose published restore time runs past the
+horizon. Not covered: a whole month the collector missed reads as watched
+once data resumes after it, the in-window gap grading.md already names. Rejected:
+leaving the month out until data arrives, which would make the month list
+depend on the collector rather than the calendar; `month_list` walks the
+calendar on purpose, so a month is listed from its first instant.

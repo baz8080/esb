@@ -924,7 +924,13 @@ def load_outages(db_path, sa_index, now):
                     segments=segments,
                 )
             )
-        return label_repeats(merge_events(outages)), unplaced, until
+        # The record starts at the first poll: an event over before it
+        # overlaps no observed window, so nothing the site derives may count
+        # it, a repeat chain included. Dropped by the end the merge settles on
+        # (a sibling lingering a poll past a confirmed restore is the feed
+        # catching up) and before the chains are labelled.
+        events = [o for o in merge_events(outages) if o.end > COLLECTION_START]
+        return label_repeats(events), unplaced, until
     finally:
         conn.close()
 
@@ -954,6 +960,21 @@ def observed_window(ym, until):
     """
     lo, hi = month_bounds(ym)
     return max(lo, COLLECTION_START), min(hi, until)
+
+
+def overlaps(o, lo, hi):
+    """Whether outage `o` falls in the window [lo, hi). An end published past
+    the horizon passes a bare overlap test against the inverted window of a
+    month the data has not reached, so an empty window takes nothing."""
+    return hi > lo and o.end > lo and o.start < hi
+
+
+def month_watched(ym, until):
+    """Whether the collected data reaches into month `ym` at all. A build just
+    after the 1st, or one while the collector is down, lists a month before
+    any data for it exists, and its window is then empty or inverted."""
+    lo, hi = observed_window(ym, until)
+    return hi > lo
 
 
 def days_gate(ym, until):
@@ -994,7 +1015,7 @@ def county_month(outages, county, customers, ym, now, until):
     for o in outages:
         if o.county != county or not o.start or not o.end:
             continue
-        if o.end <= lo or o.start >= hi:
+        if not overlaps(o, lo, hi):
             continue
         cm = o.customer_minutes(lo, hi)
         if o.planned:
