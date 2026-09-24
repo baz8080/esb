@@ -33,6 +33,7 @@ USER_AGENT = (
 
 DEFAULT_TIMEOUT = 15.0
 DEFAULT_RETRIES = 3
+ERROR_BODY_CHARS = 200
 
 
 class EsbError(Exception):
@@ -115,6 +116,10 @@ class EsbClient:
                 body = _decode(exc.read(), exc.headers)
             except Exception:  # pragma: no cover - body is best-effort context
                 pass
+            # A 5xx can be a whole HTML page, and this text reaches the alert
+            # and the run log's error_summary.
+            if len(body) > ERROR_BODY_CHARS:
+                body = body[:ERROR_BODY_CHARS] + "..."
             if exc.code == 401:
                 raise AuthError(f"401 rejected key {self.masked_key}: {body}") from exc
             if exc.code == 404:

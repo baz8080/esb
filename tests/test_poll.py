@@ -555,6 +555,13 @@ class TestWebhookAlerting(unittest.TestCase):
         self.assertEqual(headers["Content-Type"], "application/json")
         self.assertEqual(json.loads(body), {"content": "the banner", "text": "the banner"})
 
+    def test_a_long_alert_fits_discord(self):
+        with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
+            self.assertTrue(alert.notify("x" * 10_000))
+        content = json.loads(self.received[0][1])["content"]
+        self.assertLessEqual(len(content), 2000)
+        self.assertTrue(content.endswith("the full text is in the journal]"))
+
     def test_notify_reports_delivery(self):
         with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
             self.assertTrue(alert.notify("hello"))

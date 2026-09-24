@@ -36,6 +36,10 @@ EXIT_MEANINGS = {
 
 BANNER_WIDTH = 78
 
+# Discord rejects a message over 2,000 characters outright; ntfy allows 4,096.
+MAX_ALERT_CHARS = 1900
+TRUNCATED = "\n[truncated; the full text is in the journal]"
+
 
 def banner(title: str, lines: list[str]) -> str:
     # Fixed width: these end up in an email, and a long raw error message would
@@ -178,6 +182,8 @@ def notify(message: str) -> bool:
     url = os.environ.get("ESB_ALERT_WEBHOOK")
     if not url:
         return False
+    if len(message) > MAX_ALERT_CHARS:
+        message = message[: MAX_ALERT_CHARS - len(TRUNCATED)] + TRUNCATED
     if "ntfy" in url:
         data, headers = message.encode("utf-8"), {"Title": "ESB poller failure"}
     else:
