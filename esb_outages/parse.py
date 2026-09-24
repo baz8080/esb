@@ -48,7 +48,8 @@ def parse_esb_datetime(value: str | None) -> tuple[str | None, bool]:
     time is ambiguous or impossible because of a DST transition:
 
     - Fall back (last Sunday of October): 01:00-01:59 happens twice. We take the
-      first occurrence (fold=0), so the value may be an hour late.
+      first occurrence (fold=0, still UTC+1), so a time that was really the
+      second is stored an hour early.
     - Spring forward (last Sunday of March): 01:00-01:59 never happens. Python
       resolves it, but the result is a fiction.
 
