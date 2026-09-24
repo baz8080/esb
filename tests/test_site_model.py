@@ -1556,6 +1556,10 @@ class TestDublinDisplay(SiteModelCase):
         line = render._update_line(["update", "2026-08-24T14:15", 40], False)
         self.assertIn("<time>24 Aug, 15:15</time>", line)
 
+    def test_one_customer_still_off_is_singular(self):
+        line = render._update_line(["update", "2026-08-24T14:15", 1], False)
+        self.assertIn("1 customer still off", line)
+
     def test_the_caveat_names_dublins_day(self):
         until = datetime(2026, 9, 9, 23, 30, tzinfo=UTC)
         self.assertEqual(render._month_watched("2026-09", until), "to 10 Sep")

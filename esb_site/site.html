@@ -469,7 +469,7 @@ function updateLine(r, key, planned) {
   var bits = [];
   var label = (planned && PLANNED_ROW_LABEL[r[0]]) || ROW_LABEL[r[0]];
   if (label) bits.push("<b>" + label + "</b>");
-  if (r[2] != null) bits.push(num(r[2]) + " customers" + (r[0] === "update" ? " still off" : ""));
+  if (r[2] != null) bits.push(plural(r[2], "customer") + (r[0] === "update" ? " still off" : ""));
   return '<li class="' + (key ? "key" : "") + '"><time>' + when(local(r[1])) + "</time>" + bits.join(" · ") + "</li>";
 }
 

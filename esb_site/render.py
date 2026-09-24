@@ -456,7 +456,7 @@ def _update_line(row, key, planned=False):
         bits.append(f"<b>{label}</b>")
     if customers is not None:
         bits.append(
-            f"{customers:,} customers"
+            f"{customers:,} customer{'' if customers == 1 else 's'}"
             + (" still off" if kind == "update" else "")
         )
     cls = ' class="key"' if key else ""
