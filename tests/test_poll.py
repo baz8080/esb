@@ -12,7 +12,13 @@ from pathlib import Path
 
 from esb_outages import alert
 from esb_outages.client import ApiError, AuthError, NotFound, TransientError
-from esb_outages.poll import DEFAULT_DELAY_MS, poll_lock, run_check, run_poll
+from esb_outages.poll import (
+    DEFAULT_DELAY_MS,
+    check_writable,
+    poll_lock,
+    run_check,
+    run_poll,
+)
 from esb_outages.store import Store
 
 from .helpers import FakeClient, detail, local_server, make_list, stop_server
@@ -220,6 +226,16 @@ class TestUnwritableDataDir(PollTestCase):
             self.assertEqual(client.list_calls, 0)
         finally:
             os.chmod(target, 0o700)
+
+    def test_an_overlapping_run_removing_the_probe_is_not_an_alarm(self):
+        touch = Path.touch
+
+        def touched_then_removed_by_the_other_run(path, *args, **kwargs):
+            touch(path, *args, **kwargs)
+            os.unlink(path)
+
+        with unittest.mock.patch.object(Path, "touch", touched_then_removed_by_the_other_run):
+            self.assertIsNone(check_writable(self.data_dir))
 
     def test_leaves_no_probe_file_behind(self):
         self.poll(self.client_with("fault"))

@@ -74,7 +74,8 @@ def check_writable(data_dir: Path) -> str | None:
     probe = data_dir / ".write-test"
     try:
         probe.touch()
-        probe.unlink()
+        # An overlapping run shares the name and may have removed it already.
+        probe.unlink(missing_ok=True)
     except OSError as exc:
         return f"cannot write inside {data_dir}: {exc}"
     return None
