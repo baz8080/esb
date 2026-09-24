@@ -32,7 +32,7 @@ change of outage type forces an immediate detail fetch however long that outage
 has been dormant. Only a quiet outage's descriptive fields are ever delayed.
 
 A storm can list more outages than one run can fetch. A run stops itself at
-24 minutes, about 2,800 details, records itself as cut short, and the next run
+22 minutes, about 2,550 details, records itself as cut short, and the next run
 fetches first whatever a purge would take: outages listed as restored that
 still need their detail, then live ones never seen, then re-checks. Every detail
 is committed as it lands, so even a run killed outright leaves the database

@@ -4,6 +4,7 @@ import errno
 import io
 import json
 import os
+import re
 import signal
 import sqlite3
 import tempfile
@@ -14,9 +15,11 @@ import urllib.error
 from pathlib import Path
 
 from esb_outages import alert
+from esb_outages import client as esb_client
 from esb_outages.client import ApiError, AuthError, NotFound, TransientError
 from esb_outages.poll import (
     DEFAULT_DELAY_MS,
+    RUN_BUDGET_S,
     check_writable,
     poll_lock,
     run_check,
@@ -25,6 +28,8 @@ from esb_outages.poll import (
 from esb_outages.store import Store
 
 from .helpers import FakeClient, detail, local_server, make_list, stop_server
+
+REPO = Path(__file__).resolve().parent.parent
 
 
 class PollTestCase(unittest.TestCase):
@@ -714,6 +719,33 @@ class TestBanners(unittest.TestCase):
 
     def test_the_unreachable_banner_does_not_promise_an_hourly_run(self):
         self.assertNotIn("hourly", alert.unreachable_banner("timeout"))
+
+
+class TestTheBackstop(unittest.TestCase):
+    systemd = REPO / "scripts" / "systemd"
+
+    def setting(self, unit, name):
+        [value] = re.findall(rf"^{name}=(\d+)$", (self.systemd / unit).read_text(), re.M)
+        return int(value)
+
+    def test_the_slowest_end_of_a_run_is_before_systemd_stops_it(self):
+        # A request can time out connecting to two addresses, then reading.
+        def request(timeout):
+            return 3 * timeout
+
+        attempts = esb_client.DEFAULT_RETRIES
+        backoff = sum(2**n + 1 for n in range(attempts - 1))
+        fetch = attempts * request(esb_client.DEFAULT_TIMEOUT) + backoff
+        webhook_then_ping = 2 * request(alert.DELIVERY_TIMEOUT_S)
+        backstop = self.setting("esb-outages.service", "TimeoutStartSec")
+        self.assertLessEqual(RUN_BUDGET_S + fetch + webhook_then_ping, backstop)
+
+    def test_a_stopped_run_is_over_before_the_next_trigger(self):
+        timer = (self.systemd / "esb-outages.timer").read_text()
+        self.assertIn("OnCalendar=*:0/30", timer)
+        jitter = self.setting("esb-outages.timer", "RandomizedDelaySec")
+        backstop = self.setting("esb-outages.service", "TimeoutStartSec")
+        self.assertLessEqual(jitter + backstop, 30 * 60)
 
 
 class TestTestAlert(PollTestCase):

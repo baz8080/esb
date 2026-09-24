@@ -26,10 +26,9 @@ from .store import Store, utc_now_iso
 # Half a second is courtesy, not a limit ESB states.
 DEFAULT_DELAY_MS = 500
 
-# A run stops itself here, about 2,800 details at the pace above, and records
-# what it left. systemd's TimeoutStartSec sits a minute beyond as a backstop,
-# because a run systemd has to stop is a failed unit whatever it exits with.
-RUN_BUDGET_S = 24 * 60
+# About 2,550 details at the pace above; the gap to the unit's TimeoutStartSec
+# is set in notes/storms.md and held by tests/test_poll.py::TestTheBackstop.
+RUN_BUDGET_S = 22 * 60
 
 # The backup holds the lock for seconds while it commits; a poll holds it for
 # its whole run. Waiting this long tells the two apart, rather than skipping a

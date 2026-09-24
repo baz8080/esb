@@ -36,6 +36,8 @@ EXIT_MEANINGS = {
 
 BANNER_WIDTH = 78
 
+DELIVERY_TIMEOUT_S = 10
+
 # Discord rejects a message over 2,000 characters outright; ntfy allows 4,096.
 MAX_ALERT_CHARS = 1900
 TRUNCATED = "\n[truncated; the full text is in the journal]"
@@ -156,7 +158,7 @@ def _deliver(what: str, url: str, data: bytes | None = None, headers=None) -> bo
     try:
         # Built in here: a URL missing its scheme raises from the constructor.
         request = urllib.request.Request(url, data=data, headers=headers or {})
-        urllib.request.urlopen(request, timeout=10).close()
+        urllib.request.urlopen(request, timeout=DELIVERY_TIMEOUT_S).close()
         return True
     except Exception as exc:
         print(f"warning: {what} failed: {_describe(exc)}", file=sys.stderr)
