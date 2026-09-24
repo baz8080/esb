@@ -927,7 +927,7 @@ def area_page(county, name, pop, events, nearby, data):
     faults = sum(1 for o in events if not o.planned)
     planned = len(events) - faults
     near = "".join(
-        f'<li><a href="../{slug(c)}/{slug(n)}.html">{html.escape(n)}</a>'
+        f'<li><a href="../../{area_path(c, n)}">{html.escape(n)}</a>'
         '<span class="fill"></span>'
         f'<span class="n">{_km_label(d)}</span>'
         f'<span class="p">{"" if c == county else f"County {html.escape(c)}"}</span></li>'

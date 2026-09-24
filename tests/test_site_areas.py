@@ -294,7 +294,7 @@ class TestThePage(AreaSiteCase):
         """The disclaimer made actionable: the reader's one-click check of
         where else their outage may have been filed."""
         page = self.page("a/dublin/skerries.html")
-        self.assertIn('href="../dublin/cabra-glasnevin.html"', page)
+        self.assertIn('href="../../a/dublin/cabra-glasnevin.html"', page)
         self.assertRegex(page, r'<span class="n">\d+ km</span>')
 
     def test_the_description_is_the_record_first(self):
