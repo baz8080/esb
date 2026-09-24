@@ -120,7 +120,9 @@ died before closing itself out (an uncaught exception, a full disk, a kill
 the SIGTERM handler never saw): a rebuild records it as `unfinished`, where
 the live database has no row for it at all, rather than as a clean `ok`. The
 newest such run reads `in_progress` instead, because the six-hourly backup
-commits `raw/` without the poll lock and often catches a run mid-flight.
+commits `raw/` without the poll lock and often catches a run mid-flight. (The
+backup takes the poll lock since 2026-09-24, so a new snapshot no longer does;
+the label stays for the ones already pushed.)
 The flag, not the date of the first end line, is what decides: a merged log
 from a host still on the old code, or a Pi that booted with a wrong clock,
 would otherwise relabel every older-style run after it. An end line whose
