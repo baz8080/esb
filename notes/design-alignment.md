@@ -635,5 +635,5 @@ yet" (`render._month_watched`, when the observed window is empty); the app
 headline, shows "–" in the tiles and the county rows' counts, and says "No data
 yet for October 2026." where the county view would list outages. Rejected:
 leaving the month out until data arrives, which would make the month list
-depend on the collector rather than the calendar, the thing `month_list`
-was fixed to stop doing (2026-08-26).
+depend on the collector rather than the calendar; `month_list` walks the
+calendar on purpose, so a month is listed from its first instant.
