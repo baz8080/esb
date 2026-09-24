@@ -462,9 +462,11 @@ class Store:
             restored = row["outage_type"] == "Restored"
             if not row["has_detail"]:
                 return 0 if restored else 2
-            # Cleared by apply_list on a type change: something happened.
+            # Cleared by apply_list on a type change: something happened. A
+            # captured record that has flipped to Restored loses only its
+            # restore time to a purge, like the settling ones below.
             if row["last_detail_utc"] is None:
-                return 0 if restored else 3
+                return 1 if restored else 3
             if row["is_final"]:
                 return None
             if restored:

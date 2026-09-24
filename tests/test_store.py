@@ -108,6 +108,19 @@ class TestIdsNeedingDetail(StoreTestCase):
             [uncaptured["outageId"], settling["outageId"], fault["outageId"]],
         )
 
+    def test_a_captured_fault_that_flips_to_restored_waits_behind_an_uncaptured_one(self):
+        fault = detail("fault")
+        uncaptured = dict(detail("restored"), outageId="9100000")
+        self.store.apply_list("2026-07-31T10:00:00Z", make_list(fault)["outageMessage"])
+        self.store.apply_detail("2026-07-31T10:00:01Z", normalize_detail(fault))
+        flipped = dict(fault, outageType="Restored")
+        later = "2026-07-31T11:00:00Z"
+        self.store.apply_list(later, make_list(flipped, uncaptured)["outageMessage"])
+        self.assertEqual(
+            self.store.ids_needing_detail([fault["outageId"], "9100000"], now=later),
+            ["9100000", fault["outageId"]],
+        )
+
     def test_an_id_listed_twice_is_fetched_once(self):
         fault = detail("fault")
         self.store.apply_list("2026-07-31T10:00:00Z", make_list(fault)["outageMessage"])
