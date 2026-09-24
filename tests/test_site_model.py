@@ -535,6 +535,17 @@ class TestEventMerging(SiteModelCase):
         faults, planned = data["national"]["2026-08"][1:3]
         self.assertEqual((faults, planned), (1, 0))
 
+    def test_namesakes_in_distant_counties_are_two_events(self):
+        t = datetime(2026, 8, 10, 9, 0, tzinfo=UTC)
+        common = {"location": "Newtown", "startTime": "10/08/2026 10:00"}
+        self.observe(detail("1", point={"c": "53.36858,-6.27098"}, **common), t)
+        self.observe(detail("2", point={"c": "51.89851,-8.47561"}, **common), t)
+        self.poll(t + timedelta(days=2))
+        outages, _, index = self.load()
+        self.assertEqual({o.county for o in outages}, {"Dublin", "Cork"})
+        data = render.build(outages, index, NOW, self.until)[0]
+        self.assertEqual(data["national"]["2026-08"][1], 2)
+
     def test_an_outage_seen_only_after_it_ended(self):
         """6.4% of events are first seen already Restored: a short outage that
         began and ended between two polls. It still has a real duration."""

@@ -139,6 +139,9 @@ COALESCE_WINDOW = timedelta(minutes=15)
 # One poll cycle plus the timer's jitter, used to decide whether two records
 # ending at different times ended at the same moment as far as we can tell.
 POLL_INTERVAL = timedelta(minutes=35)
+# Sections of one event either side of a county line sat at most 10.6 km apart
+# on the corpus to 24 September (Baltinglass); namesakes are counties apart.
+COUNTY_LINE_KM = 25.0
 
 # A fault returning to the same spot within this long of being restored is a
 # repeat, not a coincidence. Fifteen minutes is where the observed gaps cluster:
@@ -470,7 +473,17 @@ def _event_key(o):
 def event_count(outages):
     """ESB events, not rows: an event straddling a county line is merged per
     county, so each page carries its own customers, but it is one event."""
-    return len({_event_key(o) for o in outages})
+    groups = defaultdict(list)
+    for o in outages:
+        groups[_event_key(o)].append(o)
+    n = 0
+    for members in groups.values():
+        anchors = []
+        for o in members:
+            if not any(km(a.lat, a.lon, o.lat, o.lon) <= COUNTY_LINE_KM for a in anchors):
+                anchors.append(o)
+        n += len(anchors)
+    return n
 
 
 def _merge_group(members):
