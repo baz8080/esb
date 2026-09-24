@@ -699,6 +699,16 @@ class TestHeartbeat(PollTestCase):
         self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
 
 
+class TestBanners(unittest.TestCase):
+    def test_the_storage_fix_names_the_directory_in_use(self):
+        text = alert.storage_banner(Path("/data"), "full")
+        self.assertIn("chown -R esb:esb /data\n", text)
+        self.assertNotIn("/var/lib", text)
+
+    def test_the_unreachable_banner_does_not_promise_an_hourly_run(self):
+        self.assertNotIn("hourly", alert.unreachable_banner("timeout"))
+
+
 class TestTestAlert(PollTestCase):
     """`esb test-alert` is the proof both channels work, so each outcome must
     say what it found."""

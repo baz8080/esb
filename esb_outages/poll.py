@@ -37,9 +37,9 @@ RUN_BUDGET_S = 24 * 60
 LOCK_WAIT_S = 120
 
 # A failed detail fetch is not lost data: the outage stays in the list for the
-# whole retention window and is not marked final, so the next hourly run retries
-# it - roughly four more chances before ESB purges it. Only a broad failure is
-# worth an email, so both a proportion and an absolute floor must be exceeded.
+# whole retention window and is not marked final, so every run until ESB purges
+# it retries it. Only a broad failure is worth an email, so both a proportion
+# and an absolute floor must be exceeded.
 PARTIAL_FAILURE_THRESHOLD = 0.25
 PARTIAL_FAILURE_MIN = 3
 

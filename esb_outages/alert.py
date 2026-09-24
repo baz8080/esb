@@ -74,7 +74,7 @@ def unreachable_banner(detail: str) -> str:
         "ESB POLLER: API UNREACHABLE",
         [
             "The outage list endpoint could not be reached after retries.",
-            "If this clears on the next hourly run, no action is needed - a",
+            "If this clears on the next run, no action is needed - a",
             "single miss is covered by the ~4h retention window. Repeated",
             "failures mean data is being lost.",
             "",
@@ -109,7 +109,7 @@ def storage_banner(data_dir, problem: str) -> str:
             "Check:",
             f"  df -h {data_dir}",
             f"  ls -ld {data_dir}",
-            "  sudo chown -R esb:esb /var/lib/esb-outages",
+            f"  sudo chown -R esb:esb {data_dir}",
         ],
     )
 
