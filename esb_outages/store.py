@@ -308,7 +308,12 @@ class Store:
         # is the same record read twice: from a `sort -u`-less merge, or a
         # compact that crashed before removing what it had archived.
         seen: set[bytes] = set()
+        month = None
         for path in self.raw_files(kind):
+            # Copies share a month file, so the set never needs to span one.
+            if path.name.split(".", 1)[0] != month:
+                month = path.name.split(".", 1)[0]
+                seen.clear()
             with _open_maybe_gzip(path) as fh:
                 for lineno, line in enumerate(fh, 1):
                     line = line.strip()
@@ -429,6 +434,9 @@ class Store:
         """
         if not outage_ids:
             return []
+        # ESB listing an id twice would fetch it twice, and the two identical
+        # observation lines would read as one copy (iter_raw).
+        outage_ids = list(dict.fromkeys(outage_ids))
         now = now or utc_now_iso()
         placeholders = ",".join("?" * len(outage_ids))
         rows = self.conn.execute(

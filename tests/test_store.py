@@ -108,6 +108,12 @@ class TestIdsNeedingDetail(StoreTestCase):
             [uncaptured["outageId"], settling["outageId"], fault["outageId"]],
         )
 
+    def test_an_id_listed_twice_is_fetched_once(self):
+        fault = detail("fault")
+        self.store.apply_list("2026-07-31T10:00:00Z", make_list(fault)["outageMessage"])
+        ids = [fault["outageId"], fault["outageId"]]
+        self.assertEqual(self.store.ids_needing_detail(ids), [fault["outageId"]])
+
     def test_handles_empty_input(self):
         self.assertEqual(self.store.ids_needing_detail([]), [])
 
