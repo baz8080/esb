@@ -163,9 +163,11 @@ def _month_of(iso_ts: str) -> str:
 
 
 def _open_maybe_gzip(path: Path):
+    # A line torn inside a multi-byte character (any fada) must stay one
+    # malformed line, not a decode error that ends the whole read.
     if path.suffix == ".gz":
-        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8")
-    return path.open("r", encoding="utf-8")
+        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8", errors="replace")
+    return path.open("r", encoding="utf-8", errors="replace")
 
 
 class Store:
@@ -777,6 +779,9 @@ class Store:
                         with target.open("rb") as archived:
                             shutil.copyfileobj(archived, out)
                     with path.open("rb") as src, gzip.GzipFile(fileobj=out, mode="wb") as dst:
+                        if target.exists():
+                            # the archive may end in a torn line; a blank one is skipped
+                            dst.write(b"\n")
                         shutil.copyfileobj(src, dst)
                     out.flush()
                     os.fsync(out.fileno())

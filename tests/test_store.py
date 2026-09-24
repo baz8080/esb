@@ -226,6 +226,30 @@ class TestRawLogAndCompaction(StoreTestCase):
         self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r2"])
         self.assertEqual(len(self.store.malformed_lines), 1)
 
+    def test_a_line_torn_inside_a_fada_is_one_bad_line(self):
+        self.store.write_run_raw("r1", "2026-08-01T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2026-08.jsonl").open("ab") as fh:
+            fh.write('{"run_id": "r2", "location": "Dún'.encode()[:-2])
+        self.store.write_run_raw("r3", "2026-08-01T11:00:00Z", 200, {"outageMessage": []})
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r3"])
+        self.assertEqual(len(self.store.malformed_lines), 1)
+
+    def test_a_torn_archive_does_not_swallow_the_late_lines(self):
+        import gzip
+
+        self.store.write_run_raw("old", "2020-01-15T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2020-01.jsonl").open("a") as fh:
+            fh.write('{"run_id": "torn", "sta')
+        self.store.compact()
+        self.store.write_run_raw("late", "2020-01-31T23:00:00Z", 200, {"outageMessage": []})
+        # a late line written straight after the torn one, as a restored backup might
+        path = self.data_dir / "raw" / "runs-2020-01.jsonl"
+        path.write_text(path.read_text().lstrip("\n"))
+        self.store.compact()
+        self.assertIn("late", [r["run_id"] for r in self.store.iter_raw("runs")])
+        with gzip.open(str(path) + ".gz", "rt") as fh:
+            self.assertIn("late", fh.read())
+
     def test_compact_gzips_old_months_and_keeps_current(self):
         from esb_outages.store import utc_now_iso
 
