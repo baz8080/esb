@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 from pathlib import Path
 
 from . import __version__, alert
 from .client import EsbClient
-from .poll import DEFAULT_DELAY_MS, poll_lock, run_check, run_poll
+from .poll import DEFAULT_DELAY_MS, milliseconds, poll_lock, run_check, run_poll
 from .store import Store
 
 DEFAULT_DATA_DIR = os.environ.get("ESB_DATA_DIR", "/data")
@@ -104,17 +105,23 @@ def cmd_test_alert(args) -> int:
     return alert.EXIT_OK
 
 
-def _held_by_poll() -> int:
+def _lock_held() -> int:
     # Both delete files a poll writes to: esb.db and its journal, or the log.
-    print("a poll run holds the lock; try again when it has finished", file=sys.stderr)
+    print(
+        "the lock is held (by a poll, the backup, or esb rebuild or compact);"
+        " try again when it has finished",
+        file=sys.stderr,
+    )
     return 1
 
 
 def cmd_rebuild(args) -> int:
     with poll_lock(Path(args.data_dir)) as acquired:
         if not acquired:
-            return _held_by_poll()
-        with Store(args.data_dir) as store:
+            return _lock_held()
+        # Not opened first: a malformed esb.db fails the moment it is opened,
+        # and rebuild deletes it unread.
+        with contextlib.closing(Store(args.data_dir)) as store:
             result = store.rebuild(verbose=True)
     if result["runs"] == 0 and result["observations"] == 0:
         print("nothing to replay: no raw logs found", file=sys.stderr)
@@ -124,9 +131,9 @@ def cmd_rebuild(args) -> int:
 def cmd_compact(args) -> int:
     with poll_lock(Path(args.data_dir)) as acquired:
         if not acquired:
-            return _held_by_poll()
-        with Store(args.data_dir) as store:
-            done = store.compact()
+            return _lock_held()
+        # Only raw/, so not opened: a malformed esb.db must not stop it.
+        done = Store(args.data_dir).compact()
     print(f"compacted {len(done)} file(s): {', '.join(done) or 'none'}")
     return alert.EXIT_OK
 
@@ -143,8 +150,11 @@ def main(argv=None) -> int:
 
     p_poll = sub.add_parser("poll", help="run one collection pass (the scheduled command)")
     p_poll.add_argument(
-        "--delay-ms", type=int, default=None,
-        help=f"pause between detail requests (env: ESB_POLL_DELAY_MS, default {DEFAULT_DELAY_MS})",
+        "--delay-ms", type=milliseconds, default=None,
+        help=(
+            "pause between detail requests, 0 or more "
+            f"(env: ESB_POLL_DELAY_MS, default {DEFAULT_DELAY_MS})"
+        ),
     )
     sub.add_parser("check", help="verify the API key and connectivity; writes nothing")
     sub.add_parser(

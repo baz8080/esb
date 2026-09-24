@@ -1,6 +1,8 @@
 import gzip
 import http.client
+import io
 import unittest
+import urllib.error
 from unittest import mock
 
 from esb_outages.client import ApiError, EsbClient, TransientError
@@ -47,6 +49,20 @@ class TestFailuresStayInTheTaxonomy(unittest.TestCase):
     def test_a_body_that_is_not_utf8_is_an_api_error(self):
         with self.assertRaises(ApiError):
             self.request(_Response(lambda: b"\xff\xfe", encoding=""))
+
+
+class TestErrorText(unittest.TestCase):
+    def test_a_server_error_page_is_cut_short_in_the_message(self):
+        page = "<html>" + "x" * 50_000 + "</html>"
+        error = urllib.error.HTTPError(
+            "https://api.esb.ie/outages", 503, "Service Unavailable", {},
+            io.BytesIO(page.encode()),
+        )
+        client = EsbClient(retries=1, sleep=lambda s: None)
+        with mock.patch("urllib.request.urlopen", side_effect=error), \
+                self.assertRaises(TransientError) as caught:
+            client.get_json("/outages")
+        self.assertLess(len(str(caught.exception)), 400)
 
 
 if __name__ == "__main__":

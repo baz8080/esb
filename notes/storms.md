@@ -54,7 +54,8 @@ Four things, one PR, because they are one fix.
   fetched, so the ranking has something to rank against. The raw log already
   carried the truth; this is about the next run not repeating the last one.
 - **The run stops itself, and SIGTERM stops the loop instead of the process.**
-  A run ends its fetching at `RUN_BUDGET_S`, 24 minutes, records itself with
+  A run ends its fetching at `RUN_BUDGET_S`, 24 minutes (22 since
+  2026-09-24, below), records itself with
   status `cut_short` and exit 0, and `run_poll` sends the heartbeat as for any
   run that reached the feed. A storm long enough to stop every run is a
   collector working flat out, not a stopped one, and must not raise the
@@ -119,7 +120,9 @@ died before closing itself out (an uncaught exception, a full disk, a kill
 the SIGTERM handler never saw): a rebuild records it as `unfinished`, where
 the live database has no row for it at all, rather than as a clean `ok`. The
 newest such run reads `in_progress` instead, because the six-hourly backup
-commits `raw/` without the poll lock and often catches a run mid-flight.
+commits `raw/` without the poll lock and often catches a run mid-flight. (The
+backup takes the poll lock since 2026-09-24, so a new snapshot no longer does;
+the label stays for the ones already pushed.)
 The flag, not the date of the first end line, is what decides: a merged log
 from a host still on the old code, or a Pi that booted with a wrong clock,
 would otherwise relabel every older-style run after it. An end line whose
@@ -127,3 +130,24 @@ start line was lost replays as a run with no list, started at the time its
 run id carries, so its observations keep their place. Two copies of
 the same line, from a merge without `sort -u` or a `compact` that crashed
 before removing what it had archived, are read once.
+
+## The budget leaves room for the last fetch - 2026-09-24
+
+`RUN_BUDGET_S` was 24 minutes against a `TimeoutStartSec` of 25, but the
+budget is checked only between fetches. After it come the slowest fetch, the
+webhook for a partial or drifted run, and the heartbeat. Each request can
+time out on connect to two addresses (IPv4 and IPv6) and then on the read, so
+one fetch attempt can take three 15-second timeouts, three attempts plus about
+five seconds of backoff come to 140 seconds, and the webhook and the ping add
+30 each: 200 seconds past the budget. That is a storm with a degraded API,
+exactly when runs reach the budget, and systemd would fail the unit and kill
+the heartbeat mid-send.
+
+The budget is now 22 minutes and the backstop 26: 1,520 seconds at worst,
+inside 1,560. The backstop cannot grow further, because the timer's three
+minutes of jitter plus the backstop must end before the next trigger, 30
+minutes on. A poll also waits up to two minutes for the lock while the backup
+commits, and the budget counts from the start, so that wait comes out of it
+rather than pushing the end later. 22 minutes is about 2,550 details at 500 ms.
+`TestTheBackstop` recomputes all of this from the client's, the alert's and
+the poll's constants and the two unit files.

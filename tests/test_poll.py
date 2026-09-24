@@ -1,18 +1,35 @@
+import contextlib
 import copy
+import errno
+import io
+import json
 import os
+import re
 import signal
 import sqlite3
 import tempfile
+import threading
 import unittest
 import unittest.mock
+import urllib.error
 from pathlib import Path
 
 from esb_outages import alert
+from esb_outages import client as esb_client
 from esb_outages.client import ApiError, AuthError, NotFound, TransientError
-from esb_outages.poll import poll_lock, run_check, run_poll
+from esb_outages.poll import (
+    DEFAULT_DELAY_MS,
+    RUN_BUDGET_S,
+    check_writable,
+    poll_lock,
+    run_check,
+    run_poll,
+)
 from esb_outages.store import Store
 
 from .helpers import FakeClient, detail, local_server, make_list, stop_server
+
+REPO = Path(__file__).resolve().parent.parent
 
 
 class PollTestCase(unittest.TestCase):
@@ -31,7 +48,7 @@ class PollTestCase(unittest.TestCase):
         self._tmp.cleanup()
 
     def poll(self, client):
-        return run_poll(self.data_dir, client=client, delay_ms=0)
+        return run_poll(self.data_dir, client=client, delay_ms=0, lock_wait_s=0)
 
     def store(self):
         return Store(self.data_dir).open()
@@ -218,9 +235,109 @@ class TestUnwritableDataDir(PollTestCase):
         finally:
             os.chmod(target, 0o700)
 
+    def test_an_overlapping_run_removing_the_probe_is_not_an_alarm(self):
+        touch = Path.touch
+
+        def touched_then_removed_by_the_other_run(path, *args, **kwargs):
+            touch(path, *args, **kwargs)
+            os.unlink(path)
+
+        with unittest.mock.patch.object(Path, "touch", touched_then_removed_by_the_other_run):
+            self.assertIsNone(check_writable(self.data_dir))
+
     def test_leaves_no_probe_file_behind(self):
         self.poll(self.client_with("fault"))
         self.assertFalse((self.data_dir / ".write-test").exists())
+
+
+class TestAFailureMidRun(PollTestCase):
+    """What the pre-run probe cannot see still reaches the webhook, and a run
+    that stored nothing sends no heartbeat."""
+
+    def setUp(self):
+        super().setUp()
+        self.requests = []
+        url, self.server, self.thread = local_server(self.requests)
+        os.environ["ESB_HEARTBEAT_URL"] = url
+        os.environ["ESB_ALERT_WEBHOOK"] = url.replace("/hook", "/alert")
+
+    def tearDown(self):
+        stop_server(self.server, self.thread)
+        super().tearDown()
+
+    def poll_failing(self, method, error):
+        with unittest.mock.patch.object(Store, method, side_effect=error), \
+                contextlib.redirect_stderr(io.StringIO()):
+            return self.poll(self.client_with("fault"))
+
+    def test_a_full_disk_is_a_storage_alert(self):
+        code = self.poll_failing("write_run_raw", OSError(28, "No space left on device"))
+        self.assertEqual(code, alert.EXIT_STORAGE)
+        self.assertEqual([p for p, _ in self.requests], ["/alert"])
+        self.assertIn("No space left on device", self.requests[0][1])
+
+    def test_a_full_database_is_a_storage_alert(self):
+        error = sqlite3.OperationalError("database or disk is full")
+        error.sqlite_errorcode = sqlite3.SQLITE_FULL
+        self.assertEqual(self.poll_failing("apply_list", error), alert.EXIT_STORAGE)
+        self.assertEqual([p for p, _ in self.requests], ["/alert"])
+
+    def test_a_database_from_older_code_is_not_a_disk_problem(self):
+        try:
+            sqlite3.connect(":memory:").execute("SELECT no_such_column FROM sqlite_master")
+        except sqlite3.OperationalError as caught:
+            error = caught
+        self.assertEqual(self.poll_failing("apply_list", error), alert.EXIT_CRASH)
+        self.assertIn("RUN CRASHED", self.requests[0][1])
+        self.assertIn("sudo esb rebuild", self.requests[0][1])
+
+    def test_a_malformed_database_points_to_rebuild(self):
+        error = sqlite3.DatabaseError("database disk image is malformed")
+        error.sqlite_errorcode = sqlite3.SQLITE_CORRUPT
+        self.assertEqual(self.poll_failing("apply_list", error), alert.EXIT_CRASH)
+        self.assertIn("sudo esb rebuild", self.requests[0][1])
+
+    def test_anything_else_is_a_crash_alert(self):
+        code = self.poll_failing("apply_list", KeyError("i"))
+        self.assertEqual(code, alert.EXIT_CRASH)
+        self.assertEqual([p for p, _ in self.requests], ["/alert"])
+        self.assertIn("RUN CRASHED", self.requests[0][1])
+        self.assertIn("esb rebuild", self.requests[0][1])
+        self.assertIn("rebuild again once it has one", self.requests[0][1])
+        # A bug in the poll's own path replays cleanly and crashes again.
+        self.assertIn("or the next run crashes", self.requests[0][1])
+
+
+class TestTheDelay(PollTestCase):
+    def poll_with_env(self, value):
+        os.environ["ESB_POLL_DELAY_MS"] = value
+        client = self.client_with("fault", "restored")
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
+            code = run_poll(self.data_dir, client=client)
+        return code, client, err.getvalue()
+
+    def test_a_negative_delay_falls_back_to_the_default(self):
+        with unittest.mock.patch("esb_outages.poll.time.sleep") as sleep:
+            code, client, err = self.poll_with_env("-1")
+        self.assertIn("0 or more", err)
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(len(client.detail_calls), 2)
+        sleep.assert_called_with(DEFAULT_DELAY_MS / 1000.0)
+
+    def test_a_delay_that_is_not_a_number_falls_back_to_the_default(self):
+        with unittest.mock.patch("esb_outages.poll.time.sleep"):
+            code, client, _ = self.poll_with_env("half a second")
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(len(client.detail_calls), 2)
+
+    def test_the_flag_refuses_a_negative_delay(self):
+        from esb_outages.__main__ import main
+
+        err = io.StringIO()
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(err):
+            main(["--data-dir", str(self.data_dir), "poll", "--delay-ms", "-1"])
+        self.assertIn("invalid milliseconds value: '-1'", err.getvalue())
 
 
 class TestLocking(PollTestCase):
@@ -228,9 +345,42 @@ class TestLocking(PollTestCase):
         with poll_lock(self.data_dir) as acquired:
             self.assertTrue(acquired)
             client = self.client_with("fault")
-            # Exits 0: an overlapping trigger is not a failure worth emailing about.
-            self.assertEqual(self.poll(client), alert.EXIT_OK)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                # Exits 0: an overlapping trigger is not a failure worth emailing about.
+                self.assertEqual(self.poll(client), alert.EXIT_OK)
             self.assertEqual(client.list_calls, 0)
+            # Not only polls hold it, so the message must not blame one.
+            self.assertIn("the backup, or esb rebuild or compact", out.getvalue())
+
+    def test_a_lock_that_cannot_be_taken_is_not_a_quiet_skip(self):
+        error = OSError(errno.ENOLCK, "No locks available")
+        with unittest.mock.patch("esb_outages.poll.fcntl.flock", side_effect=error), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_STORAGE)
+
+    def test_a_run_waits_out_a_brief_holder(self):
+        # The backup, committing: a poll that met it used to lose its slot.
+        held, release, acquired = threading.Event(), threading.Event(), []
+
+        def backup():
+            with poll_lock(self.data_dir) as got:
+                acquired.append(got)
+                held.set()
+                release.wait(5)
+
+        thread = threading.Thread(target=backup)
+        thread.start()
+        self.assertTrue(held.wait(5))
+        self.assertEqual(acquired, [True])
+        timer = threading.Timer(1, release.set)
+        timer.start()
+        client = self.client_with("fault")
+        code = run_poll(self.data_dir, client=client, delay_ms=0, lock_wait_s=10)
+        timer.join()
+        thread.join()
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(client.list_calls, 1)
 
     def test_lock_is_released_afterwards(self):
         with poll_lock(self.data_dir) as acquired:
@@ -385,6 +535,38 @@ class TestWebhookAlerting(unittest.TestCase):
         self.assertEqual(len(self.received), 1)
         self.assertIn("SUBSCRIPTION KEY REJECTED", self.received[0][1])
 
+    def test_ntfy_gets_the_banner_as_the_body_with_a_title(self):
+        seen = []
+        url, server, thread = local_server([], seen)
+        try:
+            with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": url + "/ntfy"}):
+                self.assertTrue(alert.notify("the banner"))
+        finally:
+            stop_server(server, thread)
+        [(method, _, headers, body)] = seen
+        self.assertEqual((method, body), ("POST", "the banner"))
+        self.assertEqual(headers["Title"], "ESB poller failure")
+
+    def test_any_other_webhook_gets_json(self):
+        seen = []
+        url, server, thread = local_server([], seen)
+        try:
+            with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": url}):
+                self.assertTrue(alert.notify("the banner"))
+        finally:
+            stop_server(server, thread)
+        [(method, _, headers, body)] = seen
+        self.assertEqual(method, "POST")
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertEqual(json.loads(body), {"content": "the banner", "text": "the banner"})
+
+    def test_a_long_alert_fits_discord(self):
+        with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
+            self.assertTrue(alert.notify("x" * 10_000))
+        content = json.loads(self.received[0][1])["content"]
+        self.assertLessEqual(len(content), 2000)
+        self.assertTrue(content.endswith("the full text is in the journal]"))
+
     def test_notify_reports_delivery(self):
         with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
             self.assertTrue(alert.notify("hello"))
@@ -399,6 +581,28 @@ class TestWebhookAlerting(unittest.TestCase):
             os.environ, {"ESB_ALERT_WEBHOOK": "http://127.0.0.1:9/dead"}
         ):
             self.assertFalse(alert.notify("hello"))
+
+    def test_a_url_missing_its_scheme_does_not_raise(self):
+        with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": "ntfy.sh/topic"}):
+            self.assertEqual(alert.fail("drift", alert.EXIT_SCHEMA_DRIFT), alert.EXIT_SCHEMA_DRIFT)
+
+
+    def test_a_failed_delivery_does_not_print_the_url(self):
+        for url in (
+            "hc-ping.com/0f3c9a1e-secret",
+            # a stray space: http.client quotes the path alone
+            "http://127.0.0.1:9/0f3c9a1e-secret x",
+            "http://127.0.0.1:9/0f3c9a1e-secret",
+        ):
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertFalse(alert._deliver("heartbeat ping", url))
+            self.assertIn("heartbeat ping failed: ", err.getvalue())
+            self.assertNotIn("secret", err.getvalue(), url)
+
+    def test_a_reason_given_as_text_is_named_by_its_error(self):
+        error = urllib.error.URLError("unknown url type: secret")
+        self.assertEqual(alert._describe(error), "URLError")
 
 
 class TestHeartbeat(PollTestCase):
@@ -434,10 +638,39 @@ class TestHeartbeat(PollTestCase):
         self.assertEqual(self.poll(client), alert.EXIT_SCHEMA_DRIFT)
         self.assertEqual(self.paths(), ["/hook"])
 
+    def test_a_mistyped_webhook_does_not_cost_the_ping(self):
+        os.environ["ESB_ALERT_WEBHOOK"] = "ntfy.sh/topic"
+        body = dict(detail("fault"))
+        body["brandNewField"] = "surprise"
+        client = FakeClient(
+            list_body=make_list(detail("fault")), details={body["outageId"]: body}
+        )
+        self.assertEqual(self.poll(client), alert.EXIT_SCHEMA_DRIFT)
+        self.assertEqual(self.paths(), ["/hook"])
+
     def test_a_run_cut_short_still_pings(self):
         # a storm that outruns every run must not read as a stopped collector
         self.assertEqual(self.poll(storm_client(storm(), TestStorm.BUDGET)), alert.EXIT_OK)
         self.assertEqual(self.paths(), ["/hook"])
+
+    def test_a_partial_run_still_pings(self):
+        kinds = ["fault", "planned", "restored"]
+        client = FakeClient(
+            list_body=make_list(*[detail(k) for k in kinds]),
+            detail_errors={detail(k)["outageId"]: TransientError("503") for k in kinds},
+        )
+        self.assertEqual(self.poll(client), alert.EXIT_PARTIAL)
+        self.assertEqual(self.paths(), ["/hook"])
+
+    def test_the_ping_is_a_get(self):
+        seen = []
+        url, server, thread = local_server([], seen)
+        try:
+            os.environ["ESB_HEARTBEAT_URL"] = url
+            self.assertTrue(alert.heartbeat())
+        finally:
+            stop_server(server, thread)
+        self.assertEqual([method for method, *_ in seen], ["GET"])
 
     def test_a_rejected_key_does_not_ping(self):
         self.poll(FakeClient(list_error=AuthError("401 rejected")))
@@ -445,6 +678,19 @@ class TestHeartbeat(PollTestCase):
 
     def test_an_unreachable_feed_does_not_ping(self):
         self.poll(FakeClient(list_error=TransientError("connection refused")))
+        self.assertEqual(self.paths(), [])
+
+    def test_a_key_rejected_mid_run_does_not_ping(self):
+        dying = detail("fault")["outageId"]
+        client = FakeClient(
+            list_body=make_list(detail("fault")), detail_errors={dying: AuthError("401")}
+        )
+        self.assertEqual(self.poll(client), alert.EXIT_AUTH)
+        self.assertEqual(self.paths(), [])
+
+    def test_an_unwritable_directory_does_not_ping(self):
+        with unittest.mock.patch("esb_outages.poll.check_writable", return_value="read-only"):
+            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_STORAGE)
         self.assertEqual(self.paths(), [])
 
     def test_a_skipped_trigger_does_not_ping(self):
@@ -463,6 +709,96 @@ class TestHeartbeat(PollTestCase):
         os.environ["ESB_HEARTBEAT_URL"] = "http://127.0.0.1:9/dead"
         self.assertFalse(alert.heartbeat())
         self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
+
+
+class TestBanners(unittest.TestCase):
+    def test_the_storage_fix_names_the_directory_in_use(self):
+        text = alert.storage_banner(Path("/data"), "full")
+        self.assertIn("chown -R esb:esb /data\n", text)
+        self.assertNotIn("/var/lib", text)
+
+    def test_the_unreachable_banner_does_not_promise_an_hourly_run(self):
+        self.assertNotIn("hourly", alert.unreachable_banner("timeout"))
+
+
+class TestTheBackstop(unittest.TestCase):
+    systemd = REPO / "scripts" / "systemd"
+
+    def setting(self, unit, name):
+        [value] = re.findall(rf"^{name}=(\d+)$", (self.systemd / unit).read_text(), re.M)
+        return int(value)
+
+    def test_the_slowest_end_of_a_run_is_before_systemd_stops_it(self):
+        # A request can time out connecting to two addresses, then reading.
+        def request(timeout):
+            return 3 * timeout
+
+        attempts = esb_client.DEFAULT_RETRIES
+        backoff = sum(2**n + 1 for n in range(attempts - 1))
+        fetch = attempts * request(esb_client.DEFAULT_TIMEOUT) + backoff
+        webhook_then_ping = 2 * request(alert.DELIVERY_TIMEOUT_S)
+        backstop = self.setting("esb-outages.service", "TimeoutStartSec")
+        self.assertLessEqual(RUN_BUDGET_S + fetch + webhook_then_ping, backstop)
+
+    def test_a_stopped_run_is_over_before_the_next_trigger(self):
+        timer = (self.systemd / "esb-outages.timer").read_text()
+        self.assertIn("OnCalendar=*:0/30", timer)
+        jitter = self.setting("esb-outages.timer", "RandomizedDelaySec")
+        backstop = self.setting("esb-outages.service", "TimeoutStartSec")
+        self.assertLessEqual(jitter + backstop, 30 * 60)
+
+
+class TestTestAlert(PollTestCase):
+    """`esb test-alert` is the proof both channels work, so each outcome must
+    say what it found."""
+
+    def setUp(self):
+        super().setUp()
+        self.requests = []
+        self.url, self.server, self.thread = local_server(self.requests)
+
+    def tearDown(self):
+        stop_server(self.server, self.thread)
+        super().tearDown()
+
+    def run_it(self, **env):
+        from esb_outages.__main__ import main
+
+        os.environ.update(env)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(["--data-dir", str(self.data_dir), "test-alert"])
+        return code, err.getvalue()
+
+    def test_no_webhook_is_a_failure(self):
+        code, err = self.run_it()
+        self.assertEqual(code, 1)
+        self.assertIn("ESB_ALERT_WEBHOOK is not set", err)
+        self.assertEqual(self.requests, [])
+
+    def test_a_webhook_that_cannot_be_reached_is_a_failure(self):
+        code, err = self.run_it(ESB_ALERT_WEBHOOK="http://127.0.0.1:9/dead")
+        self.assertEqual(code, 1)
+        self.assertIn("alert delivery FAILED", err)
+
+    def test_no_heartbeat_passes_with_a_warning(self):
+        code, err = self.run_it(ESB_ALERT_WEBHOOK=self.url)
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertIn("ESB_HEARTBEAT_URL is not set", err)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_a_heartbeat_that_cannot_be_reached_is_a_failure(self):
+        code, err = self.run_it(
+            ESB_ALERT_WEBHOOK=self.url, ESB_HEARTBEAT_URL="http://127.0.0.1:9/dead"
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("heartbeat delivery FAILED", err)
+
+    def test_both_delivered(self):
+        code, _ = self.run_it(ESB_ALERT_WEBHOOK=self.url, ESB_HEARTBEAT_URL=self.url)
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(len(self.requests), 2)
+        self.assertIn("TEST ALERT", self.requests[0][1])
 
 
 class TestCheck(unittest.TestCase):

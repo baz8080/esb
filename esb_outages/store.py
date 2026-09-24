@@ -182,17 +182,22 @@ class Store:
 
     def open(self) -> Store:
         self.raw_dir.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(self.db_path)
-        self._conn.row_factory = sqlite3.Row
-        # WAL survives an abrupt NAS power cut far better than the default.
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA synchronous=FULL")
-        self._conn.executescript(SCHEMA)
-        self._conn.execute(
-            "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
-            (str(SCHEMA_VERSION),),
-        )
-        self._conn.commit()
+        conn = sqlite3.connect(self.db_path)
+        try:
+            conn.row_factory = sqlite3.Row
+            # WAL survives an abrupt NAS power cut far better than the default.
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=FULL")
+            conn.executescript(SCHEMA)
+            conn.execute(
+                "INSERT OR IGNORE INTO meta(key, value) VALUES ('schema_version', ?)",
+                (str(SCHEMA_VERSION),),
+            )
+            conn.commit()
+        except BaseException:
+            conn.close()
+            raise
+        self._conn = conn
         return self
 
     def close(self) -> None:

@@ -28,8 +28,9 @@ def make_list(*details, extra=None):
     return {"outageMessage": items}
 
 
-def local_server(received):
-    """A local HTTP server that records every request until stopped.
+def local_server(received, seen=None):
+    """A local HTTP server that records every request until stopped, as
+    (path, body), and as (method, path, headers, body) in `seen` if given.
 
     Returns (url, server, thread); stop it with `stop_server`. It serves until
     told to stop rather than for a fixed window: a one-shot server that gave
@@ -42,7 +43,10 @@ def local_server(received):
     class Handler(http.server.BaseHTTPRequestHandler):
         def _record(self):
             length = int(self.headers.get("Content-Length", 0))
-            received.append((self.path, self.rfile.read(length).decode()))
+            body = self.rfile.read(length).decode()
+            received.append((self.path, body))
+            if seen is not None:
+                seen.append((self.command, self.path, dict(self.headers), body))
             self.send_response(200)
             self.end_headers()
 

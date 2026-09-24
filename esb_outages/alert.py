@@ -12,9 +12,11 @@ from __future__ import annotations
 import json
 import os
 import sys
+import urllib.error
 import urllib.request
 
 EXIT_OK = 0
+EXIT_CRASH = 1
 EXIT_AUTH = 2
 EXIT_UNREACHABLE = 3
 EXIT_SCHEMA_DRIFT = 4
@@ -23,6 +25,7 @@ EXIT_STORAGE = 6
 
 EXIT_MEANINGS = {
     EXIT_OK: "success",
+    EXIT_CRASH: "collector crashed",
     EXIT_AUTH: "API subscription key rejected",
     EXIT_UNREACHABLE: "ESB API unreachable",
     EXIT_SCHEMA_DRIFT: "API response shape changed",
@@ -32,6 +35,12 @@ EXIT_MEANINGS = {
 
 
 BANNER_WIDTH = 78
+
+DELIVERY_TIMEOUT_S = 10
+
+# Discord rejects a message over 2,000 characters outright; ntfy allows 4,096.
+MAX_ALERT_CHARS = 1900
+TRUNCATED = "\n[truncated; the full text is in the journal]"
 
 
 def banner(title: str, lines: list[str]) -> str:
@@ -71,7 +80,7 @@ def unreachable_banner(detail: str) -> str:
         "ESB POLLER: API UNREACHABLE",
         [
             "The outage list endpoint could not be reached after retries.",
-            "If this clears on the next hourly run, no action is needed - a",
+            "If this clears on the next run, no action is needed - a",
             "single miss is covered by the ~4h retention window. Repeated",
             "failures mean data is being lost.",
             "",
@@ -100,13 +109,31 @@ def storage_banner(data_dir, problem: str) -> str:
         [
             f"{problem}",
             "",
-            "Nothing was collected. Usual causes are a full disk, or the",
+            "Collection has stopped. Usual causes are a full disk, or the",
             "directory not being owned by the user the collector runs as.",
             "",
             "Check:",
             f"  df -h {data_dir}",
             f"  ls -ld {data_dir}",
-            "  sudo chown -R esb:esb /var/lib/esb-outages",
+            f"  sudo chown -R esb:esb {data_dir}",
+        ],
+    )
+
+
+def crash_banner(exc: BaseException) -> str:
+    return banner(
+        "ESB POLLER: RUN CRASHED",
+        [
+            "The collector hit an error it has no handling for and stopped",
+            "partway through the run. The traceback is in the journal:",
+            "  journalctl -u esb-outages.service -n 50",
+            "",
+            "If the database is at fault, this re-derives it from the raw",
+            "logs:  sudo esb rebuild",
+            "If the rebuild fails the same way, or the next run crashes",
+            "again, the code needs a fix; rebuild again once it has one.",
+            "",
+            f"Raw error: {type(exc).__name__}: {exc}",
         ],
     )
 
@@ -125,15 +152,31 @@ def partial_banner(failed: int, attempted: int, errors: list[str]) -> str:
     )
 
 
-def _deliver(request, what: str) -> bool:
+def _deliver(what: str, url: str, data: bytes | None = None, headers=None) -> bool:
     """Best effort, in one place: a failure to report must never mask the
     problem being reported or change the exit code."""
     try:
-        urllib.request.urlopen(request, timeout=10).close()
+        # Built in here: a URL missing its scheme raises from the constructor.
+        request = urllib.request.Request(url, data=data, headers=headers or {})
+        urllib.request.urlopen(request, timeout=DELIVERY_TIMEOUT_S).close()
         return True
     except Exception as exc:
-        print(f"warning: {what} failed: {exc}", file=sys.stderr)
+        print(f"warning: {what} failed: {_describe(exc)}", file=sys.stderr)
         return False
+
+
+def _describe(exc: Exception) -> str:
+    # Never str(exc): the URL is the secret (an ntfy topic, a ping id), and
+    # urllib and http.client quote it, or its path, in their messages.
+    if isinstance(exc, urllib.error.HTTPError):
+        return f"HTTP {exc.code}"
+    reason = exc.reason if isinstance(exc, urllib.error.URLError) else exc
+    if isinstance(reason, OSError):
+        return f"{type(reason).__name__}: {reason.strerror or 'no detail'}"
+    if isinstance(reason, ValueError):
+        return f"{type(reason).__name__} (check the URL's form)"
+    # A URLError's reason can be a bare string, which may quote the URL.
+    return type(reason if isinstance(reason, Exception) else exc).__name__
 
 
 def notify(message: str) -> bool:
@@ -141,13 +184,14 @@ def notify(message: str) -> bool:
     url = os.environ.get("ESB_ALERT_WEBHOOK")
     if not url:
         return False
+    if len(message) > MAX_ALERT_CHARS:
+        message = message[: MAX_ALERT_CHARS - len(TRUNCATED)] + TRUNCATED
     if "ntfy" in url:
         data, headers = message.encode("utf-8"), {"Title": "ESB poller failure"}
     else:
         data = json.dumps({"content": message, "text": message}).encode("utf-8")
         headers = {"Content-Type": "application/json"}
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    return _deliver(req, "alert webhook")
+    return _deliver("alert webhook", url, data, headers)
 
 
 def heartbeat() -> bool:
@@ -160,7 +204,7 @@ def heartbeat() -> bool:
     url = os.environ.get("ESB_HEARTBEAT_URL")
     if not url:
         return False
-    return _deliver(url, "heartbeat ping")
+    return _deliver("heartbeat ping", url)
 
 
 def fail(message: str, code: int) -> int:
