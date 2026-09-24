@@ -215,8 +215,15 @@ class Store:
 
     def _append_raw(self, kind: str, month: str, record: dict) -> None:
         path = self.raw_dir / f"{kind}-{month}.jsonl"
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
+        with path.open("a+b") as fh:
+            # A line torn by a power cut would swallow this one too, and a run's
+            # start line is its only copy of the list.
+            if fh.seek(0, os.SEEK_END):
+                fh.seek(-1, os.SEEK_END)
+                if fh.read(1) != b"\n":
+                    line = "\n" + line
+            fh.write(line.encode("utf-8"))
             fh.flush()
             # The point of this file is to survive the NAS losing power mid-run.
             os.fsync(fh.fileno())

@@ -212,6 +212,14 @@ class TestRawLogAndCompaction(StoreTestCase):
         names = {p.name for p in self.store.raw_files("runs")}
         self.assertEqual(names, {"runs-2026-07.jsonl", "runs-2026-08.jsonl"})
 
+    def test_a_torn_last_line_does_not_take_the_next_record_with_it(self):
+        self.store.write_run_raw("r1", "2026-08-01T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2026-08.jsonl").open("a") as fh:
+            fh.write('{"event": "end", "run_id": "r1", "fin')
+        self.store.write_run_raw("r2", "2026-08-01T10:30:00Z", 200, {"outageMessage": []})
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r2"])
+        self.assertEqual(len(self.store.malformed_lines), 1)
+
     def test_compact_gzips_old_months_and_keeps_current(self):
         from esb_outages.store import utc_now_iso
 
