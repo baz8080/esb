@@ -79,7 +79,7 @@ Every one of these has already cost someone an hour:
 | The grade is ESB's own 4-hour/95% charter aim, not Customer Minutes Lost | `notes/grading.md` § The grade |
 | The scale runs A to F inclusive. E splits the old F band at **60%**, continuing the 10-point step; every A-D cut is unmoved. The bands are anchored to a published standard, so arithmetic sets the cut and the distribution is only checked for a band nobody can reach | `notes/grading.md` § The scale grew an E (2026-08-29) |
 | Why CML was rejected as the basis (scale bias, and a relative scale mislabels a good network) | `notes/grading.md` § Why not Customer Minutes Lost |
-| One ESB event is one row: ids sharing a location and start time are merged | `notes/grading.md` § Settled |
+| One ESB event is one row: ids sharing a location and start time are merged, per county. A county-line event is one row per county but one event in the national counts (`model.event_count`) | `notes/grading.md` § Settled; § Splits across a county boundary are deliberate |
 | The merged-id ceiling covers faults alone (under 12, against a peak of 7). It guards the merge key, not ESB's data: an over-merge deflates the counts the grade is built on. A planned ceiling loose enough to hold a staged job (21 ids at Ramstown, one per feeder section) would catch nothing | `notes/grading.md` § The id ceiling is the fault side only (2026-09-20) |
 | Planned works are excluded from the grade | `notes/grading.md` § Settled |
 | The county page lists **every** outage; `COUNTY_PAGE_CASES` is gone (largest page 100.7 → 127.4 KB). A count was always a proxy for bytes — if a bound is needed again, make it a byte budget | `notes/design-alignment.md` § The copy and consistency pass (2026-08-27) |

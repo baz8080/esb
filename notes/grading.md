@@ -460,6 +460,17 @@ the customers actually in that county, and merging would attribute one county's
 outage to its neighbour. The cost is that a handful of physical incidents are
 counted once per county at national level.
 
+That cost is no longer paid (2026-09-24, issue #47). The national row's fault and
+planned counts are `model.event_count`, which counts distinct
+`(location, start, planned)`, so a county-line event is one event nationally and
+still one row per county. By 24 September there were 17 of them (15 faults, 2
+planned), and the national counts fell by 9 faults and 2 planned in August and
+6 faults in September. Customer figures were never double-counted, because each
+side carries its own customers, so nothing else in the national row moves. The
+estimate share still counts one estimate per county row: a split event is two
+statements to two sets of customers, and the sections can carry different
+estimates.
+
 ### The id ceiling is the fault side only (2026-09-20)
 
 `test_one_esb_event_is_one_row` asserted that no merged event carries 12 ids or

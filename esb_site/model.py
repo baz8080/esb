@@ -456,11 +456,21 @@ def merge_events(outages):
     """
     groups = defaultdict(list)
     for o in outages:
-        groups[(o.county, o.location, o.start, o.planned)].append(o)
+        groups[(o.county, *_event_key(o))].append(o)
     return sorted(
         (_merge_group(members) for members in groups.values()),
         key=lambda o: o.start,
     )
+
+
+def _event_key(o):
+    return o.location, o.start, o.planned
+
+
+def event_count(outages):
+    """ESB events, not rows: an event straddling a county line is merged per
+    county, so each page carries its own customers, but it is one event."""
+    return len({_event_key(o) for o in outages})
 
 
 def _merge_group(members):

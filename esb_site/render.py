@@ -163,8 +163,8 @@ def build(outages, sa_index, now, until):
         est_kept, estimates = model.estimate_share(judged)
         national[ym] = [
             round(model.national_cml(outages, until, ym, annualised=False), 1),
-            len(faults),
-            len(live) - len(faults),
+            model.event_count(faults),
+            model.event_count(live) - model.event_count(faults),
             sum(o.customers for o in faults),
             round(sum(o.customer_minutes(lo, hi) for o in faults) / 60.0, 1),
             None if not seen else round(100.0 * within / seen, 1),
