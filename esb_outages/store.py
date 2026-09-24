@@ -11,6 +11,7 @@ before anyone knows what questions they want to ask.
 from __future__ import annotations
 
 import gzip
+import hashlib
 import io
 import json
 import os
@@ -290,12 +291,20 @@ class Store:
         by a backup, and neither is a reason to refuse to read the other 99.99%.
         Skips are counted and reported rather than passing silently.
         """
+        # Every line carries its own timestamps and run id, so an identical one
+        # is the same record read twice: from a `sort -u`-less merge, or a
+        # compact that crashed before removing what it had archived.
+        seen: set[bytes] = set()
         for path in self.raw_files(kind):
             with _open_maybe_gzip(path) as fh:
                 for lineno, line in enumerate(fh, 1):
                     line = line.strip()
                     if not line:
                         continue
+                    digest = hashlib.blake2b(line.encode("utf-8"), digest_size=16).digest()
+                    if digest in seen:
+                        continue
+                    seen.add(digest)
                     try:
                         yield json.loads(line)
                     except json.JSONDecodeError as exc:
@@ -714,13 +723,17 @@ class Store:
                     # its archive and gains the late lines as a further gzip
                     # member, which every gzip reader concatenates.
                     if target.exists():
-                        out.write(target.read_bytes())
+                        with target.open("rb") as archived:
+                            shutil.copyfileobj(archived, out)
                     with path.open("rb") as src, gzip.GzipFile(fileobj=out, mode="wb") as dst:
                         shutil.copyfileobj(src, dst)
                     out.flush()
                     os.fsync(out.fileno())
                 os.replace(staged, target)
                 _fsync_dir(self.raw_dir)
+                # A crash before this unlink compacts the same lines again next
+                # time; iter_raw drops the repeats.
                 path.unlink()
+                _fsync_dir(self.raw_dir)
                 compacted.append(target.name)
         return sorted(compacted)

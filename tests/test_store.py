@@ -238,6 +238,16 @@ class TestRawLogAndCompaction(StoreTestCase):
         self.assertFalse((self.data_dir / "raw" / "runs-2020-01.jsonl").exists())
         self.assertFalse((self.data_dir / "raw" / "runs-2020-01.jsonl.gz.tmp").exists())
 
+    def test_a_compact_interrupted_before_the_unlink_does_not_double_the_log(self):
+        from unittest import mock
+
+        self.store.write_run_raw("old", "2020-01-15T10:00:00Z", 200, {"outageMessage": []})
+        with mock.patch.object(Path, "unlink", side_effect=OSError("power cut")):
+            with self.assertRaises(OSError):
+                self.store.compact()
+        self.store.compact()
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["old"])
+
 
 if __name__ == "__main__":
     unittest.main()
