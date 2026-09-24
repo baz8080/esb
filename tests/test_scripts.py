@@ -270,5 +270,16 @@ class TestWrapper(unittest.TestCase):
             self.assertIn(f"{name}={value}", passed)
 
 
+class TestOneInterpreter(unittest.TestCase):
+    def test_the_installer_gates_the_python_the_service_and_wrapper_run(self):
+        scripts = REPO / "scripts"
+        unit = (scripts / "systemd" / "esb-outages.service").read_text()
+        [python] = re.findall(r"^ExecStart=(\S+) -m esb_outages", unit, re.M)
+        self.assertIn(f"exec {python} -m esb_outages", (scripts / "esb-wrapper.sh").read_text())
+        installer = (scripts / "install-native.sh").read_text()
+        self.assertIn(f'PYTHON="{python}"', installer)
+        self.assertEqual(set(re.findall(r"(\S+) -c '", installer)), {'"$PYTHON"'})
+
+
 if __name__ == "__main__":
     unittest.main()

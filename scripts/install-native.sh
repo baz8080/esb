@@ -13,6 +13,9 @@ PREFIX="/opt/esb-outages"
 DATA_DIR="/var/lib/esb-outages"
 ENV_FILE="/etc/esb-outages.env"
 SERVICE_USER="esb"
+# The interpreter the service unit and the esb wrapper run, by path: sudo's
+# PATH puts /usr/local/bin first, where a newer build could pass this gate.
+PYTHON="/usr/bin/python3"
 
 SRC=$(cd "$(dirname "$0")/.." && pwd)
 
@@ -22,15 +25,15 @@ if [ "$(id -u)" -ne 0 ]; then
 fi
 
 # The collector is standard library only, so this is the entire dependency list.
-if ! python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
-    echo "python3 3.11 or newer is required; found $(python3 -V 2>&1)" >&2
+if ! "$PYTHON" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)'; then
+    echo "$PYTHON 3.11 or newer is required; found $("$PYTHON" -V 2>&1)" >&2
     exit 1
 fi
 
 # Timezone data must be present or every timestamp fails to parse. Standard on
 # Raspberry Pi OS and Debian, but worth failing loudly rather than collecting
 # months of outages with null times.
-if ! python3 -c 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Dublin")' 2>/dev/null; then
+if ! "$PYTHON" -c 'from zoneinfo import ZoneInfo; ZoneInfo("Europe/Dublin")' 2>/dev/null; then
     echo "Europe/Dublin timezone unavailable. Install tzdata:" >&2
     echo "  sudo apt-get install -y tzdata" >&2
     exit 1
