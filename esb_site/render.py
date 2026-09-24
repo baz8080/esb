@@ -14,7 +14,7 @@ import csv
 import html
 import io
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import statusui
@@ -67,13 +67,20 @@ _fmt_day = statusui.fmt_day
 
 
 def _short(dt):
-    """Timestamps are rendered, never computed on, so minutes are enough."""
+    """Record timestamps are UTC to the minute; see _local for printing them."""
     return dt.strftime("%Y-%m-%dT%H:%M") if dt else None
+
+
+def _local(ts):
+    """A record timestamp on the Dublin wall clock. Mirrored in site.html."""
+    dt = datetime.fromisoformat(ts).replace(tzinfo=UTC)
+    return model.local(dt).strftime("%Y-%m-%dT%H:%M")
 
 
 def _when_at(ts, ref):
     """A timestamp against the outage's start day: the clock time alone when it
     falls on the same day, the full day otherwise. Mirrored in site.html."""
+    ts, ref = _local(ts), _local(ref)
     if ts[:10] == ref[:10]:
         return ts[11:16]
     return f"{_fmt_day(ts)}, {ts[11:16]}"
@@ -212,13 +219,15 @@ def build(outages, sa_index, now, until):
         # from a collector that stopped. Formatted for display here - it is
         # only ever shown, and the footer says "Data to {observed}".
         "observed": (
-            f"{statusui.fmt_date(until.date().isoformat(), now.date())},"
-            f" {until:%H:%M} UTC"
+            f"{statusui.fmt_date(model.local(until).date().isoformat(), model.local(now).date())},"
+            f" {model.local(until):%H:%M}"
         ),
         # The same instant for freshness(), which dates the page against the
         # reader's clock rather than the build's. STALE_AFTER travels with it,
         # so a page served from cache can still go stale.
         "observed_iso": f"{until:%Y-%m-%dT%H:%M:00Z}",
+        # the Dublin month the horizon falls in, for the "so far" wording
+        "observed_month": f"{model.local(until):%Y-%m}",
         "stale_hours": round(STALE_AFTER.total_seconds() / 3600),
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
@@ -237,7 +246,7 @@ def build(outages, sa_index, now, until):
                 (model.national_ci(outages, until) / model.ESB_NATIONAL_CI - 1) * 100
             ),
         },
-        "start": model.COLLECTION_START.strftime("%-d %B %Y"),
+        "start": model.local(model.COLLECTION_START).strftime("%-d %B %Y"),
         "months": months,
         "esb": {
             "national": model.ESB_NATIONAL_CML,
@@ -386,7 +395,8 @@ def _case_html(k, horizon):
     chain = k[8]
     bits = [f"{k[3]:,} customer" + ("" if k[3] == 1 else "s") + " affected"]
     if k[4]:
-        bits.append(f"began {_fmt_day(k[4])}, {k[4][11:16]}")
+        began = _local(k[4])
+        bits.append(f"began {_fmt_day(began)}, {began[11:16]}")
     if k[4] and k[5]:
         hours = (
             datetime.fromisoformat(k[5]) - datetime.fromisoformat(k[4])
@@ -446,7 +456,7 @@ def _update_line(row, key, planned=False):
             + (" still off" if kind == "update" else "")
         )
     cls = ' class="key"' if key else ""
-    return f"<li{cls}><time>{_when(when)}</time>{' · '.join(bits)}</li>"
+    return f"<li{cls}><time>{_when(_local(when))}</time>{' · '.join(bits)}</li>"
 
 
 def _updates_html(rows, planned=False):
@@ -492,7 +502,7 @@ def _daygate(months, until):
     """
     gates = ((ym, model.days_gate(ym, until)) for ym in months)
     return {
-        ym: "" if when >= model.month_bounds(ym)[1] else f"{when:%-d %B}"
+        ym: "" if when >= model.month_bounds(ym)[1] else f"{model.local(when):%-d %B}"
         for ym, when in gates
         if when is not None
     }
@@ -509,7 +519,10 @@ def ungraded_reason(ym, faults, until):
         # past the month's end: it can never reach five days, so promise no date
         if when >= model.month_bounds(ym)[1]:
             return f"Only part of {month_label(ym)} was watched, so it is not graded"
-        return f"{month_label(ym)} is too new to grade. Grades appear from {when:%-d %B}"
+        return (
+            f"{month_label(ym)} is too new to grade. "
+            f"Grades appear from {model.local(when):%-d %B}"
+        )
     if faults < model.MIN_GRADED_FAULTS:
         return f"Too few faults in {month_label(ym)} to grade fairly"
     # Past both gates, nothing was judged: every fault that started in the month
@@ -571,9 +584,9 @@ def _month_watched(ym, until):
     olo, ohi = model.observed_window(ym, until)
     bits = []
     if olo > lo:
-        bits.append(f"from {olo:%-d %b}")
+        bits.append(f"from {model.local(olo):%-d %b}")
     if ohi < hi:
-        bits.append(f"to {ohi:%-d %b}")
+        bits.append(f"to {model.local(ohi):%-d %b}")
     return " ".join(bits)
 
 
@@ -1035,7 +1048,7 @@ def write(site_dir, outages, sa_index, now, until):
             )
             area_paths.append(rel)
 
-    lastmod = now.strftime("%Y-%m-%d")
+    lastmod = model.local(now).strftime("%Y-%m-%d")
     paths = (
         [""]
         + [f"c/{slug(c)}.html" for c in sa_index.counties]

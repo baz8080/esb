@@ -12,6 +12,7 @@ notes/site-methodology.md for what these numbers can and cannot mean.
 
 from __future__ import annotations
 
+import calendar
 import csv
 import math
 import sqlite3
@@ -19,6 +20,7 @@ from collections import defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
+from zoneinfo import ZoneInfo
 
 DATA_DIR = Path(__file__).parent / "data"
 SA_POP_PATH = DATA_DIR / "sa_pop.csv"
@@ -29,6 +31,9 @@ SA_TOWNS_PATH = DATA_DIR / "sa_towns.csv"
 # before this instant exists anywhere and no amount of later work can recover
 # it. Days before it are rendered as "no data", never as "no outages".
 COLLECTION_START = datetime(2026, 7, 31, 21, 2, 11, tzinfo=UTC)
+
+# notes/grading.md § Months and days are Dublin's
+DUBLIN = ZoneInfo("Europe/Dublin")
 
 # The denominator for CML and CI. Both figures ESB publishes point at the same
 # number: the Distribution System Statistics in DAPR 2024 give "c. 2.5 million
@@ -163,21 +168,34 @@ def fmt_utc(dt):
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ") if dt else ""
 
 
+def local(dt):
+    """An instant on the Dublin wall clock, which months and days are cut by."""
+    return dt.astimezone(DUBLIN)
+
+
+def midnight(day):
+    """The UTC instant a Dublin day begins. Every boundary is converted back
+    to UTC, because subtracting two datetimes that share a zone subtracts their
+    wall clocks and loses the hour at a clock change."""
+    return datetime(day.year, day.month, day.day, tzinfo=DUBLIN).astimezone(UTC)
+
+
 def month_bounds(ym):
     year, month = int(ym[:4]), int(ym[5:7])
-    lo = datetime(year, month, 1, tzinfo=UTC)
-    hi = datetime(year + (month == 12), month % 12 + 1, 1, tzinfo=UTC)
+    lo = midnight(date(year, month, 1))
+    hi = midnight(date(year + (month == 12), month % 12 + 1, 1))
     return lo, hi
 
 
 def month_list(start, end):
-    """Every month from start's to end's, inclusive.
+    """Every Dublin month from start's to end's, inclusive.
 
     Walked as (year, month) rather than as datetimes: COLLECTION_START is the
     first poll's exact instant, and a cursor carrying its 21:02 clock time hid
     each new month until its first evening.
     """
     months = []
+    start, end = local(start), local(end)
     year, month = start.year, start.month
     while (year, month) <= (end.year, end.month):
         months.append(f"{year:04d}-{month:02d}")
@@ -920,7 +938,10 @@ def partial_days(until):
     was. The colour still says what was seen; these dates let the page say the
     day was short.
     """
-    days = {COLLECTION_START.date(), (until - timedelta(microseconds=1)).date()}
+    days = {
+        local(COLLECTION_START).date(),
+        local(until - timedelta(microseconds=1)).date(),
+    }
     return sorted(d.isoformat() for d in days)
 
 
@@ -958,7 +979,6 @@ def county_month(outages, county, customers, ym, now, until):
     lo, hi = observed_window(ym, until)
     observed_minutes = max((hi - lo).total_seconds() / 60.0, 1.0)
     observed_days = observed_minutes / 1440.0
-    month_lo, month_hi = month_bounds(ym)
 
     fault_cm = planned_cm = 0.0
     faults = planned = 0
@@ -1001,28 +1021,27 @@ def county_month(outages, county, customers, ym, now, until):
         for seg_start, seg_end, seg_customers in o.segments:
             cur, stop = max(seg_start, lo), min(seg_end, hi)
             while cur < stop:
-                nxt = (cur + timedelta(days=1)).replace(
-                    hour=0, minute=0, second=0, microsecond=0
-                )
-                seg = min(stop, nxt)
+                day = local(cur).date()
+                seg = min(stop, midnight(day + timedelta(days=1)))
                 if o.planned:
-                    per_day_planned.add(cur.date())
+                    per_day_planned.add(day)
                 else:
-                    per_day_fault[cur.date()] += (
+                    per_day_fault[day] += (
                         seg_customers * (seg - cur).total_seconds() / 60.0
                     )
                 cur = seg
 
     cml = fault_cm / customers
     annualised = cml * MINUTES_PER_YEAR / observed_minutes
-    days_in_month = (month_hi - month_lo).days
+    year, month = int(ym[:4]), int(ym[5:7])
     cells = []
-    for d in range(1, days_in_month + 1):
-        day = date(month_lo.year, month_lo.month, d)
-        day_lo = datetime(day.year, day.month, day.day, tzinfo=UTC)
+    # Never from the bounds: a Dublin March is 23 hours short and October 25 long.
+    for d in range(1, calendar.monthrange(year, month)[1] + 1):
+        day = date(year, month, d)
+        day_lo, day_hi = midnight(day), midnight(day + timedelta(days=1))
         if day_lo >= now:
             cells.append(DAY_FUTURE)
-        elif day_lo + timedelta(days=1) <= COLLECTION_START or day_lo >= until:
+        elif day_hi <= COLLECTION_START or day_lo >= until:
             # Either side of the collected window is "no data". A day the
             # collector never reached is not a day without outages, and
             # colouring it would publish an all-clear nobody checked.

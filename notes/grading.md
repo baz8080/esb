@@ -785,3 +785,55 @@ installed package. **To change the shared UI now:** edit in `../statusui`, test 
 then `../statusui/rollout.sh` bumps the pin in all three sites, runs each site's tests and
 opens the PRs. An unpushed statusui change can be tried here with
 `uv run --with-editable ../statusui python -m esb_site ...`.
+
+## Months and days are Dublin's; the arithmetic stays UTC (2026-09-24)
+
+Until this date every month, day cell, gate date and printed time on the site
+was UTC, and none of it said so. ESB publishes Dublin wall-clock times, so from
+April to October every time a reader saw was an hour behind ESB's own: an
+outage ESB lists as starting at 15:15 read "began 14:15". The buckets had the
+same hour's error. A fault at 00:30 on 1 September, Irish time, counted in
+August, coloured the 31 August cell, and sat on August's page. lifts found and
+fixed the same thing on 2026-08-18 (`lifts/notes/site.md` § Displayed instants
+are Dublin wall-clock, and so are the day buckets); uisce still cuts at UTC.
+
+The rule is the owner's: **store and compute in UTC, display in local time.**
+
+- **Boundaries** are Dublin midnights converted back to UTC instants
+  (`model.midnight`). They are never left as Dublin-zoned datetimes, because
+  Python subtracts two datetimes that share a zone by their wall clocks, which
+  loses the hour at a clock change. Every window, overlap test and
+  customer-minute sum still runs on UTC.
+- **Day cells** are counted with `calendar.monthrange`, never from the bounds:
+  a Dublin March is 23 hours short and October 25 hours long.
+- **Case records stay UTC.** This is where esb differs from lifts, which ships
+  Dublin wall-clock strings and precomputes every duration because subtracting
+  offset-free wall-clock strings loses the October hour. Here the durations,
+  the estimate deltas and the horizon comparison keep subtracting UTC strings,
+  unchanged. Only what is printed turns Dublin: `render._local` and its
+  mirror `local()` in site.html, which uses `Intl.DateTimeFormat` with
+  `timeZone: "Europe/Dublin"`. The page shows Dublin whatever the reader's
+  own zone is, and the payload does not grow.
+- **`observed`**, the "Data to ..." hover title, is Dublin wall-clock and no
+  longer says "UTC". `observed_month` is new, and gives the Dublin month for
+  the "so far" wording. `observed_iso` stays a UTC instant for `freshness()`.
+  `generated` keeps statusui's shared UTC stamp, and the CSV keeps its `*_utc`
+  columns.
+
+Accepted edge: in the hour the clocks go back in October, 01:00 to 02:00
+happens twice, and the printed times carry no offset. An outage from 01:50
+summer time to 01:10 winter time reads "began 01:50 · restored 01:10 (20 min)".
+The span is right, because it is taken in UTC, but the clock times read
+backwards. It is one hour a year. Labelling offsets on every row to cover it
+would cost more than the confusion it saves.
+
+Checked in Chromium with the browser set to New York: all 856 Dublin and Cork
+records render the same summary line and timeline times from the JS as from
+render.py.
+
+On the corpus to 24 September no grade letter moves. Day cells shift in 13
+county-months. Dublin's monthly customer minutes lost moves by 0.1 in both
+months. One Monaghan fault that began just before midnight on 31 July, Irish
+time, moves from July into August (Monaghan August 99.5% to 98.9% restored in
+4 h), which leaves July empty: under Dublin months it holds under two observed hours, from 21:02 to 23:00 UTC. National September
+customer minutes lost goes from 11.9 to 12.0.

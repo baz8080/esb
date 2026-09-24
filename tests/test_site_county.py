@@ -179,7 +179,7 @@ class TestTheMonthTable(CountyPageCase):
     def test_a_part_watched_month_says_which_part(self):
         """Collection began on 31 July and the horizon stops mid-September, so
         those two rows are built from less time than the months beside them. A
-        row of zeros for three hours of July reads as a quiet month otherwise."""
+        row of zeros for two hours of July reads as a quiet month otherwise."""
         july = re.search(r'<th scope="row">July 2026(.*?)</th>', self.page).group(1)
         self.assertIn("from 31 Jul", july)
         sept = re.search(r'<th scope="row">September 2026(.*?)</th>', self.page).group(1)
@@ -392,7 +392,7 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         self.assertIn("September 2026 is too new to grade", self.text_of(page))
 
     def test_a_month_that_can_never_reach_five_days_promises_no_date(self):
-        """Collection opened at 21:02 on 31 July, so July holds three hours and
+        """Collection opened at 21:02 on 31 July, so July holds two hours and
         the month is over. "Grades appear from 5 August" would be a lie."""
         self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
         self.poll(datetime(2026, 9, 10, 0, 0, tzinfo=UTC), n_listed=1)

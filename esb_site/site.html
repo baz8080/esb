@@ -156,9 +156,27 @@ var EST_GRACE_MIN = 5;
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
+// A record timestamp on the Dublin wall clock. Mirrored in render.py (_local).
+// Guarded because an engine without zone data throws here, and UTC times are
+// a better failure than an app that never renders.
+var DUBLIN = null;
+try {
+  DUBLIN = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Dublin", hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
+  });
+} catch (e) {}
+function local(ts) {
+  if (!DUBLIN) return ts;
+  var p = {};
+  DUBLIN.formatToParts(new Date(ts + "Z")).forEach(function (x) { p[x.type] = x.value; });
+  return p.year + "-" + p.month + "-" + p.day + "T" + p.hour + ":" + p.minute;
+}
+
 // a timestamp against the outage's start day: the clock time alone when it
 // falls on the same day, the full day otherwise. Mirrored in render.py.
 function whenAt(ts, ref) {
+  ts = local(ts); ref = local(ref);
   if (ts.slice(0, 10) === ref.slice(0, 10)) return ts.slice(11, 16);
   return fmtDay(ts) + ", " + ts.slice(11, 16);
 }
@@ -328,7 +346,7 @@ function renderOverview() {
   var n = D.national[curMonth] || [0, 0, 0, 0, 0, null, null, 0];
   var within = n[5];
   // "so far" only while the viewed month is still collecting
-  var partial = D.observed_iso.slice(0, 7) === curMonth;
+  var partial = D.observed_month === curMonth;
   var ungraded = ungradedNote(rows, curMonth);
   document.getElementById("natline").innerHTML =
     "<strong>" + monthLabelLong(curMonth) + (partial ? " so far" : "") + ":</strong> " +
@@ -419,7 +437,8 @@ function caseHtml(k) {
   var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
   var bits = [plural(k[3], "customer") + " affected"];
-  if (k[4]) bits.push("began " + fmtDay(k[4]) + ", " + k[4].slice(11, 16));
+  var began = k[4] && local(k[4]);
+  if (began) bits.push("began " + fmtDay(began) + ", " + began.slice(11, 16));
   if (dur != null) bits = bits.concat(endBits(k, dur));
   // in the chip rather than trailing the timings: it is the row's most human
   // fact and it was in its least-read position
@@ -451,7 +470,7 @@ function updateLine(r, key, planned) {
   var label = (planned && PLANNED_ROW_LABEL[r[0]]) || ROW_LABEL[r[0]];
   if (label) bits.push("<b>" + label + "</b>");
   if (r[2] != null) bits.push(num(r[2]) + " customers" + (r[0] === "update" ? " still off" : ""));
-  return '<li class="' + (key ? "key" : "") + '"><time>' + when(r[1]) + "</time>" + bits.join(" · ") + "</li>";
+  return '<li class="' + (key ? "key" : "") + '"><time>' + when(local(r[1])) + "</time>" + bits.join(" · ") + "</li>";
 }
 
 function updateList(ups, planned) {
