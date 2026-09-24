@@ -560,12 +560,28 @@ class Store:
                 ends[rec.get("run_id")] = rec
             else:
                 run_records.append(rec)
-        run_records.sort(key=lambda r: r["started_at"])
 
-        seen_run_ids = set()
-        for rec in run_records:
+        # Observations whose run record never made it to disk (a crash between
+        # the two writes, or a damaged line) replay at their own place in time.
+        # Replayed after everything else, an old body rolled back newer state.
+        run_ids = {rec["run_id"] for rec in run_records}
+        orphans = [
+            (min(o.get("observed_at") or "" for o in records), records)
+            for run_id, records in observations.items()
+            if run_id not in run_ids
+        ]
+        timeline = sorted(
+            [(rec["started_at"], rec, None) for rec in run_records]
+            + [(at, None, records) for at, records in orphans],
+            key=lambda event: event[0],
+        )
+
+        for _, rec, orphaned in timeline:
+            if orphaned is not None:
+                for obs in orphaned:
+                    n_obs += apply_observation(obs)
+                continue
             run_id = rec["run_id"]
-            seen_run_ids.add(run_id)
             body = rec.get("list_body")
             items = body.get("outageMessage") if isinstance(body, dict) else None
             if isinstance(items, list):
@@ -601,13 +617,6 @@ class Store:
             n_runs += 1
             for obs in run_obs:
                 n_obs += apply_observation(obs)
-
-        # Observations whose run record never made it to disk (a crash between
-        # the two writes). Rare, but they are still real data.
-        for run_id, records in observations.items():
-            if run_id not in seen_run_ids:
-                for obs in records:
-                    n_obs += apply_observation(obs)
 
         self.conn.commit()
         if verbose:

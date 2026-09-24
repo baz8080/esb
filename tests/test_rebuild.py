@@ -148,6 +148,34 @@ class TestRebuild(unittest.TestCase):
             self.assertEqual(row["first_seen_utc"], "2026-07-31T10:00:00Z")
             self.assertEqual(row["last_seen_utc"], "2026-07-31T12:00:00Z")
 
+    def test_observations_that_lost_their_run_replay_in_their_place(self):
+        fault = detail("fault")
+        done = dict(fault, outageType="Restored", restoreTime="31/07/2026 23:30")
+        raw = self.data_dir / "raw"
+        raw.mkdir(parents=True, exist_ok=True)
+
+        def write(run_id, at, body, with_run=True):
+            if with_run:
+                with (raw / "runs-2026-07.jsonl").open("a") as fh:
+                    fh.write(json.dumps({
+                        "run_id": run_id, "started_at": at,
+                        "list_status": 200, "list_body": make_list(body),
+                    }, sort_keys=True) + "\n")
+            with (raw / "observations-2026-07.jsonl").open("a") as fh:
+                fh.write(json.dumps({
+                    "run_id": run_id, "observed_at": at,
+                    "outage_id": body["outageId"], "http_status": 200, "body": body,
+                }, sort_keys=True) + "\n")
+
+        # the earlier run's own line was lost, so its observation is orphaned
+        write("a", "2026-07-31T20:00:00Z", fault, with_run=False)
+        write("b", "2026-07-31T23:40:00Z", done)
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            row = st.conn.execute("SELECT * FROM outage").fetchone()
+        self.assertEqual((row["outage_type"], row["is_final"]), ("Restored", 1))
+        self.assertEqual(row["last_seen_utc"], "2026-07-31T23:40:00Z")
+
     def test_a_truncated_final_line_does_not_destroy_the_history(self):
         """A power cut mid-append, or a backup snapshotting mid-write.
 
