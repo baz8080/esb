@@ -917,11 +917,8 @@ def county_month(outages, county, customers, ym, now, until):
     fault_cm = planned_cm = 0.0
     faults = planned = 0
     customers_hit = 0
-    # The charter measure counts only outages that both started and finished
-    # inside the observed window: one that began earlier was judged already, and
-    # one still running has no restoration to judge. The window test alone
-    # cannot catch the second - a live outage ends at the horizon, and so does
-    # the window - so `ongoing` carries it.
+    # The charter measure judges a fault in the month it started, however long
+    # it ran, and never one still out: that has no restoration to judge.
     judged = judged_within = 0
     over_compensation = 0
     scoreable = []
@@ -941,7 +938,7 @@ def county_month(outages, county, customers, ym, now, until):
             faults += 1
             fault_cm += cm
             customers_hit += o.customers
-            if o.start >= lo and o.end <= hi:
+            if lo <= o.start < hi:
                 hours = o.minutes / 60.0
                 # Past 24 hours is true of an outage still out there: the clock
                 # it has already run is a lower bound, so this one still counts.

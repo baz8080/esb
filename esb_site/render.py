@@ -153,7 +153,7 @@ def build(outages, sa_index, now, until):
         faults = [o for o in live if not o.planned]
         # Same gate as county_month: an outage still out has no restoration to
         # judge, and its elapsed time would score as a fast one.
-        judged = [o for o in faults if o.start >= lo and o.end <= hi and not o.ongoing]
+        judged = [o for o in faults if lo <= o.start < hi and not o.ongoing]
         seen = sum(o.customers for o in judged)
         within = sum(
             o.customers
@@ -512,11 +512,11 @@ def ungraded_reason(ym, faults, until):
         return f"{month_label(ym)} is too new to grade. Grades appear from {when:%-d %B}"
     if faults < model.MIN_GRADED_FAULTS:
         return f"Too few faults in {month_label(ym)} to grade fairly"
-    # Past both gates, nothing was judged: every fault still out at the horizon,
-    # or begun before the month. Blaming the count here would contradict the
-    # Faults column beside it.
+    # Past both gates, nothing was judged: every fault that started in the month
+    # is still out at the horizon, or every one counted began before it. Blaming
+    # the count here would contradict the Faults column beside it.
     return (
-        f"No fault in {month_label(ym)} was restored in the month it started, "
+        f"No fault that started in {month_label(ym)} has been restored yet, "
         "so there is nothing to grade"
     )
 

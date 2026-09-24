@@ -800,6 +800,31 @@ class TestOngoingOutages(SiteModelCase):
         self.assertEqual(self.judged(outages, index)["over_compensation"], 1)
 
 
+class TestJudgedInTheMonthItStarted(SiteModelCase):
+    def month(self, outages, index, ym, now):
+        return model.county_month(
+            outages, "Dublin", index.customers["Dublin"], ym, now, self.until
+        )
+
+    def test_a_fault_across_the_month_end_is_judged_in_the_month_it_began(self):
+        # 7 hours across midnight into September: a miss, and it was judged in
+        # neither month, which flattered the grade with exactly the long ones.
+        self.observe(
+            detail("1", outageType="Restored", startTime="31/08/2026 23:00",
+                   estRestoreTime="01/09/2026 02:00", restoreTime="01/09/2026 06:00"),
+            datetime(2026, 9, 1, 5, 30, tzinfo=UTC),
+        )
+        now = datetime(2026, 9, 10, 6, tzinfo=UTC)
+        self.poll(now)
+        outages, _, index = self.load(now)
+        august = self.month(outages, index, "2026-08", now)
+        september = self.month(outages, index, "2026-09", now)
+        self.assertEqual(august["within"], 0.0)
+        self.assertEqual(august["est_kept"], None)
+        self.assertEqual(august["estimates"], 1)
+        self.assertEqual((september["faults"], september["within"]), (1, None))
+
+
 class TestShardMonths(SiteModelCase):
     """The list under a month and the tiles above it count the same outages."""
 

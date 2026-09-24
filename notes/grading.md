@@ -151,8 +151,8 @@ sentences, mirrored in site.html as `ungradedReason`:
   graded" - July can never reach five days and the month is over, so promising a
   date would be a lie
 - **too few faults**: unchanged, and now naming its month
-- **nothing judged**: "No fault in August 2026 was restored in the month it
-  started, so there is nothing to grade"
+- **nothing judged**: "No fault that started in August 2026 has been restored
+  yet, so there is nothing to grade" (reworded 2026-09-24, below)
 
 That fourth one is the correction below, and the reason there are three gates in
 the table above rather than two.
@@ -194,6 +194,26 @@ and read as legal boilerplate. The day-gate half is split out as `dayGateReason`
 because the two visible notices are national and have no county whose faults they
 could count; handing them a placeholder count is how the argument went unread in
 the first place.
+
+#### A fault is judged in the month it started (2026-09-24)
+
+`judged` required a fault to start *and* end inside the month's window, and the
+comment above it claimed that "one that began earlier was judged already". It
+was not: a fault from 31 August 22:00 to 1 September 05:00 failed August's test
+because it ended after the month, and September's because it began before it.
+It was judged nowhere. The faults that cross midnight at a month's end are the
+long ones, so the ones dropped were disproportionately the misses, and the bias
+ran towards a better grade. Caught by a retroactive review of `model.py`.
+
+The rule is now `lo <= start < hi and not ongoing`, in `county_month` and the
+national row alike: a fault belongs to the month it started, however long it
+ran. That is also what "the month it started" in the third gate's sentence
+already claimed. On the corpus to 24 September, three faults move. Dublin's
+August drops from 87.7% to 85.4% (no letter changes), national August from 89.1%
+to 88.6%, and one fault from July's three observed hours is now judged in July,
+which the day gate keeps ungraded anyway. The third-gate sentence now reads
+"No fault that started in X has been restored yet": under the new rule the only
+way to reach it is every fault that started in the month still being out.
 
 #### The other two gates were hover-only (2026-09-07)
 

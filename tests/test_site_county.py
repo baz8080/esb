@@ -401,8 +401,8 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         self.assertNotIn("Grades appear from 5 August", page)
 
     def test_a_month_with_faults_but_nothing_judged_does_not_blame_the_count(self):
-        """Past both gates a county can still have no letter: every fault out at
-        the horizon, or begun before the month, leaves nothing to score. Saying
+        """Past both gates a county can still have no letter: every fault that
+        started in the month still out at the horizon leaves nothing to score. Saying
         "too few faults" there contradicts the Faults column on the same row."""
         horizon = datetime(2026, 8, 20, 12, 0, tzinfo=UTC)
         for i in range(model.MIN_GRADED_FAULTS + 1):
@@ -432,7 +432,7 @@ class TestAnUngradedMonthSaysWhy(CountyPageCase):
         self.assertIsNone(stats["grade"])
         said = render.ungraded_reason("2026-08", stats["faults"], self.until)
         self.assertNotIn("Too few faults", said)
-        self.assertIn("was restored in the month it started", said)
+        self.assertIn("has been restored yet", said)
 
     def test_a_watched_month_still_blames_its_faults(self):
         """The wording that was already right stays right: past five days, the
