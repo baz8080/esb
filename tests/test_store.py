@@ -247,6 +247,14 @@ class TestRawLogAndCompaction(StoreTestCase):
         self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r3"])
         self.assertEqual(len(self.store.malformed_lines), 1)
 
+    def test_a_corrupted_byte_is_a_bad_line_not_a_changed_record(self):
+        self.store.write_run_raw("r1", "2026-08-01T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2026-08.jsonl").open("ab") as fh:
+            # still valid JSON if the stray byte were replaced
+            fh.write(b'{"location": "D\xc3n", "run_id": "r2"}\n')
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1"])
+        self.assertEqual(len(self.store.malformed_lines), 1)
+
     def test_a_torn_archive_does_not_swallow_the_late_lines(self):
         import gzip
 

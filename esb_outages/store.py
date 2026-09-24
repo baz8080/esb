@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import gzip
 import hashlib
-import io
 import json
 import os
 import re
@@ -163,11 +162,11 @@ def _month_of(iso_ts: str) -> str:
 
 
 def _open_maybe_gzip(path: Path):
-    # A line torn inside a multi-byte character (any fada) must stay one
-    # malformed line, not a decode error that ends the whole read.
+    # Bytes, decoded a line at a time in iter_raw: a line torn inside a fada
+    # or corrupted on the card is one malformed line, never a changed record.
     if path.suffix == ".gz":
-        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8", errors="replace")
-    return path.open("r", encoding="utf-8", errors="replace")
+        return gzip.open(path, "rb")
+    return path.open("rb")
 
 
 class Store:
@@ -321,13 +320,13 @@ class Store:
                     line = line.strip()
                     if not line:
                         continue
-                    digest = hashlib.blake2b(line.encode("utf-8"), digest_size=16).digest()
+                    digest = hashlib.blake2b(line, digest_size=16).digest()
                     if digest in seen:
                         continue
                     seen.add(digest)
                     try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError as exc:
+                        yield json.loads(line.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                         self.malformed_lines.append(f"{path.name}:{lineno}: {exc}")
 
     # ---- applying observations ------------------------------------------
