@@ -514,8 +514,8 @@ def _merge_group(members):
     # closed early, after ESB had already revised it down.
     est = ender.est
     # the first figure ESB named for any section, not the smallest
-    firsts = [f for f in (_first_estimate(o.updates, o.start) for o in members) if f]
-    first_est = min(firsts)[1] if firsts else None
+    firsts = [(o.first_est_at, o.first_est) for o in members if o.first_est]
+    first_est_at, first_est = min(firsts) if firsts else (None, None)
     if ongoing and est is None:
         # A live event borrows a sibling's estimate rather than claiming ESB
         # published none. The stale-figure risk above is about closed records.
@@ -549,6 +549,7 @@ def _merge_group(members):
         ongoing=ongoing,
         est=est,
         first_est=first_est,
+        first_est_at=first_est_at,
         # planned works listed before they begin have no segments at all
         customers=max((c for _, _, c in segments), default=0),
         updates=_envelope_updates(members, segments, end, end_src, lead.planned),
@@ -556,15 +557,23 @@ def _merge_group(members):
     )
 
 
-def _first_estimate(updates, start):
+def _first_estimate(row, rows_changes, start):
     """(when it was seen, the estimate) for the first estimate ESB published.
 
+    Read from the change log, not the updates: coalescing keeps only the last
+    state of a window, so an estimate revised inside it never reached them.
     The same sanity rule as `est`: one before the start is not an estimate.
     """
-    for u in updates:
-        est = parse_utc(u.est_restore)
+    changes = [ch for ch in rows_changes if ch["field"] == "est_restore_time_utc"]
+    seen = [(
+        parse_utc(row["first_seen_utc"]),
+        changes[0]["old_value"] if changes else row["est_restore_time_utc"],
+    )]
+    seen += [(parse_utc(ch["observed_at_utc"]), ch["new_value"]) for ch in changes]
+    for at, value in seen:
+        est = parse_utc(value)
         if est and est > start:
-            return u.at, est
+            return at, est
     return None
 
 
@@ -641,6 +650,8 @@ class Outage(NamedTuple):
     # revisions come after the previous time has passed, so the share of
     # estimates kept has to be held to the first.
     first_est: datetime | None = None
+    # when it was first seen, which orders a merged event's members
+    first_est_at: datetime | None = None
     # ESB's own location string, "" where it gave none. `location` falls back
     # to the Census town for display, which no ranking of ESB's names may count.
     esb_location: str = ""
@@ -796,7 +807,8 @@ def load_outages(db_path, sa_index, now):
                 unplaced += 1
                 continue
             county, town_code, town = place
-            updates = _build_updates(row, changes.get(row["outage_id"], []))
+            row_changes = changes.get(row["outage_id"], [])
+            updates = _build_updates(row, row_changes)
 
             # `Restored` overwrites whatever the outage was, so the earliest
             # non-Restored type is the only record of what it started as.
@@ -808,8 +820,7 @@ def load_outages(db_path, sa_index, now):
             start = parse_utc(row["start_time_utc"])
             restore = parse_utc(row["restore_time_utc"])
             est = parse_utc(row["est_restore_time_utc"])
-            first = _first_estimate(updates, start)
-            first_est = first[1] if first else None
+            first_est_at, first_est = _first_estimate(row, row_changes, start) or (None, None)
             last_seen = parse_utc(row["last_seen_utc"]) or until
             # An outage still listed when the collector last looked has not
             # ended yet: the time it has been out so far is a lower bound, and
@@ -884,6 +895,7 @@ def load_outages(db_path, sa_index, now):
                     # before the outage started is nonsense, not an estimate.
                     est=est if est and start < est else None,
                     first_est=first_est,
+                    first_est_at=first_est_at,
                     restored=bool(row["is_final"]),
                     ongoing=ongoing,
                     reason=row["planned_outage_reason"] or "",

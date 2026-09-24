@@ -1199,6 +1199,21 @@ class TestKeptEstimate(SiteModelCase):
         self.assertEqual(o.first_est, datetime(2026, 8, 10, 17, 0, tzinfo=UTC))
         self.assertTrue(o.kept_estimate())
 
+    def test_an_estimate_revised_within_one_update_is_still_the_first(self):
+        # A hand-run poll ten minutes later: one update, two estimates.
+        t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(detail("1", estRestoreTime="10/08/2026 18:00"), t)
+        self.observe(detail("1", estRestoreTime="10/08/2026 15:00"), t + timedelta(minutes=10))
+        self.observe(
+            detail("1", outageType="Restored", estRestoreTime="10/08/2026 15:00",
+                   restoreTime="10/08/2026 16:00"),
+            t + timedelta(hours=6),
+        )
+        self.poll(datetime(2026, 8, 12, 6, tzinfo=UTC))
+        o = self.load()[0][0]
+        self.assertEqual(o.first_est, datetime(2026, 8, 10, 17, 0, tzinfo=UTC))
+        self.assertTrue(o.kept_estimate())
+
     def test_a_merged_event_holds_esb_to_the_first_estimate_it_saw(self):
         # The later section carries the smaller figure; ESB named 18:00 first.
         t = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
