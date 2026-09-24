@@ -352,10 +352,12 @@ class TestRebuild(unittest.TestCase):
         lines = runs.read_text().splitlines()
         runs.write_text("\n".join(line for line in lines if '"event": "end"' in line) + "\n")
         with Store(self.data_dir) as st:
-            st.rebuild()
+            result = st.rebuild()
             row = st.conn.execute("SELECT * FROM run").fetchone()
         self.assertEqual((row["status"], row["exit_code"]), ("ok", alert.EXIT_OK))
         self.assertEqual(row["run_id"][:20], row["started_at_utc"])
+        # replayed as a run, so its own observation counts as its fetch
+        self.assertEqual((result["runs"], row["n_detail_fetched"]), (1, 1))
 
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:

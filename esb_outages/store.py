@@ -672,7 +672,8 @@ class Store:
                 ),
                 exit_code=end.get("exit_code"),
                 n_listed=listed,
-                n_detail_fetched=fetched if listed is not None else None,
+                # NULL only for a run that never got past its list call
+                n_detail_fetched=fetched if listed is not None or run_obs else None,
                 n_detail_skipped=end["n_detail_skipped"] if "n_detail_skipped" in end else (
                     listed - fetched - purged - errors if listed is not None else None
                 ),
