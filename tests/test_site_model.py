@@ -234,6 +234,17 @@ class TestUpdates(SiteModelCase):
         outages, _, _ = self.load()
         self.assertEqual(len(outages[0].updates), 2)
 
+    def test_runs_close_together_do_not_slide_the_window(self):
+        # Hand-run polls ten minutes apart: 00 and 10 are one run's worth,
+        # 20 and 30 the next. The window used to slide and fold all four.
+        t = datetime(2026, 8, 10, 8, tzinfo=UTC)
+        self.observe(detail("1", numCustAffected=100), t)
+        later = t + timedelta(hours=2)
+        for i, n in enumerate((90, 80, 70, 60)):
+            self.observe(detail("1", numCustAffected=n), later + timedelta(minutes=10 * i))
+        outages, _, _ = self.load()
+        self.assertEqual([u.customers for u in outages[0].updates], [100, 80, 60])
+
     def test_customer_count_changes_are_updates(self):
         t = datetime(2026, 8, 10, 10, tzinfo=UTC)
         for i, n in enumerate((100, 80, 40)):

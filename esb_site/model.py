@@ -700,7 +700,8 @@ def _build_updates(row, rows_changes):
         )
 
     state = dict(initial)
-    updates = [snapshot(parse_utc(row["first_seen_utc"]), state)]
+    run_start = parse_utc(row["first_seen_utc"])
+    updates = [snapshot(run_start, state)]
     for ch in rows_changes:
         state[ch["field"]] = ch["new_value"]
         at = parse_utc(ch["observed_at_utc"])
@@ -708,10 +709,13 @@ def _build_updates(row, rows_changes):
         # inside a single run land seconds apart and record their changes
         # separately, so a plain Fault -> Restored transition would otherwise
         # read as two updates a few seconds apart. Polls are 30 minutes apart,
-        # so anything closer together than COALESCE_MINUTES came from one run.
-        if updates and (at - updates[-1].at) <= COALESCE_WINDOW:
+        # so anything closer together than COALESCE_WINDOW came from one run.
+        # Measured from the run's first change, or a chain of runs each under
+        # the window apart would slide it along and fold into one update.
+        if at - run_start <= COALESCE_WINDOW:
             updates[-1] = snapshot(max(at, updates[-1].at), state)
         else:
+            run_start = at
             updates.append(snapshot(at, state))
     # Collapse any consecutive states the rollback left identical (a field can
     # change and change back within one observation).
