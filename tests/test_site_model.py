@@ -1578,3 +1578,13 @@ class TestDublinDisplay(SiteModelCase):
         self.assertIn("when(local(r[1]))", body("updateLine"))
         self.assertIn('timeZone: "Europe/Dublin"', page)
         self.assertIn("D.observed_month === curMonth", page)
+
+
+class TestTheBuildClock(unittest.TestCase):
+    def test_an_offset_is_converted_not_dropped(self):
+        from esb_site.__main__ import parse_now
+
+        expect = datetime(2026, 9, 24, 9, 0, tzinfo=UTC)
+        self.assertEqual(parse_now("2026-09-24T10:00:00+01:00"), expect)
+        self.assertEqual(parse_now("2026-09-24T09:00:00Z"), expect)
+        self.assertEqual(parse_now("2026-09-24T09:00:00"), expect)

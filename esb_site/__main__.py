@@ -14,6 +14,12 @@ DEFAULT_DATA_DIR = os.environ.get("ESB_DATA_DIR", "data")
 DEFAULT_OUT = "out/site"
 
 
+def parse_now(value):
+    """UTC when it carries no offset, converted when it does."""
+    when = datetime.fromisoformat(value)
+    return when.replace(tzinfo=UTC) if when.tzinfo is None else when.astimezone(UTC)
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="esb_site", description="Build the static ESB outage status site."
@@ -25,7 +31,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--now",
         default=None,
-        help="override the build clock, as an ISO UTC timestamp (for reproducible builds)",
+        help="override the build clock, as an ISO timestamp, UTC unless it carries an offset",
     )
     args = parser.parse_args(argv)
 
@@ -38,11 +44,7 @@ def main(argv=None) -> int:
         )
         return 1
 
-    now = (
-        datetime.fromisoformat(args.now).replace(tzinfo=UTC)
-        if args.now
-        else datetime.now(UTC)
-    )
+    now = parse_now(args.now) if args.now else datetime.now(UTC)
 
     sa_index = model.SmallAreaIndex.load()
     outages, unplaced, until = model.load_outages(db_path, sa_index, now)
