@@ -694,6 +694,16 @@ class TestCountyMonth(SiteModelCase):
         # NOW is the 20th, so the 21st onward is still to come.
         self.assertEqual(set(s["cells"][20:]), {str(model.DAY_FUTURE)})
 
+    def test_a_month_with_a_clock_change_still_has_a_cell_per_day(self):
+        # Dublin's March is 23 hours short and October 25 long; the cells
+        # count calendar days, not the hours between the bounds.
+        outages, _, index = self.load()
+        for ym, days in (("2027-03", 31), ("2026-10", 31), ("2027-02", 28)):
+            s = model.county_month(
+                outages, "Dublin", index.customers["Dublin"], ym, NOW, self.until
+            )
+            self.assertEqual(len(s["cells"]), days, ym)
+
     def test_days_before_collection_started_are_not_days_without_outages(self):
         outages, _, index = self.load()
         s = model.county_month(
@@ -800,10 +810,11 @@ class TestCollectionHorizon(SiteModelCase):
         s = model.county_month(
             outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
         )
-        # Collection stopped on the 12th and NOW is the 20th: the 13th to the
-        # 19th are unwatched, and the 20th onward is still to come.
-        self.assertEqual(set(s["cells"][12:19]), {str(model.DAY_NO_DATA)})
-        self.assertEqual(set(s["cells"][19:]), {str(model.DAY_FUTURE)})
+        # Collection stopped on the 12th and NOW is 01:00 on the 20th in
+        # Dublin: the 13th to the 20th are unwatched, and the 21st onward is
+        # still to come.
+        self.assertEqual(set(s["cells"][12:20]), {str(model.DAY_NO_DATA)})
+        self.assertEqual(set(s["cells"][20:]), {str(model.DAY_FUTURE)})
 
     def test_the_measured_window_stops_at_the_horizon(self):
         """Time the collector was down is not time this site watched."""
@@ -813,7 +824,8 @@ class TestCollectionHorizon(SiteModelCase):
         s = model.county_month(
             outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
         )
-        self.assertAlmostEqual(s["observed_days"], 11.25, places=2)
+        # Dublin's August began at 23:00 UTC on 31 July: 11 days and 7 hours
+        self.assertAlmostEqual(s["observed_days"], 11 + 7 / 24, places=4)
 
 
 class TestOngoingOutages(SiteModelCase):
@@ -933,30 +945,30 @@ class TestShardMonths(SiteModelCase):
     """The list under a month and the tiles above it count the same outages."""
 
     def test_an_outage_crossing_midnight_on_the_last_is_listed_in_both(self):
-        # 00:00 Dublin on 1 August is 23:00 UTC on 31 July, so this one is
-        # counted in both months. Filed by its start month alone it went
-        # missing from August's list while August's fault tile still counted
-        # it, and a reader could count the rows and come up one short.
+        # 23:30 to 01:00 across Dublin's midnight into September, so this one
+        # is counted in both months. Filed by its start month alone it went
+        # missing from September's list while September's fault tile still
+        # counted it, and a reader could count the rows and come up one short.
         self.observe(
-            detail("1", startTime="01/08/2026 00:00"),
-            datetime(2026, 7, 31, 23, 30, tzinfo=UTC),
+            detail("1", startTime="31/08/2026 23:30"),
+            datetime(2026, 8, 31, 23, 0, tzinfo=UTC),
         )
         self.observe(
             detail(
                 "1",
-                startTime="01/08/2026 00:00",
+                startTime="31/08/2026 23:30",
                 outageType="Restored",
-                restoreTime="01/08/2026 12:00",
+                restoreTime="01/09/2026 01:00",
             ),
-            datetime(2026, 8, 1, 11, 30, tzinfo=UTC),
+            datetime(2026, 9, 1, 0, 30, tzinfo=UTC),
         )
-        self.poll(datetime(2026, 8, 1, 11, 30, tzinfo=UTC), n_listed=1)
+        self.poll(datetime(2026, 9, 1, 0, 30, tzinfo=UTC), n_listed=1)
         outages, _, index = self.load()
-        months = ["2026-07", "2026-08"]
+        months = ["2026-08", "2026-09"]
 
         by_month = render.shard(outages, months, self.until)
-        self.assertEqual(len(by_month["2026-07"]), 1)
         self.assertEqual(len(by_month["2026-08"]), 1)
+        self.assertEqual(len(by_month["2026-09"]), 1)
 
         for ym in months:
             counted = model.county_month(
@@ -1015,13 +1027,18 @@ class TestPartialDays(SiteModelCase):
         self.load()
         self.assertEqual(
             model.partial_days(self.until),
-            [model.COLLECTION_START.date().isoformat(), "2026-08-12"],
+            [model.local(model.COLLECTION_START).date().isoformat(), "2026-08-12"],
         )
 
     def test_a_horizon_on_the_stroke_of_midnight_leaves_a_whole_day(self):
         """[lo, hi) - a window ending at 00:00 covers the previous day fully."""
-        until = datetime(2026, 8, 13, 0, 0, tzinfo=UTC)
+        until = datetime(2026, 8, 12, 23, 0, tzinfo=UTC)  # Dublin's midnight
         self.assertEqual(model.partial_days(until)[-1], "2026-08-12")
+
+    def test_the_last_day_is_dublins(self):
+        # 23:30 UTC on the 12th is half past midnight on the 13th in Dublin
+        until = datetime(2026, 8, 12, 23, 30, tzinfo=UTC)
+        self.assertEqual(model.partial_days(until)[-1], "2026-08-13")
 
 
 class TestMonthList(unittest.TestCase):
@@ -1037,6 +1054,13 @@ class TestMonthList(unittest.TestCase):
         self.assertEqual(
             model.month_list(model.COLLECTION_START, datetime(2026, 9, 1, tzinfo=UTC)),
             ["2026-07", "2026-08", "2026-09"],
+        )
+
+    def test_the_month_turns_over_at_dublins_midnight(self):
+        # 23:30 UTC on 31 August is already September in Dublin
+        self.assertEqual(
+            model.month_list(model.COLLECTION_START, datetime(2026, 8, 31, 23, 30, tzinfo=UTC))[-1],
+            "2026-09",
         )
 
     def test_the_first_build_of_the_month_already_has_it(self):
@@ -1262,7 +1286,8 @@ class TestCaseCopy(unittest.TestCase):
 
     Records are hand-made in case_record's shape:
     [id, location, planned, customers, start, end, endSrc, reason, chain,
-    updates, est, ongoing].
+    updates, est, ongoing]. Their times are UTC and the row prints Dublin's,
+    an hour ahead through the summer.
     """
 
     # The horizon every row here is read against, well past each record's end
@@ -1289,8 +1314,8 @@ class TestCaseCopy(unittest.TestCase):
     def test_a_confirmed_restore_says_how_long_and_how_it_landed(self):
         html = self.html(self.record())
         self.assertIn(
-            "17 customers affected · began Mon 24 Aug, 10:46 · "
-            "restored 14:32 (3 h 46 min) · 28 min earlier than ESB estimated",
+            "17 customers affected · began Mon 24 Aug, 11:46 · "
+            "restored 15:32 (3 h 46 min) · 28 min earlier than ESB estimated",
             html,
         )
         # the duration belongs to the phrase naming the end it measures
@@ -1298,18 +1323,35 @@ class TestCaseCopy(unittest.TestCase):
 
     def test_a_restore_past_the_estimate_says_later(self):
         html = self.html(self.record(est="2026-08-24T13:00"))
-        self.assertIn("restored 14:32 (3 h 46 min) · 1 h 32 min later than ESB estimated", html)
+        self.assertIn("restored 15:32 (3 h 46 min) · 1 h 32 min later than ESB estimated", html)
 
     def test_an_estimate_all_but_met_is_not_worth_a_clause(self):
         # Inside five minutes either way, "3 min earlier" is noise dressed as
         # a finding. 5% of restored faults land there.
         html = self.html(self.record(est="2026-08-24T14:35"))
-        self.assertIn("restored 14:32 (3 h 46 min)", html)
+        self.assertIn("restored 15:32 (3 h 46 min)", html)
         self.assertNotIn("than ESB estimated", html)
 
     def test_an_end_on_a_later_day_names_the_day(self):
         html = self.html(self.record(end="2026-08-25T01:10", est=None))
-        self.assertIn("restored Tue 25 Aug, 01:10", html)
+        self.assertIn("restored Tue 25 Aug, 02:10", html)
+
+    def test_the_day_is_dublins_not_utcs(self):
+        # 23:30 UTC is 00:30 the next morning in Dublin in August.
+        html = self.html(self.record(end="2026-08-24T23:30", est=None))
+        self.assertIn("restored Tue 25 Aug, 00:30", html)
+
+    def test_winter_times_are_utc_already(self):
+        html = self.html(self.record(start="2026-12-01T10:46", end="2026-12-01T14:32",
+                                     est=None))
+        self.assertIn("began Tue 1 Dec, 10:46 · restored 14:32 (3 h 46 min)", html)
+
+    def test_a_span_across_the_clock_change_is_the_real_one(self):
+        # Clocks go back at 02:00 on 25 October: 00:30 to 03:30 on the wall is
+        # four hours, and the span says so because it is taken in UTC.
+        html = self.html(self.record(start="2026-10-24T23:30", end="2026-10-25T03:30",
+                                     est=None))
+        self.assertIn("began Sun 25 Oct, 00:30 · restored 03:30 (4 h)", html)
 
     def test_an_unconfirmed_fault_end_says_what_is_missing(self):
         # "not confirmed" left a reader guessing whether the estimate or the
@@ -1318,7 +1360,7 @@ class TestCaseCopy(unittest.TestCase):
             self.record(end="2026-08-24T15:00", end_src="estimated", est=None)
         )
         self.assertIn(
-            "expected back by 15:00 (about 4 h) · no restore time published", html
+            "expected back by 16:00 (about 4 h) · no restore time published", html
         )
         self.assertNotIn("not confirmed", html)
 
@@ -1366,7 +1408,7 @@ class TestCaseCopy(unittest.TestCase):
             self.record(planned=1, end="2026-08-24T15:00", end_src="estimated",
                         est=None)
         )
-        self.assertIn("scheduled until 15:00 (4 h 14 min)", html)
+        self.assertIn("scheduled until 16:00 (4 h 14 min)", html)
         self.assertNotIn("not confirmed", html)
 
     # Still listed at the last poll: the delisted wording read as an ending.
@@ -1384,15 +1426,15 @@ class TestCaseCopy(unittest.TestCase):
             self.record(start="2026-09-05T03:25", end="2026-09-05T05:00",
                         end_src="listed", est="2026-09-05T07:30", ongoing=1)
         )
-        self.assertIn("still out when last checked · expected back by 07:30", html)
+        self.assertIn("still out when last checked · expected back by 08:30", html)
 
     def test_an_estimate_between_the_sighting_and_the_horizon_has_passed(self):
-        # Last seen 04:30, estimate 04:45, data to 05:00: the time has passed.
+        # Last seen 04:30 UTC, estimate 04:45, data to 05:00: the time has passed.
         html = self.html(
             self.record(start="2026-09-05T03:25", end="2026-09-05T04:30",
                         end_src="listed", est="2026-09-05T04:45", ongoing=1)
         )
-        self.assertIn("past ESB's estimate of 04:45", html)
+        self.assertIn("past ESB's estimate of 05:45", html)
         self.assertNotIn("expected back", html)
 
     def test_a_live_fault_past_its_estimate_says_so(self):
@@ -1402,7 +1444,7 @@ class TestCaseCopy(unittest.TestCase):
                         end_src="estimated", est="2026-09-05T00:15", ongoing=1)
         )
         self.assertIn(
-            "still out when last checked · past ESB's estimate of Sat 5 Sep, 00:15",
+            "still out when last checked · past ESB's estimate of Sat 5 Sep, 01:15",
             html,
         )
         self.assertNotIn("expected back", html)
@@ -1414,7 +1456,7 @@ class TestCaseCopy(unittest.TestCase):
                         end_src="listed", est="2026-09-09T17:00", ongoing=1)
         )
         self.assertIn(
-            "scheduled until Wed 9 Sep, 17:00 (7 days) · still listed when last checked",
+            "scheduled until Wed 9 Sep, 18:00 (7 days) · still listed when last checked",
             html,
         )
         self.assertNotIn("listed for", html)
@@ -1469,11 +1511,12 @@ class TestTheFiveDayGate(unittest.TestCase):
     def test_it_measures_calendar_coverage_not_days_with_faults(self):
         """Nothing in it counts an outage. A quiet county and a battered one
         clear it on the same date."""
+        # Dublin's midnight on the 6th, which is 23:00 UTC on the 5th
         self.assertIsNotNone(
-            model.days_gate("2026-09", datetime(2026, 9, 5, 23, 59, tzinfo=UTC))
+            model.days_gate("2026-09", datetime(2026, 9, 5, 22, 59, tzinfo=UTC))
         )
         self.assertIsNone(
-            model.days_gate("2026-09", datetime(2026, 9, 6, 0, 0, tzinfo=UTC))
+            model.days_gate("2026-09", datetime(2026, 9, 5, 23, 0, tzinfo=UTC))
         )
 
     def test_it_opens_five_days_after_the_window_not_the_month(self):
