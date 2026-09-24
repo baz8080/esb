@@ -56,7 +56,7 @@ def parse_esb_datetime(value: str | None) -> tuple[str | None, bool]:
     Either way the raw string is retained in the database, so a flagged row can
     be revisited rather than silently trusted.
     """
-    if not value or not value.strip():
+    if not isinstance(value, str) or not value.strip():
         return None, False
     try:
         naive = datetime.strptime(value.strip(), ESB_DATETIME_FORMAT)
