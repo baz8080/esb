@@ -67,8 +67,7 @@ _fmt_day = statusui.fmt_day
 
 
 def _short(dt):
-    """A record's timestamps are UTC to the minute. Durations are subtracted
-    from them, so they stay UTC and turn Dublin only as they are printed."""
+    """Record timestamps are UTC to the minute; see _local for printing them."""
     return dt.strftime("%Y-%m-%dT%H:%M") if dt else None
 
 
@@ -1049,7 +1048,7 @@ def write(site_dir, outages, sa_index, now, until):
             )
             area_paths.append(rel)
 
-    lastmod = now.strftime("%Y-%m-%d")
+    lastmod = model.local(now).strftime("%Y-%m-%d")
     paths = (
         [""]
         + [f"c/{slug(c)}.html" for c in sa_index.counties]

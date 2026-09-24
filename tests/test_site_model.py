@@ -1528,7 +1528,53 @@ class TestTheFiveDayGate(unittest.TestCase):
         )
 
     def test_a_month_caught_too_late_never_opens(self):
-        """July holds three hours and is over. The caller has to check the date
+        """July holds two hours and is over. The caller has to check the date
         against the month, or it promises a grade that can never arrive."""
         when = model.days_gate("2026-07", datetime(2026, 9, 1, tzinfo=UTC))
         self.assertGreater(when, model.month_bounds("2026-07")[1])
+
+
+class TestDublinDisplay(SiteModelCase):
+    """Stored in UTC, cut and printed on Dublin's clock."""
+
+    def test_a_fault_just_after_dublins_midnight_colours_that_day(self):
+        # 23:10-23:50 UTC on the 12th is 00:10-00:50 on the 13th in Dublin
+        self.observe(
+            detail("1", numCustAffected=200000, outageType="Restored",
+                   startTime="13/08/2026 00:10", restoreTime="13/08/2026 00:50"),
+            datetime(2026, 8, 12, 23, 30, tzinfo=UTC),
+        )
+        self.poll(datetime(2026, 8, 14, 6, tzinfo=UTC))
+        outages, _, index = self.load()
+        cells = model.county_month(
+            outages, "Dublin", index.customers["Dublin"], "2026-08", NOW, self.until
+        )["cells"]
+        self.assertEqual(cells[11], "0")
+        self.assertNotEqual(cells[12], "0")
+
+    def test_a_timeline_row_prints_dublins_time(self):
+        line = render._update_line(["update", "2026-08-24T14:15", 40], False)
+        self.assertIn("<time>24 Aug, 15:15</time>", line)
+
+    def test_the_caveat_names_dublins_day(self):
+        until = datetime(2026, 9, 9, 23, 30, tzinfo=UTC)
+        self.assertEqual(render._month_watched("2026-09", until), "to 10 Sep")
+
+    def test_the_horizon_is_shown_and_filed_in_dublin(self):
+        until = datetime(2026, 8, 31, 23, 30, tzinfo=UTC)
+        data = render.build([], model.SmallAreaIndex.load(), until, until)[0]
+        self.assertEqual(data["observed_month"], "2026-09")
+        self.assertEqual(data["observed"], "Tue 1 Sep, 00:30")
+
+    def test_the_app_prints_through_the_same_conversion(self):
+        # the JS mirror has no runner in CI, so its call sites are held here
+        page = (Path(model.__file__).parent / "site.html").read_text()
+
+        def body(name):
+            return page.split(f"function {name}(", 1)[1].split("\nfunction ", 1)[0]
+
+        self.assertIn("ts = local(ts); ref = local(ref);", body("whenAt"))
+        self.assertIn("local(k[4])", body("caseHtml"))
+        self.assertIn("when(local(r[1]))", body("updateLine"))
+        self.assertIn('timeZone: "Europe/Dublin"', page)
+        self.assertIn("D.observed_month === curMonth", page)

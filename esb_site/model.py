@@ -32,9 +32,7 @@ SA_TOWNS_PATH = DATA_DIR / "sa_towns.csv"
 # it. Days before it are rendered as "no data", never as "no outages".
 COLLECTION_START = datetime(2026, 7, 31, 21, 2, 11, tzinfo=UTC)
 
-# Everything is stored and computed in UTC. Months and days are Dublin's,
-# because ESB's own times are and so is every reader: cut at UTC midnight, a
-# fault at 00:30 on 1 September counted in August for half the year.
+# notes/grading.md § Months and days are Dublin's
 DUBLIN = ZoneInfo("Europe/Dublin")
 
 # The denominator for CML and CI. Both figures ESB publishes point at the same

@@ -156,14 +156,18 @@ var EST_GRACE_MIN = 5;
 
 function fmtCml(v) { return v >= 100 ? Math.round(v) : v.toFixed(1); }
 
-// A record timestamp, UTC to the minute, on the Dublin wall clock. Durations
-// are subtracted from the UTC strings; only what is printed turns Dublin.
-// Mirrored in render.py (_local).
-var DUBLIN = new Intl.DateTimeFormat("en-GB", {
-  timeZone: "Europe/Dublin", hourCycle: "h23",
-  year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
-});
+// A record timestamp on the Dublin wall clock. Mirrored in render.py (_local).
+// Guarded because an engine without zone data throws here, and UTC times are
+// a better failure than an app that never renders.
+var DUBLIN = null;
+try {
+  DUBLIN = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Dublin", hourCycle: "h23",
+    year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit"
+  });
+} catch (e) {}
 function local(ts) {
+  if (!DUBLIN) return ts;
   var p = {};
   DUBLIN.formatToParts(new Date(ts + "Z")).forEach(function (x) { p[x.type] = x.value; });
   return p.year + "-" + p.month + "-" + p.day + "T" + p.hour + ":" + p.minute;
@@ -433,7 +437,8 @@ function caseHtml(k) {
   var planned = k[2], ups = k[9], chain = k[8];
   var dur = k[5] && k[4] ? (new Date(k[5] + "Z") - new Date(k[4] + "Z")) / 3600000 : null;
   var bits = [plural(k[3], "customer") + " affected"];
-  if (k[4]) bits.push("began " + fmtDay(local(k[4])) + ", " + local(k[4]).slice(11, 16));
+  var began = k[4] && local(k[4]);
+  if (began) bits.push("began " + fmtDay(began) + ", " + began.slice(11, 16));
   if (dur != null) bits = bits.concat(endBits(k, dur));
   // in the chip rather than trailing the timings: it is the row's most human
   // fact and it was in its least-read position

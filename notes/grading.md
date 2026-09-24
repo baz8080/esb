@@ -820,6 +820,13 @@ The rule is the owner's: **store and compute in UTC, display in local time.**
   `generated` keeps statusui's shared UTC stamp, and the CSV keeps its `*_utc`
   columns.
 
+Accepted edge: in the hour the clocks go back in October, 01:00 to 02:00
+happens twice, and the printed times carry no offset. An outage from 01:50
+summer time to 01:10 winter time reads "began 01:50 · restored 01:10 (20 min)".
+The span is right, because it is taken in UTC, but the clock times read
+backwards. It is one hour a year. Labelling offsets on every row to cover it
+would cost more than the confusion it saves.
+
 Checked in Chromium with the browser set to New York: all 856 Dublin and Cork
 records render the same summary line and timeline times from the JS as from
 render.py.
@@ -828,5 +835,5 @@ On the corpus to 24 September no grade letter moves. Day cells shift in 13
 county-months. Dublin's monthly customer minutes lost moves by 0.1 in both
 months. One Monaghan fault that began just before midnight on 31 July, Irish
 time, moves from July into August (Monaghan August 99.5% to 98.9% restored in
-4 h), which leaves July's three observed hours empty. National September
+4 h), which leaves July empty: under Dublin months it holds under two observed hours, from 21:02 to 23:00 UTC. National September
 customer minutes lost goes from 11.9 to 12.0.
