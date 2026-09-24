@@ -238,6 +238,19 @@ class TestRebuild(unittest.TestCase):
         self.assertTrue({"cut_short", "partial", "auth_error"} <= statuses, statuses)
         self.assertEqual(before, after)
 
+    def test_rebuild_and_compact_wait_for_a_running_poll(self):
+        from esb_outages.__main__ import main
+        from esb_outages.poll import poll_lock
+
+        self.run_a_realistic_history()
+        db = self.data_dir / "esb.db"
+        inode = db.stat().st_ino
+        with poll_lock(self.data_dir) as held:
+            self.assertTrue(held)
+            for command in ("rebuild", "compact"):
+                self.assertEqual(main(["--data-dir", str(self.data_dir), command]), 1)
+        self.assertEqual(db.stat().st_ino, inode)
+
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:
             self.assertEqual(

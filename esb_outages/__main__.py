@@ -5,10 +5,11 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from pathlib import Path
 
 from . import __version__, alert
 from .client import EsbClient
-from .poll import DEFAULT_DELAY_MS, run_check, run_poll
+from .poll import DEFAULT_DELAY_MS, poll_lock, run_check, run_poll
 from .store import Store
 
 DEFAULT_DATA_DIR = os.environ.get("ESB_DATA_DIR", "/data")
@@ -103,17 +104,29 @@ def cmd_test_alert(args) -> int:
     return alert.EXIT_OK
 
 
+def _held_by_poll() -> int:
+    # Both delete files a poll writes to: esb.db and its journal, or the log.
+    print("a poll run holds the lock; try again when it has finished", file=sys.stderr)
+    return 1
+
+
 def cmd_rebuild(args) -> int:
-    with Store(args.data_dir) as store:
-        result = store.rebuild(verbose=True)
+    with poll_lock(Path(args.data_dir)) as acquired:
+        if not acquired:
+            return _held_by_poll()
+        with Store(args.data_dir) as store:
+            result = store.rebuild(verbose=True)
     if result["runs"] == 0 and result["observations"] == 0:
         print("nothing to replay: no raw logs found", file=sys.stderr)
     return alert.EXIT_OK
 
 
 def cmd_compact(args) -> int:
-    with Store(args.data_dir) as store:
-        done = store.compact()
+    with poll_lock(Path(args.data_dir)) as acquired:
+        if not acquired:
+            return _held_by_poll()
+        with Store(args.data_dir) as store:
+            done = store.compact()
     print(f"compacted {len(done)} file(s): {', '.join(done) or 'none'}")
     return alert.EXIT_OK
 
