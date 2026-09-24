@@ -1574,10 +1574,28 @@ class TestDublinDisplay(SiteModelCase):
         self.assertEqual(render._month_watched("2026-10", until), "no data yet")
         self.assertEqual(render._month_watched("2026-09", until), "to 30 Sep")
 
-    def test_the_app_says_no_data_yet_too(self):
+    def test_the_app_reads_no_data_yet_from_the_payload_everywhere(self):
         page = (Path(model.__file__).parent / "site.html").read_text()
-        self.assertIn("function noDataYet(ym) { return ym > D.observed_month; }", page)
-        self.assertIn('(none ? "no data yet" :', page)
+        self.assertIn("function noDataYet(ym) { return (D.nodata || []).indexOf(ym) >= 0; }",
+                      page)
+        for surface in (
+            '(none ? "no data yet" :',            # national headline
+            'esc(none ? "–" : t[0])',             # national tiles
+            '(none ? "–" : m ? m[4] : 0)',        # county rows
+            'esc(noDataYet(curMonth) ? "–" : t[0])',  # county tiles
+            '"No data yet for " + monthLabelLong(curMonth)',  # county list
+            'if (noDataYet(ym)) return "There is no data yet for "',  # gate sentence
+        ):
+            self.assertIn(surface, page)
+
+    def test_a_horizon_on_the_stroke_of_midnight_has_watched_none_of_the_month(self):
+        until = datetime(2026, 9, 30, 23, 0, tzinfo=UTC)  # 00:00 on 1 October in Dublin
+        data = render.build([], model.SmallAreaIndex.load(), until, until)[0]
+        self.assertEqual((data["observed_month"], data["nodata"]), ("2026-09", ["2026-10"]))
+        self.assertEqual(render._month_watched("2026-10", until), "no data yet")
+        self.assertEqual(
+            render.ungraded_reason("2026-10", 0, until), "There is no data yet for October 2026"
+        )
 
     def test_the_horizon_is_shown_and_filed_in_dublin(self):
         until = datetime(2026, 8, 31, 23, 30, tzinfo=UTC)
@@ -1597,6 +1615,24 @@ class TestDublinDisplay(SiteModelCase):
         self.assertIn("when(local(r[1]))", body("updateLine"))
         self.assertIn('timeZone: "Europe/Dublin"', page)
         self.assertIn("D.observed_month === curMonth", page)
+
+
+class TestAMonthTheDataHasNotReached(SiteModelCase):
+    def test_a_restore_published_past_the_horizon_is_not_counted_in_it(self):
+        # listed at 22:45 UTC on 30 Sep, with ESB naming a restore at 00:30 on
+        # 1 October, which is after the data stops
+        seen = datetime(2026, 9, 30, 22, 45, tzinfo=UTC)
+        self.observe(detail("1", outageType="Restored", startTime="30/09/2026 21:00",
+                            restoreTime="01/10/2026 00:30"), seen)
+        self.poll(seen)
+        outages, _, index = self.load(datetime(2026, 10, 1, 0, 20, tzinfo=UTC))
+        now = datetime(2026, 10, 1, 0, 20, tzinfo=UTC)
+        s = model.county_month(outages, "Dublin", index.customers["Dublin"], "2026-10",
+                               now, self.until)
+        self.assertEqual((s["faults"], s["planned"]), (0, 0))
+        data = render.build(outages, index, now, self.until)[0]
+        self.assertEqual(data["national"]["2026-10"][1:3], [0, 0])
+        self.assertNotIn("2026-10", render.shard(outages, ["2026-09", "2026-10"], self.until))
 
 
 class TestTheBuildClock(unittest.TestCase):

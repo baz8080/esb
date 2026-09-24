@@ -926,8 +926,9 @@ def load_outages(db_path, sa_index, now):
             )
         # The record starts at the first poll: an event over before it
         # overlaps no observed window, so nothing the site derives may count
-        # it, a repeat chain included. Dropped after the merge, whose event
-        # ends with its last member, and before the chains are labelled.
+        # it, a repeat chain included. Dropped by the end the merge settles on
+        # (a sibling lingering a poll past a confirmed restore is the feed
+        # catching up) and before the chains are labelled.
         events = [o for o in merge_events(outages) if o.end > COLLECTION_START]
         return label_repeats(events), unplaced, until
     finally:
@@ -959,6 +960,14 @@ def observed_window(ym, until):
     """
     lo, hi = month_bounds(ym)
     return max(lo, COLLECTION_START), min(hi, until)
+
+
+def month_watched(ym, until):
+    """Whether the collected data reaches into month `ym` at all. A build just
+    after the 1st, or one while the collector is down, lists a month before
+    any data for it exists, and its window is then empty or inverted."""
+    lo, hi = observed_window(ym, until)
+    return hi > lo
 
 
 def days_gate(ym, until):
@@ -999,7 +1008,7 @@ def county_month(outages, county, customers, ym, now, until):
     for o in outages:
         if o.county != county or not o.start or not o.end:
             continue
-        if o.end <= lo or o.start >= hi:
+        if hi <= lo or o.end <= lo or o.start >= hi:
             continue
         cm = o.customer_minutes(lo, hi)
         if o.planned:

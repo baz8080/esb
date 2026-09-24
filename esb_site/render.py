@@ -153,7 +153,9 @@ def build(outages, sa_index, now, until):
 
     for ym in months:
         lo, hi = model.observed_window(ym, until)
-        live = [o for o in outages if o.start and o.end and o.end > lo and o.start < hi]
+        live = [
+            o for o in outages if hi > lo and o.start and o.end and o.end > lo and o.start < hi
+        ]
         faults = [o for o in live if not o.planned]
         # Same gate as county_month: an outage still out has no restoration to
         # judge, and its elapsed time would score as a fast one.
@@ -223,8 +225,12 @@ def build(outages, sa_index, now, until):
         # reader's clock rather than the build's. STALE_AFTER travels with it,
         # so a page served from cache can still go stale.
         "observed_iso": f"{until:%Y-%m-%dT%H:%M:00Z}",
-        # the Dublin month the horizon falls in, for the "so far" wording
-        "observed_month": f"{model.local(until):%Y-%m}",
+        # the Dublin month the data last reaches, for the "so far" wording;
+        # a horizon on the stroke of midnight watched none of the new month
+        "observed_month": f"{model.local(until - timedelta(microseconds=1)):%Y-%m}",
+        # months listed before any of their data exists: said once, here, so
+        # the app cannot work it out differently from the county page
+        "nodata": [ym for ym in months if not model.month_watched(ym, until)],
         "stale_hours": round(STALE_AFTER.total_seconds() / 3600),
         # Two dates at most, and the same for every county, so they sit here
         # rather than on every month of every county's row.
@@ -297,7 +303,10 @@ def shard(outages, months, until):
     tiles and missing from that month's list, so a reader could count the rows
     and come up one short of the headline.
     """
-    windows = [(ym,) + model.observed_window(ym, until) for ym in months]
+    windows = [
+        (ym,) + model.observed_window(ym, until) for ym in months
+        if model.month_watched(ym, until)
+    ]
     by_month = defaultdict(list)
     for o in sorted(outages, key=lambda o: o.start, reverse=True):
         record = None
@@ -511,6 +520,8 @@ def ungraded_reason(ym, faults, until):
     Three gates withhold it and naming the wrong one sends a reader after
     outages that are not the reason. Mirrored in site.html (ungradedReason).
     """
+    if not model.month_watched(ym, until):
+        return f"There is no data yet for {month_label(ym)}"
     when = model.days_gate(ym, until)
     if when is not None:
         # past the month's end: it can never reach five days, so promise no date
@@ -577,12 +588,10 @@ def _month_watched(ym, until):
     months are short, and a row of zeros for three hours of July reads as a
     quiet month rather than an absent collector.
     """
+    if not model.month_watched(ym, until):
+        return "no data yet"
     lo, hi = model.month_bounds(ym)
     olo, ohi = model.observed_window(ym, until)
-    # Built after the month began, from data that has not reached it: zeros
-    # under "to 30 Sep" read as a quiet month. Mirrored in site.html.
-    if ohi <= olo:
-        return "no data yet"
     bits = []
     if olo > lo:
         bits.append(f"from {model.local(olo):%-d %b}")
@@ -621,6 +630,12 @@ def _county_months_html(county, data, months, until):
     for ym in reversed(months):
         m = data["stats"][county][ym]
         watched = _month_watched(ym, until)
+        if not model.month_watched(ym, until):
+            rows.append(
+                f'<tr><th scope="row">{month_label(ym)}<span class="part">{watched}</span></th>'
+                + "<td>–</td>" * 8 + "</tr>"
+            )
+            continue
         rows.append(
             f'<tr><th scope="row">{month_label(ym)}'
             + (f'<span class="part">{watched}</span>' if watched else "")

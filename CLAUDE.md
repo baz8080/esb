@@ -110,6 +110,7 @@ Every one of these has already cost someone an hour:
 | Poll interval stays at 30 min; 15 min was measured and is marginal | `notes/polling.md` |
 | `startTime` is immutable and back-dated, so durations measure the outage | `notes/grading.md` § Does startTime drift |
 | Every measured window ends at the collection horizon, not at the build clock | `notes/grading.md` § What the clock knows |
+| A month listed before any of its data exists says **no data yet**, never zeros: decided once by `model.month_watched` and shipped as `D.nodata`, so the county page and the app cannot disagree; nothing is counted or filed in it. It stays listed, because the month list follows the calendar | `notes/design-alignment.md` § A month the data has not reached says "no data yet" (2026-09-24) |
 | Stored and computed in UTC, shown in Dublin time: months, day cells and gate dates are cut at Dublin midnight (as UTC instants, never Dublin-zoned datetimes), and case records stay UTC with only what is printed converted (`render._local`, `local()` in site.html) | `notes/grading.md` § Months and days are Dublin's (2026-09-24) |
 | An outage still listed at the last poll is not judged on the charter, and a live fault runs to its last sighting, not to a passed estimate (planned works keep their schedule, issue #49) | `notes/grading.md` § An outage still listed; § A live fault runs to its last sighting (2026-09-24) |
 | Peak customers means the most off while the outage was live | `notes/grading.md` § The peak is the highest count |

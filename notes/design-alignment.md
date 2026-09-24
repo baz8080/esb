@@ -629,11 +629,17 @@ outages" with no "so far", as though the month had come and gone quiet.
 Pushes land every six hours, so this is a few hours at the start of every
 month, and longer whenever the collector is down across one.
 
-Owner's call: say **no data yet**. The month table's caveat reads "no data
-yet" (`render._month_watched`, when the observed window is empty); the app
-(`noDataYet` in site.html, a month later than `observed_month`) puts it in the
-headline, shows "–" in the tiles and the county rows' counts, and says "No data
-yet for October 2026." where the county view would list outages. Rejected:
+Owner's call: say **no data yet**. Whether a month is watched at all is
+decided once, `model.month_watched`, and shipped as `D.nodata`: a first cut
+let the app work it out again from `observed_month`, and the two disagreed on
+a horizon landing exactly on Dublin midnight. The month table's caveat reads
+"no data yet" and its figures are dashes; the gate sentence says "There is no
+data yet for October 2026" rather than promising a grade date; the app puts it
+in the headline, shows "–" in the tiles and the county rows' counts, and says
+so where the county view would list outages. Nothing is counted or filed in
+such a month, including an outage whose published restore time runs past the
+horizon. Not covered: a whole month the collector missed reads as watched
+once data resumes after it, the in-window gap grading.md already names. Rejected:
 leaving the month out until data arrives, which would make the month list
 depend on the collector rather than the calendar; `month_list` walks the
 calendar on purpose, so a month is listed from its first instant.
