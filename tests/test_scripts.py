@@ -279,6 +279,22 @@ class TestWrapper(unittest.TestCase):
 
 
 
+class TestSetupDocs(unittest.TestCase):
+    def test_the_installer_says_to_enable_the_backup(self):
+        # The backup's push is the only way the site updates.
+        installer = (REPO / "scripts" / "install-native.sh").read_text()
+        self.assertIn("enable --now esb-backup.timer", installer)
+
+    def test_the_backup_setup_runs_git_as_the_service_user(self):
+        header = BACKUP.read_text().split("set -eu")[0]
+        self.assertNotIn("README", header)
+        commands = [line for line in header.splitlines() if line.startswith("#   ")]
+        for line in commands:
+            if "git " in line:
+                self.assertIn("sudo -u esb git", line)
+        self.assertTrue(any("git" in line for line in commands))
+
+
 class TestOneInterpreter(unittest.TestCase):
     def test_the_installer_gates_the_python_the_service_and_wrapper_run(self):
         scripts = REPO / "scripts"

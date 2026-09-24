@@ -2,10 +2,17 @@
 #
 # Commit and push the raw logs to a git remote, as an offsite backup.
 #
-# One-time setup (see README for the full walkthrough):
-#   cd /var/lib/esb-outages
-#   git init -b main
-#   git remote add origin git@github.com:<you>/esb-data.git
+# One-time setup. git runs as the service user, or the repository is root's
+# and git refuses it as "dubious ownership" from then on:
+#   sudo -u esb git -C /var/lib/esb-outages init -b main
+#   sudo -u esb git -C /var/lib/esb-outages remote add origin git@github.com:<you>/esb-data.git
+#   sudo ssh-keygen -t ed25519 -N "" -C esb-backup -f /etc/esb-outages-deploy-key
+#   sudo chown esb:esb /etc/esb-outages-deploy-key
+#   sudo chmod 600 /etc/esb-outages-deploy-key
+# Add /etc/esb-outages-deploy-key.pub to the data repository as a deploy key
+# with write access, then:
+#   sudo systemctl start esb-backup.service     # the first push, now
+#   sudo systemctl enable --now esb-backup.timer
 #
 # Only raw/ is committed. esb.db is deliberately excluded: it is a binary that
 # rewrites wholesale every run, so git cannot delta it, and it is rebuildable
