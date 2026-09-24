@@ -864,6 +864,20 @@ class TestOngoingOutages(SiteModelCase):
         self.assertEqual(o.minutes, 25.5 * 60)
         self.assertEqual(self.judged(outages, index)["over_compensation"], 1)
 
+    def test_a_live_fault_missed_by_the_last_run_ends_at_its_sighting(self):
+        # Listed at 09:30, absent from the 10:00 run: still inside the ongoing
+        # grace, but nobody saw it out at 10:00.
+        seen = datetime(2026, 8, 10, 9, 30, tzinfo=UTC)
+        self.observe(
+            detail("1", startTime="10/08/2026 08:00", estRestoreTime="10/08/2026 09:00"),
+            seen,
+        )
+        self.poll(seen, n_listed=1)
+        self.poll(seen + timedelta(minutes=30), n_listed=0)
+        o = self.load()[0][0]
+        self.assertTrue(o.ongoing)
+        self.assertEqual((o.end, o.end_src), (seen, "listed"))
+
     def test_a_long_live_outage_still_counts_against_compensation(self):
         """Past 24 hours is true of an outage that has not ended yet."""
         self.observe(

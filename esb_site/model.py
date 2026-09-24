@@ -805,25 +805,23 @@ def load_outages(db_path, sa_index, now):
             ongoing = not restore and last_seen >= until - POLL_INTERVAL
             if restore:
                 end, end_src = restore, "restored"
-            elif ongoing and not planned:
-                # Out until the horizon, whatever ESB estimated: a passed
-                # estimate on a live fault is a miss, not an ending. A planned
-                # job keeps its schedule, because a listing is not an outage.
-                end, end_src = until, "listed"
-            elif est and start < est <= last_seen:
+            elif est and start < est <= last_seen and (planned or not ongoing):
                 # No restore time, and the outage vanished from the feed. ESB's
                 # own estimated restore time is by far the best stand-in:
                 # measured against the 648 outages whose true restore time we
                 # do know, it lands a median 0.7h late and overstates total
                 # time by 18%, where falling back to the last time the row was
                 # listed overstates it by 126% - ESB leaves restored outages
-                # sitting in the feed for hours.
+                # sitting in the feed for hours. A planned job still listed
+                # keeps its schedule too, because a listing is not an outage.
                 end, end_src = est, "estimated"
             else:
                 # No usable estimate: either there is none, or it lands before
                 # the outage started (which makes it nonsense rather than an
                 # estimate), or the outage stopped being listed before reaching
                 # it, which makes leaving the feed the tighter of the two bounds.
+                # A live fault lands here whatever it was estimated at: a passed
+                # estimate is a miss, not an ending.
                 end, end_src = max(start, last_seen), "listed"
             if end_src != "restored":
                 # Nothing can be *inferred* past the last poll, whatever the
