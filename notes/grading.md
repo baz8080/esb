@@ -212,8 +212,11 @@ already claimed. On the corpus to 24 September, three faults move. Dublin's
 August drops from 87.7% to 85.4% (no letter changes), national August from 89.1%
 to 88.6%, and one fault from July's three observed hours is now judged in July,
 which the day gate keeps ungraded anyway. The third-gate sentence now reads
-"No fault that started in X has been restored yet": under the new rule the only
-way to reach it is every fault that started in the month still being out.
+"No fault that started in X has been restored yet". Under the new rule that is
+the ordinary way to reach it. Two others exist. Every fault counted in the
+month began before it, which leaves the sentence true if empty. Or every
+restored one reported zero customers, which would make it false; no fault has,
+of 2,003 to 24 September.
 
 #### The other two gates were hover-only (2026-09-07)
 
