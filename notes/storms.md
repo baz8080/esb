@@ -112,3 +112,13 @@ replay as before, from the start line's status and derived counters. The line
 is written with sorted keys like every other, so `sort -u` merges still hold,
 and it goes in the month file of its own timestamp, so a run crossing midnight
 on the last day ends in the next month's file.
+
+Two edges follow from having two lines per run. A start line with no end
+line, in a log where earlier runs have one, is a run that died before
+closing itself out (an uncaught exception, a full disk, a kill the SIGTERM
+handler never saw); a rebuild records it as `unfinished`, where the live
+database has no row for it at all, rather than as a clean `ok`. An end line
+whose start line was lost still gets a row, started at the time its run id
+carries, and the rebuild says how many it recorded that way. Two copies of
+the same line, from a merge without `sort -u` or a `compact` that crashed
+before removing what it had archived, are read once.

@@ -305,6 +305,31 @@ class TestRebuild(unittest.TestCase):
                 [fault["outageId"]],
             )
 
+    def test_a_run_that_died_before_its_end_line_is_not_ok(self):
+        self.run_a_realistic_history()
+        with Store(self.data_dir) as st:
+            st.write_run_raw("2026-12-01T10:00:00Z-deadbeef", "2026-12-01T10:00:00Z",
+                             200, make_list(detail("fault")))
+            st.rebuild()
+            status = st.conn.execute(
+                "SELECT status FROM run WHERE run_id = '2026-12-01T10:00:00Z-deadbeef'"
+            ).fetchone()[0]
+        self.assertEqual(status, "unfinished")
+
+    def test_a_run_whose_start_line_was_lost_keeps_its_end(self):
+        from esb_outages import alert
+
+        self.poll(FakeClient(list_body=make_list(detail("fault")),
+                             details={detail("fault")["outageId"]: detail("fault")}))
+        runs = next((self.data_dir / "raw").glob("runs-*.jsonl"))
+        lines = runs.read_text().splitlines()
+        runs.write_text("\n".join(line for line in lines if '"event": "end"' in line) + "\n")
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            row = st.conn.execute("SELECT * FROM run").fetchone()
+        self.assertEqual((row["status"], row["exit_code"]), ("ok", alert.EXIT_OK))
+        self.assertEqual(row["run_id"][:20], row["started_at_utc"])
+
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:
             self.assertEqual(

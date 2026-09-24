@@ -15,6 +15,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import shutil
 import sqlite3
 import sys
@@ -118,6 +119,8 @@ CREATE INDEX IF NOT EXISTS idx_change_outage ON outage_change(outage_id);
 CREATE INDEX IF NOT EXISTS idx_change_time ON outage_change(observed_at_utc);
 """
 
+
+_UTC_STAMP = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
 
 # What a run's end record carries: everything a rebuild cannot derive from the
 # list and the observations.
@@ -571,6 +574,12 @@ class Store:
             else:
                 run_records.append(rec)
 
+        # Once runs log their end, a start line without one is a run that died
+        # before closing itself out, not a clean one.
+        ends_from = min(
+            (r["started_at"] for r in run_records if r["run_id"] in ends), default=None
+        )
+
         # Observations whose run record never made it to disk (a crash between
         # the two writes, or a damaged line) replay at their own place in time.
         # Replayed after everything else, an old body rolled back newer state.
@@ -623,7 +632,10 @@ class Store:
                 run_id=run_id,
                 started_at_utc=rec["started_at"],
                 finished_at_utc=end.get("finished_at"),
-                status=end.get("status") or rec.get("status", "ok"),
+                status=end.get("status") or (
+                    "unfinished" if ends_from and rec["started_at"] > ends_from
+                    else rec.get("status", "ok")
+                ),
                 exit_code=end.get("exit_code"),
                 n_listed=listed,
                 n_detail_fetched=fetched if listed is not None else None,
@@ -637,9 +649,27 @@ class Store:
             for obs in run_obs:
                 n_obs += apply_observation(obs)
 
+        # An end line whose start line was lost still says how the run went,
+        # and its run id carries the start time.
+        lost_starts = 0
+        for run_id, end in ends.items():
+            started = str(run_id).rsplit("-", 1)[0]
+            if run_id in run_ids or not _UTC_STAMP.fullmatch(started):
+                continue
+            self.record_run(
+                run_id=run_id,
+                started_at_utc=started,
+                finished_at_utc=end.get("finished_at"),
+                **{k: end.get(k) for k in RUN_END_FIELDS},
+            )
+            lost_starts += 1
+
         self.conn.commit()
         if verbose:
             print(f"replayed {n_runs} runs and {n_obs} detail observations")
+            if lost_starts:
+                print(f"  {lost_starts} run(s) had lost their start line; "
+                      "recorded from their end line", file=sys.stderr)
             for problem in self.malformed_lines:
                 print(f"  skipped unreadable line {problem}", file=sys.stderr)
         return {
