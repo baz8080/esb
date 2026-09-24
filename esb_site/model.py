@@ -509,10 +509,12 @@ def _merge_group(members):
             (c for o in members for (s, e, c) in o.segments if s <= a and e >= b),
             default=0,
         )
-        if n and (not segments or segments[-1][2] != n):
-            segments.append((a, b, n))
-        elif n:
+        if not n:
+            continue
+        if segments and segments[-1][2] == n and segments[-1][1] == a:
             segments[-1] = (segments[-1][0], b, n)
+        else:
+            segments.append((a, b, n))
 
     segments = segments or lead.segments
     return lead._replace(

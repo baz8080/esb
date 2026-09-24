@@ -425,6 +425,27 @@ class TestEventMerging(SiteModelCase):
         self.assertEqual(len(outages), 1)
         self.assertEqual(outages[0].customers, 0)
 
+    def test_the_envelope_is_not_bridged_across_an_hour_nobody_was_off(self):
+        t = datetime(2026, 8, 10, 10, 0, tzinfo=UTC)
+        common = {"location": "Glasnevin", "startTime": "10/08/2026 11:00"}
+        self.observe(detail("1", numCustAffected=100, **common), t)
+        self.observe(
+            detail("1", numCustAffected=100, outageType="Restored",
+                   restoreTime="10/08/2026 12:00", **common),
+            t + timedelta(hours=1),
+        )
+        self.observe(detail("2", numCustAffected=0, **common), t)
+        self.observe(detail("2", numCustAffected=100, **common), t + timedelta(hours=2))
+        self.observe(
+            detail("2", numCustAffected=100, outageType="Restored",
+                   restoreTime="10/08/2026 14:00", **common),
+            t + timedelta(hours=3),
+        )
+        outages, _, _ = self.load()
+        self.assertEqual(len(outages), 1)
+        day = (t, t + timedelta(days=1))
+        self.assertEqual(outages[0].customer_minutes(*day), 100 * 120)
+
     def test_the_merged_timeline_reports_customers_still_off(self):
         """Not one line per restored section, which says nothing to a reader."""
         self.split_fault()
