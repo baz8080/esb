@@ -57,16 +57,23 @@ chown -R "$SERVICE_USER:$SERVICE_USER" "$DATA_DIR"
 echo "installing the 'esb' command to /usr/local/bin"
 install -m 755 "$SRC/scripts/esb-wrapper.sh" /usr/local/bin/esb
 
-# Pre-seed the host key for the backup push. The service user's HOME is the data
-# directory, and relying on ssh writing a known_hosts file there on first
-# connect is both untidy and a silent trust-on-first-use. Seeding it here makes
-# the backup work on its first run instead of failing with "Host key
-# verification failed".
+# Seed the host key for the backup push once, here, and the unit pins it
+# (StrictHostKeyChecking=yes), so a changed key fails the push. The service
+# user's HOME is the data directory, which is no place for a known_hosts file.
+# An empty file must stop the install: ssh cannot write to this one, so with
+# nothing in it every push would take whatever key it was shown.
 KNOWN_HOSTS="/etc/esb-outages-known_hosts"
-if [ ! -s "$KNOWN_HOSTS" ] && command -v ssh-keyscan >/dev/null 2>&1; then
+if [ ! -s "$KNOWN_HOSTS" ]; then
     echo "seeding $KNOWN_HOSTS for github.com"
-    ssh-keyscan -t rsa,ecdsa,ed25519 github.com > "$KNOWN_HOSTS" 2>/dev/null || true
-    chmod 644 "$KNOWN_HOSTS"
+    if ! ssh-keyscan -t rsa,ecdsa,ed25519 github.com > "$KNOWN_HOSTS.new" 2>/dev/null ||
+        [ ! -s "$KNOWN_HOSTS.new" ]; then
+        rm -f "$KNOWN_HOSTS.new"
+        echo "could not fetch github.com's host keys (is openssh-client installed," >&2
+        echo "and the network up?). Re-run this script once it is." >&2
+        exit 1
+    fi
+    chmod 644 "$KNOWN_HOSTS.new"
+    mv "$KNOWN_HOSTS.new" "$KNOWN_HOSTS"
 fi
 
 if [ ! -f "$ENV_FILE" ]; then

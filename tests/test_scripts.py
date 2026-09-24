@@ -230,6 +230,14 @@ class TestBackupUnit(unittest.TestCase):
         self.assertIn("-o ConnectTimeout=", ssh)
         self.assertIn("-o ServerAliveInterval=", ssh)
 
+    def test_ssh_takes_only_the_seeded_host_key(self):
+        self.assertIn("-o StrictHostKeyChecking=yes", self.unit)
+
+    def test_an_empty_host_key_scan_stops_the_install(self):
+        installer = (REPO / "scripts" / "install-native.sh").read_text()
+        self.assertNotRegex(installer, r'ssh-keyscan[^\n]*> "\$KNOWN_HOSTS"')
+        self.assertIn('[ ! -s "$KNOWN_HOSTS.new" ]', installer)
+
 
 class TestWrapper(unittest.TestCase):
     """esb-wrapper.sh with stand-ins for id and sudo that record what sudo got."""
@@ -268,6 +276,7 @@ class TestWrapper(unittest.TestCase):
         for name, value in secrets.items():
             self.assertIn(name, preserved)
             self.assertIn(f"{name}={value}", passed)
+
 
 
 class TestOneInterpreter(unittest.TestCase):
