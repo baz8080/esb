@@ -205,6 +205,39 @@ class TestRebuild(unittest.TestCase):
             statuses = [r[0] for r in st.conn.execute("SELECT status FROM run")]
         self.assertIn("auth_error", statuses)
 
+    def test_every_run_column_survives_a_rebuild(self):
+        """How a run ended is not derivable from its list and observations, so
+        the log carries it; without that a storm's cut-short runs came back ok."""
+        from esb_outages.client import AuthError, TransientError
+
+        self.run_a_realistic_history()
+        many = [dict(detail("fault"), outageId=str(3000000 + i)) for i in range(4)]
+        by_id = {d["outageId"]: d for d in many}
+        run_poll(self.data_dir, client=FakeClient(list_body=make_list(*many),
+                 details=by_id), delay_ms=0, budget_s=0)
+        more = [dict(detail("fault"), outageId=str(4000000 + i)) for i in range(4)]
+        self.poll(FakeClient(
+            list_body=make_list(*more),
+            details={d["outageId"]: d for d in more},
+            detail_errors={d["outageId"]: TransientError("503") for d in more[:3]},
+        ))
+        last = dict(detail("fault"), outageId="5000000")
+        self.poll(FakeClient(list_body=make_list(last), details={},
+                             detail_errors={"5000000": AuthError("401")}))
+        self.poll(FakeClient(list_error=AuthError("401")))
+
+        def runs(st):
+            return [tuple(r) for r in st.conn.execute(
+                "SELECT * FROM run ORDER BY started_at_utc, run_id")]
+
+        with Store(self.data_dir) as st:
+            before = runs(st)
+            st.rebuild()
+            after = runs(st)
+        statuses = {r[3] for r in before}
+        self.assertTrue({"cut_short", "partial", "auth_error"} <= statuses, statuses)
+        self.assertEqual(before, after)
+
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:
             self.assertEqual(

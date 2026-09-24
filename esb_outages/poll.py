@@ -144,7 +144,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
         list_body = client.get_outage_list()
     except AuthError as exc:
         store.write_run_raw(run_id, started_at, 401, None, status="auth_error")
-        store.record_run(
+        store.finish_run(
             run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
             status="auth_error", exit_code=alert.EXIT_AUTH, n_errors=1,
             error_summary=str(exc),
@@ -152,7 +152,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
         return alert.fail(alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH)
     except (TransientError, ApiError) as exc:
         store.write_run_raw(run_id, started_at, 0, None, status="unreachable")
-        store.record_run(
+        store.finish_run(
             run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
             status="unreachable", exit_code=alert.EXIT_UNREACHABLE, n_errors=1,
             error_summary=str(exc),
@@ -199,7 +199,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
         except AuthError as exc:
             # The key died mid-run. Stop immediately rather than burning
             # through hundreds of guaranteed-failing requests.
-            store.record_run(
+            store.finish_run(
                 run_id=run_id, started_at_utc=started_at,
                 finished_at_utc=utc_now_iso(), status="auth_error",
                 exit_code=alert.EXIT_AUTH, n_listed=len(listed_ids),
@@ -248,7 +248,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
     else:
         status, code = "ok", alert.EXIT_OK
 
-    store.record_run(
+    store.finish_run(
         run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
         status=status, exit_code=code, n_listed=len(listed_ids),
         n_detail_fetched=fetched, n_detail_skipped=skipped, n_errors=failed,

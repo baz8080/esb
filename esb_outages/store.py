@@ -117,6 +117,10 @@ CREATE INDEX IF NOT EXISTS idx_change_time ON outage_change(observed_at_utc);
 """
 
 
+# What a run's end record carries: everything a rebuild cannot derive from the
+# list and the observations.
+RUN_END_FIELDS = ("status", "exit_code", "n_detail_skipped", "n_errors", "error_summary")
+
 # How long an outage must go unchanged before it is treated as dormant, and how
 # often to re-check it once it is. Expressed in hours rather than run counts so
 # the behaviour does not shift if the poll interval changes.
@@ -227,6 +231,25 @@ class Store:
                 "status": status,
             },
         )
+
+    def finish_run(self, **fields) -> None:
+        """Log how a run ended, then record it.
+
+        The start line is written before the run knows how it will end, so
+        without this a rebuild restored every cut-short, partial or drifted
+        run as "ok". Only what a rebuild cannot derive is logged.
+        """
+        self._append_raw(
+            "runs",
+            _month_of(fields["finished_at_utc"]),
+            {
+                "event": "end",
+                "run_id": fields["run_id"],
+                "finished_at": fields["finished_at_utc"],
+                **{k: fields.get(k) for k in RUN_END_FIELDS},
+            },
+        )
+        self.record_run(**fields)
 
     def write_observation_raw(
         self, run_id: str, observed_at: str, outage_id: str, http_status: int, body
@@ -513,7 +536,13 @@ class Store:
         # matters when logs from two hosts are concatenated during a migration,
         # where interleaved runs would otherwise replay out of order and skew
         # first_seen / last_seen.
-        run_records = sorted(self.iter_raw("runs"), key=lambda r: r["started_at"])
+        run_records, ends = [], {}
+        for rec in self.iter_raw("runs"):
+            if rec.get("event") == "end":
+                ends[rec.get("run_id")] = rec
+            else:
+                run_records.append(rec)
+        run_records.sort(key=lambda r: r["started_at"])
 
         seen_run_ids = set()
         for rec in run_records:
@@ -534,16 +563,22 @@ class Store:
                 1 for o in run_obs if o.get("http_status") not in (200, 404)
             )
             listed = len(items) if isinstance(items, list) else None
+            # Runs logged before the end record existed take the start line's
+            # status and derived counters, which is all a rebuild ever had.
+            end = ends.get(run_id, {})
             self.record_run(
                 run_id=run_id,
                 started_at_utc=rec["started_at"],
-                status=rec.get("status", "ok"),
+                finished_at_utc=end.get("finished_at"),
+                status=end.get("status") or rec.get("status", "ok"),
+                exit_code=end.get("exit_code"),
                 n_listed=listed,
-                n_detail_fetched=fetched,
-                n_detail_skipped=(
+                n_detail_fetched=fetched if listed is not None else None,
+                n_detail_skipped=end["n_detail_skipped"] if "n_detail_skipped" in end else (
                     listed - fetched - purged - errors if listed is not None else None
                 ),
-                n_errors=errors,
+                n_errors=end["n_errors"] if "n_errors" in end else errors,
+                error_summary=end.get("error_summary"),
             )
             n_runs += 1
             for obs in run_obs:

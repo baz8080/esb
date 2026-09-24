@@ -68,8 +68,11 @@ class TestHappyPath(PollTestCase):
         with self.store() as st:
             runs = list(st.iter_raw("runs"))
             obs = list(st.iter_raw("observations"))
-        self.assertEqual(len(runs), 1)
-        self.assertEqual(runs[0]["list_body"], make_list(detail("fault"), detail("restored")))
+        start, end = runs
+        self.assertEqual(start["list_body"], make_list(detail("fault"), detail("restored")))
+        self.assertEqual(
+            (end["event"], end["run_id"], end["status"]), ("end", start["run_id"], "ok")
+        )
         self.assertEqual(len(obs), 2)
 
 
