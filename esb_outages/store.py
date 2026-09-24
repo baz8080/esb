@@ -11,9 +11,11 @@ before anyone knows what questions they want to ask.
 from __future__ import annotations
 
 import gzip
-import io
+import hashlib
 import json
 import os
+import re
+import shutil
 import sqlite3
 import sys
 from datetime import UTC, datetime
@@ -117,6 +119,13 @@ CREATE INDEX IF NOT EXISTS idx_change_time ON outage_change(observed_at_utc);
 """
 
 
+_FILE_MONTH = re.compile(r"-(\d{4}-\d{2})")
+_UTC_STAMP = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
+
+# What a run's end record carries: everything a rebuild cannot derive from the
+# list and the observations.
+RUN_END_FIELDS = ("status", "exit_code", "n_detail_skipped", "n_errors", "error_summary")
+
 # How long an outage must go unchanged before it is treated as dormant, and how
 # often to re-check it once it is. Expressed in hours rather than run counts so
 # the behaviour does not shift if the poll interval changes.
@@ -140,14 +149,25 @@ def _hours_between(earlier: str | None, later: str) -> float:
     return delta.total_seconds() / 3600.0
 
 
+def _fsync_dir(path: Path) -> None:
+    """Make a rename in `path` durable before anything relies on it."""
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 def _month_of(iso_ts: str) -> str:
     return iso_ts[:7]
 
 
 def _open_maybe_gzip(path: Path):
+    # Bytes, decoded a line at a time in iter_raw: a line torn inside a fada
+    # or corrupted on the card is one malformed line, never a changed record.
     if path.suffix == ".gz":
-        return io.TextIOWrapper(gzip.open(path, "rb"), encoding="utf-8")
-    return path.open("r", encoding="utf-8")
+        return gzip.open(path, "rb")
+    return path.open("rb")
 
 
 class Store:
@@ -197,8 +217,15 @@ class Store:
 
     def _append_raw(self, kind: str, month: str, record: dict) -> None:
         path = self.raw_dir / f"{kind}-{month}.jsonl"
-        with path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+        line = json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n"
+        with path.open("a+b") as fh:
+            # A line torn by a power cut would swallow this one too, and a run's
+            # start line is its only copy of the list.
+            if fh.seek(0, os.SEEK_END):
+                fh.seek(-1, os.SEEK_END)
+                if fh.read(1) != b"\n":
+                    line = "\n" + line
+            fh.write(line.encode("utf-8"))
             fh.flush()
             # The point of this file is to survive the NAS losing power mid-run.
             os.fsync(fh.fileno())
@@ -225,8 +252,30 @@ class Store:
                 "list_status": list_status,
                 "list_body": list_body,
                 "status": status,
+                # Says an end line follows, so a rebuild can tell a run that
+                # died from one logged before end lines existed.
+                "ends_logged": True,
             },
         )
+
+    def finish_run(self, **fields) -> None:
+        """Log how a run ended, then record it.
+
+        The start line is written before the run knows how it will end, so
+        without this a rebuild restored every cut-short, partial or drifted
+        run as "ok". Only what a rebuild cannot derive is logged.
+        """
+        self._append_raw(
+            "runs",
+            _month_of(fields["finished_at_utc"]),
+            {
+                "event": "end",
+                "run_id": fields["run_id"],
+                "finished_at": fields["finished_at_utc"],
+                **{k: fields.get(k) for k in RUN_END_FIELDS},
+            },
+        )
+        self.record_run(**fields)
 
     def write_observation_raw(
         self, run_id: str, observed_at: str, outage_id: str, http_status: int, body
@@ -257,15 +306,30 @@ class Store:
         by a backup, and neither is a reason to refuse to read the other 99.99%.
         Skips are counted and reported rather than passing silently.
         """
+        # Every line carries its own timestamps and run id, so an identical one
+        # is the same record read twice: from a `sort -u`-less merge, or a
+        # compact that crashed before removing what it had archived.
+        seen: set[bytes] = set()
+        month = None
         for path in self.raw_files(kind):
+            # Copies share a month, so the set never needs to span one; keyed
+            # on the month itself, a copy under another name shares it too.
+            found = _FILE_MONTH.search(path.name)
+            if (found.group(1) if found else path.name) != month:
+                month = found.group(1) if found else path.name
+                seen.clear()
             with _open_maybe_gzip(path) as fh:
                 for lineno, line in enumerate(fh, 1):
                     line = line.strip()
                     if not line:
                         continue
+                    digest = hashlib.blake2b(line, digest_size=16).digest()
+                    if digest in seen:
+                        continue
+                    seen.add(digest)
                     try:
-                        yield json.loads(line)
-                    except json.JSONDecodeError as exc:
+                        yield json.loads(line.decode("utf-8"))
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
                         self.malformed_lines.append(f"{path.name}:{lineno}: {exc}")
 
     # ---- applying observations ------------------------------------------
@@ -298,6 +362,10 @@ class Store:
         from .parse import parse_point
 
         for item in items:
+            # Already on disk, so replay meets it too: skip it, or every
+            # rebuild dies on the same line of a log nobody may edit.
+            if not isinstance(item, dict):
+                continue
             outage_id = str(item.get("i"))
             list_type = item.get("t")
             lat, lon, point_raw = parse_point(item.get("p"))
@@ -370,6 +438,9 @@ class Store:
         """
         if not outage_ids:
             return []
+        # ESB listing an id twice would fetch it twice, and the two identical
+        # observation lines would read as one copy (iter_raw).
+        outage_ids = list(dict.fromkeys(outage_ids))
         now = now or utc_now_iso()
         placeholders = ",".join("?" * len(outage_ids))
         rows = self.conn.execute(
@@ -387,21 +458,27 @@ class Store:
         def urgency(outage_id: str) -> int | None:
             row = state.get(outage_id)
             if row is None:
-                return 1
+                return 2
             # apply_list has already written the list's type, so this is
             # whether the purge clock is running
             restored = row["outage_type"] == "Restored"
             if not row["has_detail"]:
-                return 0 if restored else 1
-            # Cleared by apply_list on a type change: something happened.
-            if row["last_detail_utc"] is None:
                 return 0 if restored else 2
             if row["is_final"]:
                 return None
+            if restored:
+                # Captured, but with no restore time yet, whether settling or
+                # just flipped. Still on the purge clock, behind the rank
+                # above: a purge here costs one field, there the whole record.
+                return 1
+            # Cleared by apply_list on a type change, with is_final: something
+            # happened.
+            if row["last_detail_utc"] is None:
+                return 3
             if _hours_between(row["last_change"], now) < quiet_after_hours:
-                return 3  # actively changing, keep watching closely
+                return 4  # actively changing, keep watching closely
             if _hours_between(row["last_detail_utc"], now) >= recheck_hours:
-                return 4
+                return 5
             return None
 
         ranked = [
@@ -513,12 +590,49 @@ class Store:
         # matters when logs from two hosts are concatenated during a migration,
         # where interleaved runs would otherwise replay out of order and skew
         # first_seen / last_seen.
-        run_records = sorted(self.iter_raw("runs"), key=lambda r: r["started_at"])
+        run_records, ends = [], {}
+        for rec in self.iter_raw("runs"):
+            if rec.get("event") == "end":
+                ends[rec.get("run_id")] = rec
+            else:
+                run_records.append(rec)
 
-        seen_run_ids = set()
-        for rec in run_records:
+        # An end line whose start line was lost still says how the run went,
+        # and its run id carries the start time: it replays as a run with no
+        # list, so its observations keep their place.
+        run_ids = {rec["run_id"] for rec in run_records}
+        lost_starts = 0
+        for run_id in ends:
+            started = str(run_id).rsplit("-", 1)[0]
+            if run_id not in run_ids and _UTC_STAMP.fullmatch(started):
+                run_records.append({"run_id": run_id, "started_at": started})
+                run_ids.add(run_id)
+                lost_starts += 1
+        # A start line promising an end line that never came is a run that
+        # died, unless it is the newest: a backup can snapshot the log mid-run.
+        newest = max((rec["started_at"] for rec in run_records), default=None)
+
+        # Observations whose run record never made it to disk (a crash between
+        # the two writes, or a damaged line) replay at their own place in time.
+        # Replayed after everything else, an old body rolled back newer state.
+        orphans = [
+            (min(o.get("observed_at") or "" for o in records), records)
+            for run_id, records in observations.items()
+            if run_id not in run_ids
+        ]
+        # On a tie the orphan goes first: its run started no later than it.
+        timeline = sorted(
+            [(rec["started_at"], 1, rec, None) for rec in run_records]
+            + [(at, 0, None, records) for at, records in orphans],
+            key=lambda event: event[:2],
+        )
+
+        for _, _, rec, orphaned in timeline:
+            if orphaned is not None:
+                for obs in orphaned:
+                    n_obs += apply_observation(obs)
+                continue
             run_id = rec["run_id"]
-            seen_run_ids.add(run_id)
             body = rec.get("list_body")
             items = body.get("outageMessage") if isinstance(body, dict) else None
             if isinstance(items, list):
@@ -528,37 +642,53 @@ class Store:
             # are all derivable from the raw log, and they are what tells you
             # whether the dormancy back-off is working.
             run_obs = observations.get(run_id, [])
-            fetched = sum(1 for o in run_obs if o.get("http_status") == 200)
+            fetched = sum(
+                1 for o in run_obs
+                if o.get("http_status") == 200 and isinstance(o.get("body"), dict)
+            )
             purged = sum(1 for o in run_obs if o.get("http_status") == 404)
             errors = sum(
                 1 for o in run_obs if o.get("http_status") not in (200, 404)
             )
-            listed = len(items) if isinstance(items, list) else None
+            # as poll counts them: object items only, and a list call that
+            # answered 200 with an unusable body still reached the feed
+            if isinstance(items, list):
+                listed = sum(isinstance(item, dict) for item in items)
+            else:
+                listed = 0 if rec.get("list_status") == 200 else None
+            # Runs logged before the end record existed take the start line's
+            # status and derived counters, which is all a rebuild ever had.
+            end = ends.get(run_id, {})
             self.record_run(
                 run_id=run_id,
                 started_at_utc=rec["started_at"],
-                status=rec.get("status", "ok"),
+                finished_at_utc=end.get("finished_at"),
+                status=end.get("status") or (
+                    # a failure the start line already logged outranks the guess
+                    ("in_progress" if rec["started_at"] == newest else "unfinished")
+                    if rec.get("ends_logged") and rec.get("status", "ok") == "ok"
+                    else rec.get("status", "ok")
+                ),
+                exit_code=end.get("exit_code"),
                 n_listed=listed,
-                n_detail_fetched=fetched,
-                n_detail_skipped=(
+                # NULL only for a run that never got past its list call
+                n_detail_fetched=fetched if listed is not None or run_obs else None,
+                n_detail_skipped=end["n_detail_skipped"] if "n_detail_skipped" in end else (
                     listed - fetched - purged - errors if listed is not None else None
                 ),
-                n_errors=errors,
+                n_errors=end["n_errors"] if "n_errors" in end else errors,
+                error_summary=end.get("error_summary"),
             )
             n_runs += 1
             for obs in run_obs:
                 n_obs += apply_observation(obs)
 
-        # Observations whose run record never made it to disk (a crash between
-        # the two writes). Rare, but they are still real data.
-        for run_id, records in observations.items():
-            if run_id not in seen_run_ids:
-                for obs in records:
-                    n_obs += apply_observation(obs)
-
         self.conn.commit()
         if verbose:
             print(f"replayed {n_runs} runs and {n_obs} detail observations")
+            if lost_starts:
+                print(f"  {lost_starts} run(s) had lost their start line; "
+                      "recorded from their end line", file=sys.stderr)
             for problem in self.malformed_lines:
                 print(f"  skipped unreadable line {problem}", file=sys.stderr)
         return {
@@ -645,8 +775,28 @@ class Store:
                 if month >= current:
                     continue
                 target = Path(str(path) + ".gz")
-                with path.open("rb") as src, gzip.open(target, "wb") as dst:
-                    dst.write(src.read())
+                staged = Path(str(target) + ".tmp")
+                archived = target.exists()
+                with staged.open("wb") as out:
+                    # A month written to after it was compacted - a Pi with no
+                    # clock battery boots in the past until NTP syncs - keeps
+                    # its archive and gains the late lines as a further gzip
+                    # member, which every gzip reader concatenates.
+                    if archived:
+                        with target.open("rb") as old:
+                            shutil.copyfileobj(old, out)
+                    with path.open("rb") as src, gzip.GzipFile(fileobj=out, mode="wb") as dst:
+                        if archived:
+                            # the archive may end in a torn line; a blank one is skipped
+                            dst.write(b"\n")
+                        shutil.copyfileobj(src, dst)
+                    out.flush()
+                    os.fsync(out.fileno())
+                os.replace(staged, target)
+                _fsync_dir(self.raw_dir)
+                # A crash before this unlink compacts the same lines again next
+                # time; iter_raw drops the repeats.
                 path.unlink()
+                _fsync_dir(self.raw_dir)
                 compacted.append(target.name)
         return sorted(compacted)

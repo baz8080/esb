@@ -8,7 +8,7 @@ import unittest.mock
 from pathlib import Path
 
 from esb_outages import alert
-from esb_outages.client import ApiError, AuthError, TransientError
+from esb_outages.client import ApiError, AuthError, NotFound, TransientError
 from esb_outages.poll import poll_lock, run_check, run_poll
 from esb_outages.store import Store
 
@@ -68,8 +68,11 @@ class TestHappyPath(PollTestCase):
         with self.store() as st:
             runs = list(st.iter_raw("runs"))
             obs = list(st.iter_raw("observations"))
-        self.assertEqual(len(runs), 1)
-        self.assertEqual(runs[0]["list_body"], make_list(detail("fault"), detail("restored")))
+        start, end = runs
+        self.assertEqual(start["list_body"], make_list(detail("fault"), detail("restored")))
+        self.assertEqual(
+            (end["event"], end["run_id"], end["status"]), ("end", start["run_id"], "ok")
+        )
         self.assertEqual(len(obs), 2)
 
 
@@ -81,6 +84,22 @@ class TestFailurePaths(PollTestCase):
     def test_unreachable_api_exits_three(self):
         client = FakeClient(list_error=TransientError("connection refused"))
         self.assertEqual(self.poll(client), alert.EXIT_UNREACHABLE)
+
+    def test_a_404_on_the_list_is_unreachable_not_a_crash(self):
+        client = FakeClient(list_error=NotFound("404 for /outages"))
+        self.assertEqual(self.poll(client), alert.EXIT_UNREACHABLE)
+        self.assertEqual(run_check(client), alert.EXIT_UNREACHABLE)
+
+    def test_a_key_rejected_mid_run_keeps_the_errors_before_it(self):
+        many = [dict(detail("fault"), outageId=str(4000000 + i)) for i in range(3)]
+        errors = {many[0]["outageId"]: TransientError("503"),
+                  many[1]["outageId"]: TransientError("503"),
+                  many[2]["outageId"]: AuthError("401 rejected")}
+        self.poll(FakeClient(list_body=make_list(*many), details={}, detail_errors=errors))
+        with self.store() as st:
+            row = st.conn.execute("SELECT n_errors, error_summary FROM run").fetchone()
+        self.assertEqual(row["n_errors"], 3)
+        self.assertEqual(row["error_summary"].count("503"), 2)
 
     def test_failures_are_still_recorded_in_the_run_table(self):
         self.poll(FakeClient(list_error=AuthError("401 rejected")))

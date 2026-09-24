@@ -124,6 +124,18 @@ class TestNormalize(unittest.TestCase):
         body["restoreTime"] = ""
         self.assertEqual(normalize_detail(body)["is_final"], 0)
 
+    def test_an_unreadable_restore_time_is_not_final(self):
+        # final means never fetched again, so a format ESB changes must not
+        # freeze the outage with no restore time
+        body = dict(detail("restored"), restoreTime="31/10/2026 1:5 pm")
+        self.assertEqual(normalize_detail(body)["is_final"], 0)
+
+    def test_a_timestamp_that_is_not_a_string_is_no_timestamp(self):
+        # applied live and on every rebuild, so it must not raise
+        body = dict(detail("fault"), startTime=202607311000, estRestoreTime=["x"])
+        n = normalize_detail(body)
+        self.assertEqual((n["start_time_utc"], n["est_restore_time_utc"]), (None, None))
+
     def test_empty_strings_become_null(self):
         n = normalize_detail(detail("restored"))
         self.assertIsNone(n["status_message"])

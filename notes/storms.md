@@ -92,3 +92,38 @@ fewer observations rather than its status, and counts the unfetched tail as
 skipped, so `esb stats` on a rebuilt database overstates the back-off's "%
 avoided" across storm runs. Known and accepted: a second raw record kind for
 the run's end would change the log's shape for a number nobody grades on.
+
+### The run's end is logged after all (2026-09-24)
+
+The paragraph above accepted the gap; a retroactive review of the collector
+raised it again and the owner reversed it. The gap was wider than the "%
+avoided" figure: every non-`ok` outcome a run decides after its list line
+(`cut_short`, `partial`, `schema_drift`, a key rejected mid-run) came back from
+a rebuild as `ok`, with no finish time, exit code or error summary. On the
+corpus to 24 September the raw runs said `ok` 2,470 times and nothing else, so
+`esb stats` on the rebuilt database reads "runs cut short: 0" whatever
+happened in a storm.
+
+`Store.finish_run` now appends a second line for every run, `"event": "end"`,
+before writing the run row, carrying only what cannot be derived:
+`finished_at`, `status`, `exit_code`, `n_detail_skipped`, `n_errors` and
+`error_summary`. `rebuild` prefers it when present. Older runs have none and
+replay as before, from the start line's status and derived counters. The line
+is written with sorted keys like every other, so `sort -u` merges still hold,
+and it goes in the month file of its own timestamp, so a run crossing midnight
+on the last day ends in the next month's file.
+
+Two edges follow from having two lines per run. A start line now carries
+`"ends_logged": true`, and one with that flag but no end line is a run that
+died before closing itself out (an uncaught exception, a full disk, a kill
+the SIGTERM handler never saw): a rebuild records it as `unfinished`, where
+the live database has no row for it at all, rather than as a clean `ok`. The
+newest such run reads `in_progress` instead, because the six-hourly backup
+commits `raw/` without the poll lock and often catches a run mid-flight.
+The flag, not the date of the first end line, is what decides: a merged log
+from a host still on the old code, or a Pi that booted with a wrong clock,
+would otherwise relabel every older-style run after it. An end line whose
+start line was lost replays as a run with no list, started at the time its
+run id carries, so its observations keep their place. Two copies of
+the same line, from a merge without `sort -u` or a `compact` that crashed
+before removing what it had archived, are read once.

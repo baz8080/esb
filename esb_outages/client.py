@@ -9,12 +9,14 @@ ones a human will be woken by.
 from __future__ import annotations
 
 import gzip
+import http.client
 import json
 import os
 import random
 import time
 import urllib.error
 import urllib.request
+import zlib
 
 BASE_URL = "https://api.esb.ie/esbn/powercheck/v1.0"
 
@@ -122,6 +124,12 @@ class EsbClient:
             raise ApiError(f"{exc.code} from {url}: {body}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             raise TransientError(f"network failure for {url}: {exc}") from exc
+        # A body cut off mid-read: IncompleteRead is no OSError, and a
+        # truncated gzip stream raises EOFError or zlib.error from decompress.
+        except (http.client.HTTPException, EOFError, zlib.error) as exc:
+            raise TransientError(f"incomplete response from {url}: {exc}") from exc
+        except UnicodeDecodeError as exc:
+            raise ApiError(f"undecodable body from {url}: {exc}") from exc
 
     def get_json(self, path: str) -> dict:
         """GET a path, retrying transient failures with exponential backoff."""

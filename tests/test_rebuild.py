@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from esb_outages.client import AuthError
 from esb_outages.poll import run_poll
 from esb_outages.store import Store
 
@@ -148,6 +149,38 @@ class TestRebuild(unittest.TestCase):
             self.assertEqual(row["first_seen_utc"], "2026-07-31T10:00:00Z")
             self.assertEqual(row["last_seen_utc"], "2026-07-31T12:00:00Z")
 
+    def test_observations_that_lost_their_run_replay_in_their_place(self):
+        fault = detail("fault")
+        done = dict(fault, outageType="Restored", restoreTime="31/07/2026 23:30")
+        raw = self.data_dir / "raw"
+        raw.mkdir(parents=True, exist_ok=True)
+
+        def write(run_id, at, body, with_run=True):
+            if with_run:
+                with (raw / "runs-2026-07.jsonl").open("a") as fh:
+                    fh.write(json.dumps({
+                        "run_id": run_id, "started_at": at,
+                        "list_status": 200, "list_body": make_list(body),
+                    }, sort_keys=True) + "\n")
+            with (raw / "observations-2026-07.jsonl").open("a") as fh:
+                fh.write(json.dumps({
+                    "run_id": run_id, "observed_at": at,
+                    "outage_id": body["outageId"], "http_status": 200, "body": body,
+                }, sort_keys=True) + "\n")
+
+        # the earlier run's own line was lost, so its observation is orphaned;
+        # the later run starting in the same second must still win
+        for at in ("2026-07-31T20:00:00Z", "2026-07-31T23:40:00Z"):
+            for f in raw.glob("*.jsonl"):
+                f.unlink()
+            write("a", at, fault, with_run=False)
+            write("b", "2026-07-31T23:40:00Z", done)
+            with Store(self.data_dir) as st:
+                st.rebuild()
+                row = st.conn.execute("SELECT * FROM outage").fetchone()
+            self.assertEqual((row["outage_type"], row["is_final"]), ("Restored", 1), at)
+            self.assertEqual(row["last_seen_utc"], "2026-07-31T23:40:00Z")
+
     def test_a_truncated_final_line_does_not_destroy_the_history(self):
         """A power cut mid-append, or a backup snapshotting mid-write.
 
@@ -204,6 +237,127 @@ class TestRebuild(unittest.TestCase):
             st.rebuild()
             statuses = [r[0] for r in st.conn.execute("SELECT status FROM run")]
         self.assertIn("auth_error", statuses)
+
+    def test_every_run_column_survives_a_rebuild(self):
+        """How a run ended is not derivable from its list and observations, so
+        the log carries it; without that a storm's cut-short runs came back ok."""
+        from esb_outages.client import AuthError, TransientError
+
+        self.run_a_realistic_history()
+        many = [dict(detail("fault"), outageId=str(3000000 + i)) for i in range(4)]
+        by_id = {d["outageId"]: d for d in many}
+        run_poll(self.data_dir, client=FakeClient(list_body=make_list(*many),
+                 details=by_id), delay_ms=0, budget_s=0)
+        more = [dict(detail("fault"), outageId=str(4000000 + i)) for i in range(4)]
+        self.poll(FakeClient(
+            list_body=make_list(*more),
+            details={d["outageId"]: d for d in more},
+            detail_errors={d["outageId"]: TransientError("503") for d in more[:3]},
+        ))
+        last = dict(detail("fault"), outageId="5000000")
+        self.poll(FakeClient(list_body=make_list(last), details={},
+                             detail_errors={"5000000": AuthError("401")}))
+        self.poll(FakeClient(list_error=AuthError("401")))
+
+        def runs(st):
+            return [tuple(r) for r in st.conn.execute(
+                "SELECT * FROM run ORDER BY started_at_utc, run_id")]
+
+        with Store(self.data_dir) as st:
+            before = runs(st)
+            st.rebuild()
+            after = runs(st)
+        statuses = {r[3] for r in before}
+        self.assertTrue({"cut_short", "partial", "auth_error"} <= statuses, statuses)
+        self.assertEqual(before, after)
+
+    def test_rebuild_and_compact_wait_for_a_running_poll(self):
+        from esb_outages.__main__ import main
+        from esb_outages.poll import poll_lock
+
+        self.run_a_realistic_history()
+        db = self.data_dir / "esb.db"
+        inode = db.stat().st_ino
+        with poll_lock(self.data_dir) as held:
+            self.assertTrue(held)
+            for command in ("rebuild", "compact"):
+                self.assertEqual(main(["--data-dir", str(self.data_dir), command]), 1)
+        self.assertEqual(db.stat().st_ino, inode)
+
+    def test_a_malformed_response_neither_kills_the_run_nor_the_rebuild(self):
+        from esb_outages import alert
+
+        fault = detail("fault")
+        listed = make_list(fault)
+        listed["outageMessage"].insert(0, "not an object")
+        code = self.poll(FakeClient(list_body=listed, details={fault["outageId"]: None}))
+        self.assertEqual(code, alert.EXIT_SCHEMA_DRIFT)
+        self.assertEqual(self.poll(FakeClient(list_body=[])), alert.EXIT_SCHEMA_DRIFT)
+        def runs(st):
+            return [tuple(r) for r in st.conn.execute("SELECT * FROM run ORDER BY run_id")]
+
+        with Store(self.data_dir) as st:
+            before, runs_before = st.snapshot(), runs(st)
+            st.rebuild()
+            self.assertEqual(st.snapshot(), before)
+            self.assertEqual(runs(st), runs_before)
+            self.assertEqual(
+                [r[0] for r in st.conn.execute("SELECT outage_id FROM outage")],
+                [fault["outageId"]],
+            )
+
+    def test_a_run_that_died_before_its_end_line_is_not_ok(self):
+        with Store(self.data_dir) as st:
+            st.write_run_raw("2026-01-01T10:00:00Z-deadbeef", "2026-01-01T10:00:00Z",
+                             200, make_list(detail("fault")))
+        self.run_a_realistic_history()
+        with Store(self.data_dir) as st:
+            st.write_run_raw("2099-01-01T10:00:00Z-5ca1ab1e", "2099-01-01T10:00:00Z",
+                             200, make_list(detail("fault")))
+            st.rebuild()
+            status = dict(st.conn.execute("SELECT run_id, status FROM run").fetchall())
+        # the newest is a run a backup caught before it had ended
+        self.assertEqual(status["2026-01-01T10:00:00Z-deadbeef"], "unfinished")
+        self.assertEqual(status["2099-01-01T10:00:00Z-5ca1ab1e"], "in_progress")
+
+    def test_a_failure_the_start_line_logged_survives_a_lost_end_line(self):
+        self.poll(FakeClient(list_error=AuthError("401")))
+        runs = next((self.data_dir / "raw").glob("runs-*.jsonl"))
+        lines = runs.read_text().splitlines()
+        runs.write_text("\n".join(line for line in lines if '"event": "end"' not in line) + "\n")
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            status = st.conn.execute("SELECT status FROM run").fetchone()[0]
+        self.assertEqual(status, "auth_error")
+
+    def test_start_lines_from_before_end_lines_still_replay_as_they_said(self):
+        self.run_a_realistic_history()
+        with (self.data_dir / "raw" / "runs-2026-01.jsonl").open("a") as fh:
+            # a second host still on the old code, merged in after this one's
+            fh.write(json.dumps({"run_id": "2099-01-01T10:00:00Z-01d01d01",
+                                 "started_at": "2099-01-01T10:00:00Z", "list_status": 200,
+                                 "list_body": make_list(detail("fault"))}, sort_keys=True))
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            status = st.conn.execute("SELECT status FROM run WHERE run_id LIKE '2099-01-01%'"
+                                     ).fetchone()[0]
+        self.assertEqual(status, "ok")
+
+    def test_a_run_whose_start_line_was_lost_keeps_its_end(self):
+        from esb_outages import alert
+
+        self.poll(FakeClient(list_body=make_list(detail("fault")),
+                             details={detail("fault")["outageId"]: detail("fault")}))
+        runs = next((self.data_dir / "raw").glob("runs-*.jsonl"))
+        lines = runs.read_text().splitlines()
+        runs.write_text("\n".join(line for line in lines if '"event": "end"' in line) + "\n")
+        with Store(self.data_dir) as st:
+            result = st.rebuild()
+            row = st.conn.execute("SELECT * FROM run").fetchone()
+        self.assertEqual((row["status"], row["exit_code"]), ("ok", alert.EXIT_OK))
+        self.assertEqual(row["run_id"][:20], row["started_at_utc"])
+        # replayed as a run, so its own observation counts as its fetch
+        self.assertEqual((result["runs"], row["n_detail_fetched"]), (1, 1))
 
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:

@@ -48,14 +48,15 @@ def parse_esb_datetime(value: str | None) -> tuple[str | None, bool]:
     time is ambiguous or impossible because of a DST transition:
 
     - Fall back (last Sunday of October): 01:00-01:59 happens twice. We take the
-      first occurrence (fold=0), so the value may be an hour late.
+      first occurrence (fold=0, still UTC+1), so a time that was really the
+      second is stored an hour early.
     - Spring forward (last Sunday of March): 01:00-01:59 never happens. Python
       resolves it, but the result is a fiction.
 
     Either way the raw string is retained in the database, so a flagged row can
     be revisited rather than silently trusted.
     """
-    if not value or not value.strip():
+    if not isinstance(value, str) or not value.strip():
         return None, False
     try:
         naive = datetime.strptime(value.strip(), ESB_DATETIME_FORMAT)
@@ -105,6 +106,8 @@ def parse_point(point) -> tuple[float | None, float | None, str | None]:
 
 def check_detail_schema(body: dict) -> list[str]:
     """Return human-readable descriptions of any drift from the known shape."""
+    if not isinstance(body, dict):
+        return ["detail response is not an object"]
     keys = set(body)
     problems = []
     unexpected = sorted(keys - DETAIL_FIELDS)
@@ -118,6 +121,8 @@ def check_detail_schema(body: dict) -> list[str]:
 
 def check_list_schema(body: dict) -> list[str]:
     problems = []
+    if not isinstance(body, dict):
+        return ["response is not an object"]
     if "outageMessage" not in body:
         return ["response has no 'outageMessage' key"]
     items = body["outageMessage"]
@@ -184,8 +189,8 @@ def normalize_detail(body: dict) -> dict:
         "status_message": _text(body.get("statusMessage")),
         "planned_outage_reason": _text(body.get("plannedOutageReason")),
         # An outage is only immutable once it is restored *and* carries the
-        # actual restore time; "Restored" with an empty restoreTime is still
-        # settling and must be re-fetched.
-        "is_final": int(outage_type == "Restored" and restore_raw is not None),
+        # actual restore time; "Restored" with an empty or unreadable
+        # restoreTime is still settling and must be re-fetched.
+        "is_final": int(outage_type == "Restored" and restore_utc is not None),
         "tz_ambiguous": int(start_amb or est_amb or restore_amb),
     }

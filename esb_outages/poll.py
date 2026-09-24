@@ -144,15 +144,15 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
         list_body = client.get_outage_list()
     except AuthError as exc:
         store.write_run_raw(run_id, started_at, 401, None, status="auth_error")
-        store.record_run(
+        store.finish_run(
             run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
             status="auth_error", exit_code=alert.EXIT_AUTH, n_errors=1,
             error_summary=str(exc),
         )
         return alert.fail(alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH)
-    except (TransientError, ApiError) as exc:
+    except (TransientError, ApiError, NotFound) as exc:
         store.write_run_raw(run_id, started_at, 0, None, status="unreachable")
-        store.record_run(
+        store.finish_run(
             run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
             status="unreachable", exit_code=alert.EXIT_UNREACHABLE, n_errors=1,
             error_summary=str(exc),
@@ -163,7 +163,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
     store.write_run_raw(run_id, started_at, 200, list_body)
 
     drift = check_list_schema(list_body)
-    items = list_body.get("outageMessage") or []
+    items = (list_body.get("outageMessage") if isinstance(list_body, dict) else None) or []
     if not isinstance(items, list):
         items = []
 
@@ -199,12 +199,13 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
         except AuthError as exc:
             # The key died mid-run. Stop immediately rather than burning
             # through hundreds of guaranteed-failing requests.
-            store.record_run(
+            store.finish_run(
                 run_id=run_id, started_at_utc=started_at,
                 finished_at_utc=utc_now_iso(), status="auth_error",
                 exit_code=alert.EXIT_AUTH, n_listed=len(listed_ids),
                 n_detail_fetched=fetched, n_detail_skipped=skipped,
-                n_errors=1, error_summary=str(exc),
+                n_errors=len(errors) + 1,
+                error_summary="; ".join(errors[:9] + [str(exc)]),
             )
             return alert.fail(
                 alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH
@@ -220,6 +221,8 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
         drift.extend(
             f"outage {outage_id}: {p}" for p in check_detail_schema(body)
         )
+        if not isinstance(body, dict):
+            continue
         store.apply_detail(observed_at, normalize_detail(body))
         # Committed per detail so a run killed outright still leaves the
         # database knowing what it fetched; the next run then carries on
@@ -248,7 +251,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
     else:
         status, code = "ok", alert.EXIT_OK
 
-    store.record_run(
+    store.finish_run(
         run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
         status=status, exit_code=code, n_listed=len(listed_ids),
         n_detail_fetched=fetched, n_detail_skipped=skipped, n_errors=failed,
@@ -284,7 +287,7 @@ def run_check(client: EsbClient | None = None) -> int:
         body = client.get_outage_list()
     except AuthError as exc:
         return alert.fail(alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH)
-    except (TransientError, ApiError) as exc:
+    except (TransientError, ApiError, NotFound) as exc:
         return alert.fail(alert.unreachable_banner(str(exc)), alert.EXIT_UNREACHABLE)
 
     problems = check_list_schema(body)

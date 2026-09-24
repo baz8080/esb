@@ -90,6 +90,43 @@ class TestIdsNeedingDetail(StoreTestCase):
         # Restored is immutable; the ongoing fault still needs watching.
         self.assertEqual(self.store.ids_needing_detail(ids), [fault["outageId"]])
 
+    def test_restored_outages_lead_uncaptured_before_settling(self):
+        settling = dict(detail("restored"), restoreTime="")
+        fault = detail("fault")
+        uncaptured = dict(detail("restored"), outageId="9100000")
+        items = make_list(fault, settling)["outageMessage"]
+        self.store.apply_list("2026-07-31T10:00:00Z", items)
+        self.store.apply_detail("2026-07-31T10:00:01Z", normalize_detail(settling))
+        # seven hours on it has gone quiet, but ESB could purge it any time;
+        # one never captured at all still goes ahead of it
+        later = "2026-07-31T17:00:00Z"
+        items = make_list(settling, fault, uncaptured)["outageMessage"]
+        self.store.apply_list(later, items)
+        ids = [settling["outageId"], fault["outageId"], uncaptured["outageId"]]
+        self.assertEqual(
+            self.store.ids_needing_detail(ids, now=later),
+            [uncaptured["outageId"], settling["outageId"], fault["outageId"]],
+        )
+
+    def test_a_captured_fault_that_flips_to_restored_waits_behind_an_uncaptured_one(self):
+        fault = detail("fault")
+        uncaptured = dict(detail("restored"), outageId="9100000")
+        self.store.apply_list("2026-07-31T10:00:00Z", make_list(fault)["outageMessage"])
+        self.store.apply_detail("2026-07-31T10:00:01Z", normalize_detail(fault))
+        flipped = dict(fault, outageType="Restored")
+        later = "2026-07-31T11:00:00Z"
+        self.store.apply_list(later, make_list(flipped, uncaptured)["outageMessage"])
+        self.assertEqual(
+            self.store.ids_needing_detail([fault["outageId"], "9100000"], now=later),
+            ["9100000", fault["outageId"]],
+        )
+
+    def test_an_id_listed_twice_is_fetched_once(self):
+        fault = detail("fault")
+        self.store.apply_list("2026-07-31T10:00:00Z", make_list(fault)["outageMessage"])
+        ids = [fault["outageId"], fault["outageId"]]
+        self.assertEqual(self.store.ids_needing_detail(ids), [fault["outageId"]])
+
     def test_handles_empty_input(self):
         self.assertEqual(self.store.ids_needing_detail([]), [])
 
@@ -194,6 +231,51 @@ class TestRawLogAndCompaction(StoreTestCase):
         names = {p.name for p in self.store.raw_files("runs")}
         self.assertEqual(names, {"runs-2026-07.jsonl", "runs-2026-08.jsonl"})
 
+    def test_a_torn_last_line_does_not_take_the_next_record_with_it(self):
+        self.store.write_run_raw("r1", "2026-08-01T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2026-08.jsonl").open("a") as fh:
+            fh.write('{"event": "end", "run_id": "r1", "fin')
+        self.store.write_run_raw("r2", "2026-08-01T10:30:00Z", 200, {"outageMessage": []})
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r2"])
+        self.assertEqual(len(self.store.malformed_lines), 1)
+
+    def test_a_line_torn_inside_a_fada_is_one_bad_line(self):
+        self.store.write_run_raw("r1", "2026-08-01T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2026-08.jsonl").open("ab") as fh:
+            fh.write('{"run_id": "r2", "location": "Dún'.encode()[:-2])
+        self.store.write_run_raw("r3", "2026-08-01T11:00:00Z", 200, {"outageMessage": []})
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r3"])
+        self.assertEqual(len(self.store.malformed_lines), 1)
+
+    def test_a_corrupted_byte_is_a_bad_line_not_a_changed_record(self):
+        self.store.write_run_raw("r1", "2026-08-01T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2026-08.jsonl").open("ab") as fh:
+            # still valid JSON if the stray byte were replaced
+            fh.write(b'{"location": "D\xc3n", "run_id": "r2"}\n')
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1"])
+        self.assertEqual(len(self.store.malformed_lines), 1)
+
+    def test_a_copy_under_another_name_in_the_same_month_is_read_once(self):
+        self.store.write_run_raw("r1", "2026-01-15T10:00:00Z", 200, {"outageMessage": []})
+        raw = self.data_dir / "raw"
+        (raw / "runs-2026-01-pi2.jsonl").write_bytes((raw / "runs-2026-01.jsonl").read_bytes())
+        self.store.write_run_raw("r2", "2026-02-15T10:00:00Z", 200, {"outageMessage": []})
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r2"])
+
+    def test_a_torn_archive_does_not_swallow_the_late_lines(self):
+        import gzip
+
+        self.store.write_run_raw("old", "2020-01-15T10:00:00Z", 200, {"outageMessage": []})
+        with (self.data_dir / "raw" / "runs-2020-01.jsonl").open("a") as fh:
+            fh.write('{"run_id": "torn", "sta')
+        self.store.compact()
+        self.store.write_run_raw("late", "2020-01-31T23:00:00Z", 200, {"outageMessage": []})
+        path = self.data_dir / "raw" / "runs-2020-01.jsonl"
+        self.store.compact()
+        self.assertIn("late", [r["run_id"] for r in self.store.iter_raw("runs")])
+        with gzip.open(str(path) + ".gz", "rt") as fh:
+            self.assertIn("late", fh.read())
+
     def test_compact_gzips_old_months_and_keeps_current(self):
         from esb_outages.store import utc_now_iso
 
@@ -212,6 +294,27 @@ class TestRawLogAndCompaction(StoreTestCase):
         self.store.compact()
         records = list(self.store.iter_raw("runs"))
         self.assertEqual([r["run_id"] for r in records], ["old"])
+
+    def test_a_month_written_to_after_compaction_keeps_its_archive(self):
+        self.store.write_run_raw("old", "2020-01-15T10:00:00Z", 200, {"outageMessage": []})
+        self.store.compact()
+        # a poll on a clock that booted in January again
+        self.store.write_run_raw("late", "2020-01-31T23:00:00Z", 200, {"outageMessage": []})
+        self.store.compact()
+        records = list(self.store.iter_raw("runs"))
+        self.assertEqual([r["run_id"] for r in records], ["old", "late"])
+        self.assertFalse((self.data_dir / "raw" / "runs-2020-01.jsonl").exists())
+        self.assertFalse((self.data_dir / "raw" / "runs-2020-01.jsonl.gz.tmp").exists())
+
+    def test_a_compact_interrupted_before_the_unlink_does_not_double_the_log(self):
+        from unittest import mock
+
+        self.store.write_run_raw("old", "2020-01-15T10:00:00Z", 200, {"outageMessage": []})
+        with mock.patch.object(Path, "unlink", side_effect=OSError("power cut")):
+            with self.assertRaises(OSError):
+                self.store.compact()
+        self.store.compact()
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["old"])
 
 
 if __name__ == "__main__":
