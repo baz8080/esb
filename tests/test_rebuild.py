@@ -251,6 +251,24 @@ class TestRebuild(unittest.TestCase):
                 self.assertEqual(main(["--data-dir", str(self.data_dir), command]), 1)
         self.assertEqual(db.stat().st_ino, inode)
 
+    def test_a_malformed_response_neither_kills_the_run_nor_the_rebuild(self):
+        from esb_outages import alert
+
+        fault = detail("fault")
+        listed = make_list(fault)
+        listed["outageMessage"].insert(0, "not an object")
+        code = self.poll(FakeClient(list_body=listed, details={fault["outageId"]: None}))
+        self.assertEqual(code, alert.EXIT_SCHEMA_DRIFT)
+        self.assertEqual(self.poll(FakeClient(list_body=[])), alert.EXIT_SCHEMA_DRIFT)
+        with Store(self.data_dir) as st:
+            before = st.snapshot()
+            st.rebuild()
+            self.assertEqual(st.snapshot(), before)
+            self.assertEqual(
+                [r[0] for r in st.conn.execute("SELECT outage_id FROM outage")],
+                [fault["outageId"]],
+            )
+
     def test_rebuild_on_empty_data_dir_is_harmless(self):
         with Store(self.data_dir) as st:
             self.assertEqual(

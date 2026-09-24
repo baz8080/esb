@@ -163,7 +163,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
     store.write_run_raw(run_id, started_at, 200, list_body)
 
     drift = check_list_schema(list_body)
-    items = list_body.get("outageMessage") or []
+    items = (list_body.get("outageMessage") if isinstance(list_body, dict) else None) or []
     if not isinstance(items, list):
         items = []
 
@@ -220,6 +220,8 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
         drift.extend(
             f"outage {outage_id}: {p}" for p in check_detail_schema(body)
         )
+        if not isinstance(body, dict):
+            continue
         store.apply_detail(observed_at, normalize_detail(body))
         # Committed per detail so a run killed outright still leaves the
         # database knowing what it fetched; the next run then carries on

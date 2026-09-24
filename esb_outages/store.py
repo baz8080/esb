@@ -331,6 +331,10 @@ class Store:
         from .parse import parse_point
 
         for item in items:
+            # Already on disk, so replay meets it too: skip it, or every
+            # rebuild dies on the same line of a log nobody may edit.
+            if not isinstance(item, dict):
+                continue
             outage_id = str(item.get("i"))
             list_type = item.get("t")
             lat, lon, point_raw = parse_point(item.get("p"))

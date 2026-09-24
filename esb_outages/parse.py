@@ -105,6 +105,8 @@ def parse_point(point) -> tuple[float | None, float | None, str | None]:
 
 def check_detail_schema(body: dict) -> list[str]:
     """Return human-readable descriptions of any drift from the known shape."""
+    if not isinstance(body, dict):
+        return ["detail response is not an object"]
     keys = set(body)
     problems = []
     unexpected = sorted(keys - DETAIL_FIELDS)
@@ -118,6 +120,8 @@ def check_detail_schema(body: dict) -> list[str]:
 
 def check_list_schema(body: dict) -> list[str]:
     problems = []
+    if not isinstance(body, dict):
+        return ["response is not an object"]
     if "outageMessage" not in body:
         return ["response has no 'outageMessage' key"]
     items = body["outageMessage"]
