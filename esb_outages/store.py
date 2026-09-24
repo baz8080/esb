@@ -662,8 +662,10 @@ class Store:
                 started_at_utc=rec["started_at"],
                 finished_at_utc=end.get("finished_at"),
                 status=end.get("status") or (
+                    # a failure the start line already logged outranks the guess
                     ("in_progress" if rec["started_at"] == newest else "unfinished")
-                    if rec.get("ends_logged") else rec.get("status", "ok")
+                    if rec.get("ends_logged") and rec.get("status", "ok") == "ok"
+                    else rec.get("status", "ok")
                 ),
                 exit_code=end.get("exit_code"),
                 n_listed=listed,

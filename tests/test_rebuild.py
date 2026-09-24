@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from esb_outages.client import AuthError
 from esb_outages.poll import run_poll
 from esb_outages.store import Store
 
@@ -318,6 +319,16 @@ class TestRebuild(unittest.TestCase):
         # the newest is a run a backup caught before it had ended
         self.assertEqual(status["2026-01-01T10:00:00Z-deadbeef"], "unfinished")
         self.assertEqual(status["2099-01-01T10:00:00Z-5ca1ab1e"], "in_progress")
+
+    def test_a_failure_the_start_line_logged_survives_a_lost_end_line(self):
+        self.poll(FakeClient(list_error=AuthError("401")))
+        runs = next((self.data_dir / "raw").glob("runs-*.jsonl"))
+        lines = runs.read_text().splitlines()
+        runs.write_text("\n".join(line for line in lines if '"event": "end"' not in line) + "\n")
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            status = st.conn.execute("SELECT status FROM run").fetchone()[0]
+        self.assertEqual(status, "auth_error")
 
     def test_start_lines_from_before_end_lines_still_replay_as_they_said(self):
         self.run_a_realistic_history()
