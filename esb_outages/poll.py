@@ -150,7 +150,7 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
             error_summary=str(exc),
         )
         return alert.fail(alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH)
-    except (TransientError, ApiError) as exc:
+    except (TransientError, ApiError, NotFound) as exc:
         store.write_run_raw(run_id, started_at, 0, None, status="unreachable")
         store.finish_run(
             run_id=run_id, started_at_utc=started_at, finished_at_utc=utc_now_iso(),
@@ -284,7 +284,7 @@ def run_check(client: EsbClient | None = None) -> int:
         body = client.get_outage_list()
     except AuthError as exc:
         return alert.fail(alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH)
-    except (TransientError, ApiError) as exc:
+    except (TransientError, ApiError, NotFound) as exc:
         return alert.fail(alert.unreachable_banner(str(exc)), alert.EXIT_UNREACHABLE)
 
     problems = check_list_schema(body)

@@ -8,7 +8,7 @@ import unittest.mock
 from pathlib import Path
 
 from esb_outages import alert
-from esb_outages.client import ApiError, AuthError, TransientError
+from esb_outages.client import ApiError, AuthError, NotFound, TransientError
 from esb_outages.poll import poll_lock, run_check, run_poll
 from esb_outages.store import Store
 
@@ -84,6 +84,11 @@ class TestFailurePaths(PollTestCase):
     def test_unreachable_api_exits_three(self):
         client = FakeClient(list_error=TransientError("connection refused"))
         self.assertEqual(self.poll(client), alert.EXIT_UNREACHABLE)
+
+    def test_a_404_on_the_list_is_unreachable_not_a_crash(self):
+        client = FakeClient(list_error=NotFound("404 for /outages"))
+        self.assertEqual(self.poll(client), alert.EXIT_UNREACHABLE)
+        self.assertEqual(run_check(client), alert.EXIT_UNREACHABLE)
 
     def test_failures_are_still_recorded_in_the_run_table(self):
         self.poll(FakeClient(list_error=AuthError("401 rejected")))
