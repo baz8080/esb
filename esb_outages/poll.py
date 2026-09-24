@@ -12,6 +12,7 @@ import fcntl
 import os
 import signal
 import sqlite3
+import sys
 import time
 import traceback
 import uuid
@@ -79,6 +80,30 @@ def check_writable(data_dir: Path) -> str | None:
     return None
 
 
+def milliseconds(value: str) -> int:
+    """The poll delay, from --delay-ms or ESB_POLL_DELAY_MS."""
+    ms = int(value)
+    if ms < 0:
+        # time.sleep raises on a negative pause, after the first detail.
+        raise ValueError(f"{value} is negative")
+    return ms
+
+
+def _env_delay_ms() -> int:
+    raw = os.environ.get("ESB_POLL_DELAY_MS")
+    if raw is None:
+        return DEFAULT_DELAY_MS
+    try:
+        return milliseconds(raw)
+    except ValueError:
+        print(
+            f"warning: ESB_POLL_DELAY_MS={raw!r} is not a whole number of "
+            f"milliseconds; using {DEFAULT_DELAY_MS}",
+            file=sys.stderr,
+        )
+        return DEFAULT_DELAY_MS
+
+
 # The SQLite errors a disk or its permissions cause. Anything else, such as a
 # column an older esb.db lacks or a malformed file, is a crash: df and chown
 # will not fix it.
@@ -104,7 +129,7 @@ def run_poll(
     data_dir = Path(data_dir)
     client = client or EsbClient()
     if delay_ms is None:
-        delay_ms = int(os.environ.get("ESB_POLL_DELAY_MS", DEFAULT_DELAY_MS))
+        delay_ms = _env_delay_ms()
 
     problem = check_writable(data_dir)
     if problem:

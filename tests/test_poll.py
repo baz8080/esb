@@ -12,7 +12,7 @@ from pathlib import Path
 
 from esb_outages import alert
 from esb_outages.client import ApiError, AuthError, NotFound, TransientError
-from esb_outages.poll import poll_lock, run_check, run_poll
+from esb_outages.poll import DEFAULT_DELAY_MS, poll_lock, run_check, run_poll
 from esb_outages.store import Store
 
 from .helpers import FakeClient, detail, local_server, make_list, stop_server
@@ -282,6 +282,36 @@ class TestAFailureMidRun(PollTestCase):
         self.assertIn("rebuild again once it has one", self.requests[0][1])
         # A bug in the poll's own path replays cleanly and crashes again.
         self.assertIn("or the next run crashes", self.requests[0][1])
+
+
+class TestTheDelay(PollTestCase):
+    def poll_with_env(self, value):
+        os.environ["ESB_POLL_DELAY_MS"] = value
+        client = self.client_with("fault", "restored")
+        with contextlib.redirect_stderr(io.StringIO()):
+            code = run_poll(self.data_dir, client=client)
+        return code, client
+
+    def test_a_negative_delay_falls_back_to_the_default(self):
+        with unittest.mock.patch("esb_outages.poll.time.sleep") as sleep:
+            code, client = self.poll_with_env("-1")
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(len(client.detail_calls), 2)
+        sleep.assert_called_with(DEFAULT_DELAY_MS / 1000.0)
+
+    def test_a_delay_that_is_not_a_number_falls_back_to_the_default(self):
+        with unittest.mock.patch("esb_outages.poll.time.sleep"):
+            code, client = self.poll_with_env("half a second")
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(len(client.detail_calls), 2)
+
+    def test_the_flag_refuses_a_negative_delay(self):
+        from esb_outages.__main__ import main
+
+        err = io.StringIO()
+        with self.assertRaises(SystemExit), contextlib.redirect_stderr(err):
+            main(["--data-dir", str(self.data_dir), "poll", "--delay-ms", "-1"])
+        self.assertIn("invalid milliseconds value: '-1'", err.getvalue())
 
 
 class TestLocking(PollTestCase):
