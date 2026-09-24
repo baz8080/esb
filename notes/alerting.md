@@ -39,3 +39,34 @@ secret, as the ntfy topic is, and lives in the same root-only file.
 Rejected: pinging from `backup-to-git.sh` instead. A push every six hours is
 too coarse to notice a stopped collector, and the backup can succeed with the
 collector dead, which is the exact case a heartbeat exists to catch.
+
+## A run that fails partway still says so - 2026-09-24
+
+The only storage check was a probe before the run that creates an empty file,
+which a full disk still allows: it needs an inode, not a data block. The first
+real write then raised `ENOSPC` out of the run, and so did any error the code
+had no handling for. Either way the run exited 1 with a traceback, sent no
+webhook and no heartbeat, and the only alarm was the dead-man's monitor two
+hours later, naming no cause.
+
+`run_poll` now catches both. An `OSError`, or a SQLite error whose code is a
+full disk, an I/O error, a file it cannot open or a read-only database, is the
+storage alert, exit 6. Anything else, a column an older `esb.db` lacks or a
+malformed file included, is a new "run crashed" alert, exit 1, with the
+traceback in the journal: the storage banner's `df` and `chown` would send the
+reader the wrong way.
+
+The crash banner names `esb rebuild` for every crash, and says that a rebuild
+which fails the same way, or a next run that crashes again, means the code
+needs a fix: a bug in the poll's own path replays cleanly. Choosing from the
+exception's type was wrong both ways: an older `esb.db` missing a column
+raises `IndexError` from `sqlite3.Row`, which a rebuild fixes, and a code bug
+can raise `sqlite3.ProgrammingError`, which it replays. Following the advice
+blind costs nothing the raw logs cannot restore: a rebuild that fails leaves a
+partial `esb.db`, and the next one that succeeds replaces it. Building into a
+side file and renaming it in was tried and dropped: about 60 lines guarding a
+disposable file, which four review rounds kept finding holes in.
+
+Neither the storage alert nor the crash pings: the run stored nothing
+reliable, so it joins the rejected key and the unreachable feed in raising
+both alarms.

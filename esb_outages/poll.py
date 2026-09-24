@@ -11,7 +11,9 @@ import contextlib
 import fcntl
 import os
 import signal
+import sqlite3
 import time
+import traceback
 import uuid
 from pathlib import Path
 
@@ -77,6 +79,22 @@ def check_writable(data_dir: Path) -> str | None:
     return None
 
 
+# The SQLite errors a disk or its permissions cause. Anything else, such as a
+# column an older esb.db lacks or a malformed file, is a crash: df and chown
+# will not fix it.
+_STORAGE_ERRORS = {
+    sqlite3.SQLITE_FULL, sqlite3.SQLITE_IOERR, sqlite3.SQLITE_CANTOPEN, sqlite3.SQLITE_READONLY,
+}
+
+
+def _is_storage(exc: Exception) -> bool:
+    if isinstance(exc, OSError):
+        return True
+    if isinstance(exc, sqlite3.Error):
+        return (getattr(exc, "sqlite_errorcode", 0) & 0xFF) in _STORAGE_ERRORS
+    return False
+
+
 def run_poll(
     data_dir,
     client: EsbClient | None = None,
@@ -92,11 +110,19 @@ def run_poll(
     if problem:
         return alert.fail(alert.storage_banner(data_dir, problem), alert.EXIT_STORAGE)
 
-    with poll_lock(data_dir) as acquired:
-        if not acquired:
-            print("another poll run holds the lock; skipping this trigger")
-            return alert.EXIT_OK
-        code = _run(data_dir, client, delay_ms, budget_s)
+    try:
+        with poll_lock(data_dir) as acquired:
+            if not acquired:
+                print("another poll run holds the lock; skipping this trigger")
+                return alert.EXIT_OK
+            code = _run(data_dir, client, delay_ms, budget_s)
+    # The probe above passes on a full disk, which still has inodes for an
+    # empty file; the first real write is what fails.
+    except Exception as exc:
+        traceback.print_exc()
+        if _is_storage(exc):
+            return alert.fail(alert.storage_banner(data_dir, str(exc)), alert.EXIT_STORAGE)
+        return alert.fail(alert.crash_banner(exc), alert.EXIT_CRASH)
     # Sent for every run that reached the feed, not only a clean one: schema
     # drift and partial detail loss still leave the list on disk, and the
     # webhook already carries them. Silence means collection has stopped.

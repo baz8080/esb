@@ -226,6 +226,64 @@ class TestUnwritableDataDir(PollTestCase):
         self.assertFalse((self.data_dir / ".write-test").exists())
 
 
+class TestAFailureMidRun(PollTestCase):
+    """What the pre-run probe cannot see still reaches the webhook, and a run
+    that stored nothing sends no heartbeat."""
+
+    def setUp(self):
+        super().setUp()
+        self.requests = []
+        url, self.server, self.thread = local_server(self.requests)
+        os.environ["ESB_HEARTBEAT_URL"] = url
+        os.environ["ESB_ALERT_WEBHOOK"] = url.replace("/hook", "/alert")
+
+    def tearDown(self):
+        stop_server(self.server, self.thread)
+        super().tearDown()
+
+    def poll_failing(self, method, error):
+        with unittest.mock.patch.object(Store, method, side_effect=error), \
+                contextlib.redirect_stderr(io.StringIO()):
+            return self.poll(self.client_with("fault"))
+
+    def test_a_full_disk_is_a_storage_alert(self):
+        code = self.poll_failing("write_run_raw", OSError(28, "No space left on device"))
+        self.assertEqual(code, alert.EXIT_STORAGE)
+        self.assertEqual([p for p, _ in self.requests], ["/alert"])
+        self.assertIn("No space left on device", self.requests[0][1])
+
+    def test_a_full_database_is_a_storage_alert(self):
+        error = sqlite3.OperationalError("database or disk is full")
+        error.sqlite_errorcode = sqlite3.SQLITE_FULL
+        self.assertEqual(self.poll_failing("apply_list", error), alert.EXIT_STORAGE)
+        self.assertEqual([p for p, _ in self.requests], ["/alert"])
+
+    def test_a_database_from_older_code_is_not_a_disk_problem(self):
+        try:
+            sqlite3.connect(":memory:").execute("SELECT no_such_column FROM sqlite_master")
+        except sqlite3.OperationalError as caught:
+            error = caught
+        self.assertEqual(self.poll_failing("apply_list", error), alert.EXIT_CRASH)
+        self.assertIn("RUN CRASHED", self.requests[0][1])
+        self.assertIn("sudo esb rebuild", self.requests[0][1])
+
+    def test_a_malformed_database_points_to_rebuild(self):
+        error = sqlite3.DatabaseError("database disk image is malformed")
+        error.sqlite_errorcode = sqlite3.SQLITE_CORRUPT
+        self.assertEqual(self.poll_failing("apply_list", error), alert.EXIT_CRASH)
+        self.assertIn("sudo esb rebuild", self.requests[0][1])
+
+    def test_anything_else_is_a_crash_alert(self):
+        code = self.poll_failing("apply_list", KeyError("i"))
+        self.assertEqual(code, alert.EXIT_CRASH)
+        self.assertEqual([p for p, _ in self.requests], ["/alert"])
+        self.assertIn("RUN CRASHED", self.requests[0][1])
+        self.assertIn("esb rebuild", self.requests[0][1])
+        self.assertIn("rebuild again once it has one", self.requests[0][1])
+        # A bug in the poll's own path replays cleanly and crashes again.
+        self.assertIn("or the next run crashes", self.requests[0][1])
+
+
 class TestLocking(PollTestCase):
     def test_second_run_backs_off_while_first_holds_the_lock(self):
         with poll_lock(self.data_dir) as acquired:

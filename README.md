@@ -128,11 +128,12 @@ banner it prints:
 | Exit | Meaning |
 | --- | --- |
 | 0 | Success — silent |
+| 1 | The run crashed on an error it has no handling for; the traceback is in the journal |
 | 2 | **API key rejected (HTTP 401)** — collection has stopped |
 | 3 | ESB API unreachable after retries |
 | 4 | API response shape changed (raw data still safe) |
 | 5 | A broad failure of detail fetches |
-| 6 | Data directory not writable |
+| 6 | Data directory not writable, before the run or during it (a full disk) |
 
 Deliberately *not* alerts: a per-outage 404 (the outage was purged between the
 list call and its detail call — routine), and one or two isolated fetch failures.

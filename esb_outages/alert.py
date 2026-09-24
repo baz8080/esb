@@ -16,6 +16,7 @@ import urllib.error
 import urllib.request
 
 EXIT_OK = 0
+EXIT_CRASH = 1
 EXIT_AUTH = 2
 EXIT_UNREACHABLE = 3
 EXIT_SCHEMA_DRIFT = 4
@@ -24,6 +25,7 @@ EXIT_STORAGE = 6
 
 EXIT_MEANINGS = {
     EXIT_OK: "success",
+    EXIT_CRASH: "collector crashed",
     EXIT_AUTH: "API subscription key rejected",
     EXIT_UNREACHABLE: "ESB API unreachable",
     EXIT_SCHEMA_DRIFT: "API response shape changed",
@@ -101,13 +103,31 @@ def storage_banner(data_dir, problem: str) -> str:
         [
             f"{problem}",
             "",
-            "Nothing was collected. Usual causes are a full disk, or the",
+            "Collection has stopped. Usual causes are a full disk, or the",
             "directory not being owned by the user the collector runs as.",
             "",
             "Check:",
             f"  df -h {data_dir}",
             f"  ls -ld {data_dir}",
             "  sudo chown -R esb:esb /var/lib/esb-outages",
+        ],
+    )
+
+
+def crash_banner(exc: BaseException) -> str:
+    return banner(
+        "ESB POLLER: RUN CRASHED",
+        [
+            "The collector hit an error it has no handling for and stopped",
+            "partway through the run. The traceback is in the journal:",
+            "  journalctl -u esb-outages.service -n 50",
+            "",
+            "If the database is at fault, this re-derives it from the raw",
+            "logs:  sudo esb rebuild",
+            "If the rebuild fails the same way, or the next run crashes",
+            "again, the code needs a fix; rebuild again once it has one.",
+            "",
+            f"Raw error: {type(exc).__name__}: {exc}",
         ],
     )
 
