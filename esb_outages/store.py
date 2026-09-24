@@ -119,6 +119,7 @@ CREATE INDEX IF NOT EXISTS idx_change_time ON outage_change(observed_at_utc);
 """
 
 
+_FILE_MONTH = re.compile(r"-(\d{4}-\d{2})")
 _UTC_STAMP = re.compile(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ")
 
 # What a run's end record carries: everything a rebuild cannot derive from the
@@ -311,9 +312,11 @@ class Store:
         seen: set[bytes] = set()
         month = None
         for path in self.raw_files(kind):
-            # Copies share a month file, so the set never needs to span one.
-            if path.name.split(".", 1)[0] != month:
-                month = path.name.split(".", 1)[0]
+            # Copies share a month, so the set never needs to span one; keyed
+            # on the month itself, a copy under another name shares it too.
+            found = _FILE_MONTH.search(path.name)
+            if (found.group(1) if found else path.name) != month:
+                month = found.group(1) if found else path.name
                 seen.clear()
             with _open_maybe_gzip(path) as fh:
                 for lineno, line in enumerate(fh, 1):

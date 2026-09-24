@@ -255,6 +255,13 @@ class TestRawLogAndCompaction(StoreTestCase):
         self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1"])
         self.assertEqual(len(self.store.malformed_lines), 1)
 
+    def test_a_copy_under_another_name_in_the_same_month_is_read_once(self):
+        self.store.write_run_raw("r1", "2026-01-15T10:00:00Z", 200, {"outageMessage": []})
+        raw = self.data_dir / "raw"
+        (raw / "runs-2026-01-pi2.jsonl").write_bytes((raw / "runs-2026-01.jsonl").read_bytes())
+        self.store.write_run_raw("r2", "2026-02-15T10:00:00Z", 200, {"outageMessage": []})
+        self.assertEqual([r["run_id"] for r in self.store.iter_raw("runs")], ["r1", "r2"])
+
     def test_a_torn_archive_does_not_swallow_the_late_lines(self):
         import gzip
 
