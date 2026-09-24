@@ -90,6 +90,17 @@ class TestFailurePaths(PollTestCase):
         self.assertEqual(self.poll(client), alert.EXIT_UNREACHABLE)
         self.assertEqual(run_check(client), alert.EXIT_UNREACHABLE)
 
+    def test_a_key_rejected_mid_run_keeps_the_errors_before_it(self):
+        many = [dict(detail("fault"), outageId=str(4000000 + i)) for i in range(3)]
+        errors = {many[0]["outageId"]: TransientError("503"),
+                  many[1]["outageId"]: TransientError("503"),
+                  many[2]["outageId"]: AuthError("401 rejected")}
+        self.poll(FakeClient(list_body=make_list(*many), details={}, detail_errors=errors))
+        with self.store() as st:
+            row = st.conn.execute("SELECT n_errors, error_summary FROM run").fetchone()
+        self.assertEqual(row["n_errors"], 3)
+        self.assertEqual(row["error_summary"].count("503"), 2)
+
     def test_failures_are_still_recorded_in_the_run_table(self):
         self.poll(FakeClient(list_error=AuthError("401 rejected")))
         with self.store() as st:

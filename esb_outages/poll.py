@@ -204,7 +204,8 @@ def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_
                 finished_at_utc=utc_now_iso(), status="auth_error",
                 exit_code=alert.EXIT_AUTH, n_listed=len(listed_ids),
                 n_detail_fetched=fetched, n_detail_skipped=skipped,
-                n_errors=1, error_summary=str(exc),
+                n_errors=len(errors) + 1,
+                error_summary="; ".join(errors[:9] + [str(exc)]),
             )
             return alert.fail(
                 alert.auth_banner(client.masked_key, str(exc)), alert.EXIT_AUTH
