@@ -435,6 +435,10 @@ class Store:
                 return 0 if restored else 2
             if row["is_final"]:
                 return None
+            if restored:
+                # fetched once already, but with no restore time yet: still on
+                # the purge clock, and what it takes is the one field we want
+                return 0
             if _hours_between(row["last_change"], now) < quiet_after_hours:
                 return 3  # actively changing, keep watching closely
             if _hours_between(row["last_detail_utc"], now) >= recheck_hours:
