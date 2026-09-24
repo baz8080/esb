@@ -16,6 +16,7 @@ import io
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from urllib.parse import quote
 
 import statusui
 
@@ -760,7 +761,7 @@ def _spots_html(spots, since):
         f"<li>{html.escape(loc)}"
         '<span class="fill"></span>'
         f'<span class="n">{n} faults</span>'
-        f'<span class="p">up to {peak:,} customers</span></li>'
+        f'<span class="p">up to {peak:,} customer{"" if peak == 1 else "s"}</span></li>'
         for loc, n, peak in spots
     )
     return (
@@ -774,9 +775,11 @@ def _spots_html(spots, since):
 
 
 def _cell(text):
-    """ESB's free text, defused: a cell opening with a formula character is
-    run as a formula by the spreadsheet a reader opens the file in."""
-    return "'" + text if text and text[0] in "=+-@\t\r" else text
+    """A text cell, defused: one opening with a formula character, even
+    behind spaces a spreadsheet trims, runs as a formula when opened."""
+    if text and (text[0] in "\t\r" or text.lstrip()[:1] in ("=", "+", "-", "@")):
+        return "'" + text
+    return text
 
 
 def county_csv(outages):
@@ -954,7 +957,7 @@ def area_page(county, name, pop, events, nearby, data):
         '<div class="card"><h2>Elsewhere</h2><p class="nav">'
         f'<a href="../../c/{slug(county)}.html">County {html.escape(county)}’s '
         "whole record</a> "
-        f'<a href="../../index.html#county/{county}">County&nbsp;'
+        f'<a href="../../index.html#county/{html.escape(quote(county))}">County&nbsp;'
         f"{html.escape(county)}’s interactive view</a></p></div>"
     )
     # the record first, what the page holds last - truncation must not turn

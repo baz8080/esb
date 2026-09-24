@@ -1556,6 +1556,10 @@ class TestDublinDisplay(SiteModelCase):
         line = render._update_line(["update", "2026-08-24T14:15", 40], False)
         self.assertIn("<time>24 Aug, 15:15</time>", line)
 
+    def test_a_fault_spot_of_one_customer_is_singular(self):
+        card = render._spots_html([("Skerries Road", 2, 1)], "31 July 2026")
+        self.assertIn("up to 1 customer<", card)
+
     def test_one_customer_still_off_is_singular(self):
         line = render._update_line(["update", "2026-08-24T14:15", 1], False)
         self.assertIn("1 customer still off", line)
@@ -1602,6 +1606,9 @@ class TestTheAppScript(unittest.TestCase):
     def test_no_name_is_spliced_into_an_inline_handler(self):
         self.assertNotIn("onclick=\"go(\\''", self.page)
         self.assertIn('data-county="\' + esc(r.name)', self.page)
+        # and something still listens, or no row opens its county
+        self.assertIn('getElementById("list").addEventListener("click"', self.page)
+        self.assertIn('go(row.getAttribute("data-county"))', self.page)
 
     def test_a_malformed_link_cannot_throw_out_of_route(self):
         route = self.page.split("function route(", 1)[1].split("\nfunction ", 1)[0]
