@@ -913,6 +913,9 @@ class TestJudgedInTheMonthItStarted(SiteModelCase):
         self.assertEqual(august["est_kept"], None)
         self.assertEqual(august["estimates"], 1)
         self.assertEqual((september["faults"], september["within"]), (1, None))
+        national = render.build(outages, index, now, self.until)[0]["national"]
+        self.assertEqual(national["2026-08"][5], 0.0)
+        self.assertIsNone(national["2026-09"][5])
 
 
 class TestShardMonths(SiteModelCase):
