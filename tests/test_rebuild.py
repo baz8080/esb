@@ -306,15 +306,31 @@ class TestRebuild(unittest.TestCase):
             )
 
     def test_a_run_that_died_before_its_end_line_is_not_ok(self):
+        with Store(self.data_dir) as st:
+            st.write_run_raw("2026-01-01T10:00:00Z-deadbeef", "2026-01-01T10:00:00Z",
+                             200, make_list(detail("fault")))
         self.run_a_realistic_history()
         with Store(self.data_dir) as st:
-            st.write_run_raw("2026-12-01T10:00:00Z-deadbeef", "2026-12-01T10:00:00Z",
+            st.write_run_raw("2099-01-01T10:00:00Z-5ca1ab1e", "2099-01-01T10:00:00Z",
                              200, make_list(detail("fault")))
             st.rebuild()
-            status = st.conn.execute(
-                "SELECT status FROM run WHERE run_id = '2026-12-01T10:00:00Z-deadbeef'"
-            ).fetchone()[0]
-        self.assertEqual(status, "unfinished")
+            status = dict(st.conn.execute("SELECT run_id, status FROM run").fetchall())
+        # the newest is a run a backup caught before it had ended
+        self.assertEqual(status["2026-01-01T10:00:00Z-deadbeef"], "unfinished")
+        self.assertEqual(status["2099-01-01T10:00:00Z-5ca1ab1e"], "in_progress")
+
+    def test_start_lines_from_before_end_lines_still_replay_as_they_said(self):
+        self.run_a_realistic_history()
+        with (self.data_dir / "raw" / "runs-2026-01.jsonl").open("a") as fh:
+            # a second host still on the old code, merged in after this one's
+            fh.write(json.dumps({"run_id": "2099-01-01T10:00:00Z-01d01d01",
+                                 "started_at": "2099-01-01T10:00:00Z", "list_status": 200,
+                                 "list_body": make_list(detail("fault"))}, sort_keys=True))
+        with Store(self.data_dir) as st:
+            st.rebuild()
+            status = st.conn.execute("SELECT status FROM run WHERE run_id LIKE '2099-01-01%'"
+                                     ).fetchone()[0]
+        self.assertEqual(status, "ok")
 
     def test_a_run_whose_start_line_was_lost_keeps_its_end(self):
         from esb_outages import alert

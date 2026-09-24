@@ -113,12 +113,17 @@ is written with sorted keys like every other, so `sort -u` merges still hold,
 and it goes in the month file of its own timestamp, so a run crossing midnight
 on the last day ends in the next month's file.
 
-Two edges follow from having two lines per run. A start line with no end
-line, in a log where earlier runs have one, is a run that died before
-closing itself out (an uncaught exception, a full disk, a kill the SIGTERM
-handler never saw); a rebuild records it as `unfinished`, where the live
-database has no row for it at all, rather than as a clean `ok`. An end line
-whose start line was lost still gets a row, started at the time its run id
-carries, and the rebuild says how many it recorded that way. Two copies of
+Two edges follow from having two lines per run. A start line now carries
+`"ends_logged": true`, and one with that flag but no end line is a run that
+died before closing itself out (an uncaught exception, a full disk, a kill
+the SIGTERM handler never saw): a rebuild records it as `unfinished`, where
+the live database has no row for it at all, rather than as a clean `ok`. The
+newest such run reads `in_progress` instead, because the six-hourly backup
+commits `raw/` without the poll lock and often catches a run mid-flight.
+The flag, not the date of the first end line, is what decides: a merged log
+from a host still on the old code, or a Pi that booted with a wrong clock,
+would otherwise relabel every older-style run after it. An end line whose
+start line was lost replays as a run with no list, started at the time its
+run id carries, so its observations keep their place. Two copies of
 the same line, from a merge without `sort -u` or a `compact` that crashed
 before removing what it had archived, are read once.

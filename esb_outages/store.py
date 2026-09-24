@@ -250,6 +250,9 @@ class Store:
                 "list_status": list_status,
                 "list_body": list_body,
                 "status": status,
+                # Says an end line follows, so a rebuild can tell a run that
+                # died from one logged before end lines existed.
+                "ends_logged": True,
             },
         )
 
@@ -581,11 +584,19 @@ class Store:
             else:
                 run_records.append(rec)
 
-        # Once runs log their end, a start line without one is a run that died
-        # before closing itself out, not a clean one.
-        ends_from = min(
-            (r["started_at"] for r in run_records if r["run_id"] in ends), default=None
-        )
+        # An end line whose start line was lost still says how the run went,
+        # and its run id carries the start time: it replays as a run with no
+        # list, so its observations keep their place.
+        starts = {rec["run_id"] for rec in run_records}
+        lost_starts = 0
+        for run_id in ends:
+            started = str(run_id).rsplit("-", 1)[0]
+            if run_id not in starts and _UTC_STAMP.fullmatch(started):
+                run_records.append({"run_id": run_id, "started_at": started})
+                lost_starts += 1
+        # A start line promising an end line that never came is a run that
+        # died, unless it is the newest: a backup can snapshot the log mid-run.
+        newest = max((rec["started_at"] for rec in run_records), default=None)
 
         # Observations whose run record never made it to disk (a crash between
         # the two writes, or a damaged line) replay at their own place in time.
@@ -640,8 +651,8 @@ class Store:
                 started_at_utc=rec["started_at"],
                 finished_at_utc=end.get("finished_at"),
                 status=end.get("status") or (
-                    "unfinished" if ends_from and rec["started_at"] > ends_from
-                    else rec.get("status", "ok")
+                    ("in_progress" if rec["started_at"] == newest else "unfinished")
+                    if rec.get("ends_logged") else rec.get("status", "ok")
                 ),
                 exit_code=end.get("exit_code"),
                 n_listed=listed,
@@ -655,21 +666,6 @@ class Store:
             n_runs += 1
             for obs in run_obs:
                 n_obs += apply_observation(obs)
-
-        # An end line whose start line was lost still says how the run went,
-        # and its run id carries the start time.
-        lost_starts = 0
-        for run_id, end in ends.items():
-            started = str(run_id).rsplit("-", 1)[0]
-            if run_id in run_ids or not _UTC_STAMP.fullmatch(started):
-                continue
-            self.record_run(
-                run_id=run_id,
-                started_at_utc=started,
-                finished_at_utc=end.get("finished_at"),
-                **{k: end.get(k) for k in RUN_END_FIELDS},
-            )
-            lost_starts += 1
 
         self.conn.commit()
         if verbose:
