@@ -464,18 +464,17 @@ class Store:
             restored = row["outage_type"] == "Restored"
             if not row["has_detail"]:
                 return 0 if restored else 2
-            # Cleared by apply_list on a type change: something happened. A
-            # captured record that has flipped to Restored loses only its
-            # restore time to a purge, like the settling ones below.
-            if row["last_detail_utc"] is None:
-                return 1 if restored else 3
             if row["is_final"]:
                 return None
             if restored:
-                # Captured, but with no restore time yet. Still on the purge
-                # clock, behind the rank above: a purge here costs one field,
-                # there the whole record.
+                # Captured, but with no restore time yet, whether settling or
+                # just flipped. Still on the purge clock, behind the rank
+                # above: a purge here costs one field, there the whole record.
                 return 1
+            # Cleared by apply_list on a type change, with is_final: something
+            # happened.
+            if row["last_detail_utc"] is None:
+                return 3
             if _hours_between(row["last_change"], now) < quiet_after_hours:
                 return 4  # actively changing, keep watching closely
             if _hours_between(row["last_detail_utc"], now) >= recheck_hours:
@@ -601,12 +600,13 @@ class Store:
         # An end line whose start line was lost still says how the run went,
         # and its run id carries the start time: it replays as a run with no
         # list, so its observations keep their place.
-        starts = {rec["run_id"] for rec in run_records}
+        run_ids = {rec["run_id"] for rec in run_records}
         lost_starts = 0
         for run_id in ends:
             started = str(run_id).rsplit("-", 1)[0]
-            if run_id not in starts and _UTC_STAMP.fullmatch(started):
+            if run_id not in run_ids and _UTC_STAMP.fullmatch(started):
                 run_records.append({"run_id": run_id, "started_at": started})
+                run_ids.add(run_id)
                 lost_starts += 1
         # A start line promising an end line that never came is a run that
         # died, unless it is the newest: a backup can snapshot the log mid-run.
@@ -615,7 +615,6 @@ class Store:
         # Observations whose run record never made it to disk (a crash between
         # the two writes, or a damaged line) replay at their own place in time.
         # Replayed after everything else, an old body rolled back newer state.
-        run_ids = {rec["run_id"] for rec in run_records}
         orphans = [
             (min(o.get("observed_at") or "" for o in records), records)
             for run_id, records in observations.items()
@@ -777,16 +776,17 @@ class Store:
                     continue
                 target = Path(str(path) + ".gz")
                 staged = Path(str(target) + ".tmp")
+                archived = target.exists()
                 with staged.open("wb") as out:
                     # A month written to after it was compacted - a Pi with no
                     # clock battery boots in the past until NTP syncs - keeps
                     # its archive and gains the late lines as a further gzip
                     # member, which every gzip reader concatenates.
-                    if target.exists():
-                        with target.open("rb") as archived:
-                            shutil.copyfileobj(archived, out)
+                    if archived:
+                        with target.open("rb") as old:
+                            shutil.copyfileobj(old, out)
                     with path.open("rb") as src, gzip.GzipFile(fileobj=out, mode="wb") as dst:
-                        if target.exists():
+                        if archived:
                             # the archive may end in a torn line; a blank one is skipped
                             dst.write(b"\n")
                         shutil.copyfileobj(src, dst)
