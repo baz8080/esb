@@ -115,6 +115,13 @@ def _approx(n):
     return int(statusui.half_up(n / step)) * step
 
 
+def since_collection(outages):
+    """A county's record starts at the first poll: an outage restored before
+    it overlaps no observed window, so the page never lists it and nothing
+    else the site derives may count it either."""
+    return [o for o in outages if o.end > model.COLLECTION_START]
+
+
 def build(outages, sa_index, now, until):
     """Assemble every value the templates need, and nothing they do not.
 
@@ -122,14 +129,11 @@ def build(outages, sa_index, now, until):
     data stops, and every measured window ends there.
     """
     months = model.month_list(model.COLLECTION_START, now)
+    outages = since_collection(outages)
 
-    # A county's record starts at the first poll: an outage restored before
-    # it overlaps no observed window, so the page never lists it and nothing
-    # derived from the county's list may count it either.
     by_county = defaultdict(list)
     for o in outages:
-        if o.end > model.COLLECTION_START:
-            by_county[o.county].append(o)
+        by_county[o.county].append(o)
 
     stats, national = {}, {}
     for county in sa_index.counties:
@@ -809,7 +813,7 @@ def area_index(outages, sa_index):
     first. Grouped on the census assignment, never ESB's location string,
     which fragments (uisce measured 3,866 distinct values in its feed's)."""
     by_area = defaultdict(list)
-    for o in outages:
+    for o in since_collection(outages):
         by_area[(o.county, o.town_code)].append(o)
     by_county = defaultdict(list)
     for (county, code), events in by_area.items():
