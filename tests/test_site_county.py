@@ -359,6 +359,13 @@ class TestTheCountyCsv(CountyPageCase):
         self.assertEqual(rows[1]["location"], "Marino")
         self.assertEqual(tuple(rows[0]), render.CSV_COLUMNS)
 
+    def test_a_location_that_reads_as_a_formula_is_published_as_text(self):
+        self.observe(detail("1", location='=HYPERLINK("http://x","Ballina")'),
+                     datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
+        outages, _, _ = self.load(datetime(2026, 8, 20, tzinfo=UTC))
+        row = next(csv.DictReader(io.StringIO(render.county_csv(outages))))
+        self.assertEqual(row["location"], '\'=HYPERLINK("http://x","Ballina")')
+
     def test_the_page_links_its_csv(self):
         self.observe(detail("1"), datetime(2026, 8, 10, 10, 0, tzinfo=UTC))
         self.poll(datetime(2026, 9, 1, tzinfo=UTC), n_listed=1)

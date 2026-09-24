@@ -781,6 +781,12 @@ def _spots_html(spots, since):
     )
 
 
+def _cell(text):
+    """ESB's free text, defused: a cell opening with a formula character is
+    run as a formula by the spreadsheet a reader opens the file in."""
+    return "'" + text if text and text[0] in "=+-@\t\r" else text
+
+
 def county_csv(outages):
     """One county's merged events as CSV, oldest first; the columns are
     CSV_COLUMNS. The site's own rows, so a reader gets what the page counts
@@ -790,8 +796,8 @@ def county_csv(outages):
     out.writerow(CSV_COLUMNS)
     for o in sorted(outages, key=lambda o: (o.start, int(o.id))):
         out.writerow([
-            " ".join(o.ids), o.county, o.town, o.esb_location,
-            "planned" if o.planned else "fault", model.reason_label(o.reason),
+            " ".join(o.ids), o.county, _cell(o.town), _cell(o.esb_location),
+            "planned" if o.planned else "fault", _cell(model.reason_label(o.reason)),
             o.customers, model.fmt_utc(o.start), model.fmt_utc(o.end), o.end_src,
             model.fmt_utc(o.est), model.fmt_utc(o.first_est), int(o.ongoing),
             round(o.customer_minutes(o.start, o.end)),
