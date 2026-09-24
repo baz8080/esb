@@ -188,8 +188,8 @@ def normalize_detail(body: dict) -> dict:
         "status_message": _text(body.get("statusMessage")),
         "planned_outage_reason": _text(body.get("plannedOutageReason")),
         # An outage is only immutable once it is restored *and* carries the
-        # actual restore time; "Restored" with an empty restoreTime is still
-        # settling and must be re-fetched.
-        "is_final": int(outage_type == "Restored" and restore_raw is not None),
+        # actual restore time; "Restored" with an empty or unreadable
+        # restoreTime is still settling and must be re-fetched.
+        "is_final": int(outage_type == "Restored" and restore_utc is not None),
         "tz_ambiguous": int(start_amb or est_amb or restore_amb),
     }
