@@ -39,13 +39,21 @@ class TestBeforeCollection(SiteModelCase):
                    startTime="31/07/2026 15:00", restoreTime="31/07/2026 18:00"),
             datetime(2026, 7, 31, 21, 5, tzinfo=UTC),
         )
+        # and a repeat at the same spot after it, which must not read as leg 2
+        self.observe(
+            detail("2", location="Rathfarnham", outageType="Restored",
+                   startTime="31/07/2026 18:05", restoreTime="31/07/2026 23:00"),
+            datetime(2026, 7, 31, 21, 5, tzinfo=UTC),
+        )
         now = datetime(2026, 8, 20, tzinfo=UTC)
         self.poll(now)
         outages, _, index = self.load(now)
-        self.assertEqual(len(outages), 1)
-        self.assertEqual(render.area_index(outages, index), [])
-        search = render.build(outages, index, now, self.until)[3]
-        self.assertNotIn("Rathfarnham", json.dumps(search))
+        self.assertEqual([o.id for o in outages], ["2"])
+        self.assertEqual(outages[0].chain, ())
+        self.assertEqual([c for c, _ in render.area_index(outages, index)], ["Dublin"])
+        self.assertEqual(
+            [len(events) for _, areas in render.area_index(outages, index)
+             for _, _, _, events in areas], [1])
 
 
 class TestWhichAreasGetOne(unittest.TestCase):

@@ -924,7 +924,12 @@ def load_outages(db_path, sa_index, now):
                     segments=segments,
                 )
             )
-        return label_repeats(merge_events(outages)), unplaced, until
+        # The record starts at the first poll: an event over before it
+        # overlaps no observed window, so nothing the site derives may count
+        # it, a repeat chain included. Dropped after the merge, whose event
+        # ends with its last member, and before the chains are labelled.
+        events = [o for o in merge_events(outages) if o.end > COLLECTION_START]
+        return label_repeats(events), unplaced, until
     finally:
         conn.close()
 
