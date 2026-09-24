@@ -433,25 +433,26 @@ class Store:
         def urgency(outage_id: str) -> int | None:
             row = state.get(outage_id)
             if row is None:
-                return 1
+                return 2
             # apply_list has already written the list's type, so this is
             # whether the purge clock is running
             restored = row["outage_type"] == "Restored"
             if not row["has_detail"]:
-                return 0 if restored else 1
+                return 0 if restored else 2
             # Cleared by apply_list on a type change: something happened.
             if row["last_detail_utc"] is None:
-                return 0 if restored else 2
+                return 0 if restored else 3
             if row["is_final"]:
                 return None
             if restored:
-                # fetched once already, but with no restore time yet: still on
-                # the purge clock, and what it takes is the one field we want
-                return 0
+                # Captured, but with no restore time yet. Still on the purge
+                # clock, behind the rank above: a purge here costs one field,
+                # there the whole record.
+                return 1
             if _hours_between(row["last_change"], now) < quiet_after_hours:
-                return 3  # actively changing, keep watching closely
+                return 4  # actively changing, keep watching closely
             if _hours_between(row["last_detail_utc"], now) >= recheck_hours:
-                return 4
+                return 5
             return None
 
         ranked = [

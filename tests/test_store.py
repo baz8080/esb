@@ -90,18 +90,22 @@ class TestIdsNeedingDetail(StoreTestCase):
         # Restored is immutable; the ongoing fault still needs watching.
         self.assertEqual(self.store.ids_needing_detail(ids), [fault["outageId"]])
 
-    def test_restored_without_a_restore_time_stays_first_in_line(self):
+    def test_restored_outages_lead_uncaptured_before_settling(self):
         settling = dict(detail("restored"), restoreTime="")
         fault = detail("fault")
+        uncaptured = dict(detail("restored"), outageId="9100000")
         items = make_list(fault, settling)["outageMessage"]
         self.store.apply_list("2026-07-31T10:00:00Z", items)
         self.store.apply_detail("2026-07-31T10:00:01Z", normalize_detail(settling))
-        # seven hours on it has gone quiet, but ESB could purge it any time
+        # seven hours on it has gone quiet, but ESB could purge it any time;
+        # one never captured at all still goes ahead of it
         later = "2026-07-31T17:00:00Z"
+        items = make_list(settling, fault, uncaptured)["outageMessage"]
         self.store.apply_list(later, items)
+        ids = [settling["outageId"], fault["outageId"], uncaptured["outageId"]]
         self.assertEqual(
-            self.store.ids_needing_detail([fault["outageId"], settling["outageId"]], now=later),
-            [settling["outageId"], fault["outageId"]],
+            self.store.ids_needing_detail(ids, now=later),
+            [uncaptured["outageId"], settling["outageId"], fault["outageId"]],
         )
 
     def test_handles_empty_input(self):
