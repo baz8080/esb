@@ -5,7 +5,10 @@ entire history re-derived. If they ever fail, the project has silently become
 dependent on state that only exists inside a database file.
 """
 
+import contextlib
+import io
 import json
+import sqlite3
 import tempfile
 import unittest
 from pathlib import Path
@@ -270,6 +273,40 @@ class TestRebuild(unittest.TestCase):
         statuses = {r[3] for r in before}
         self.assertTrue({"cut_short", "partial", "auth_error"} <= statuses, statuses)
         self.assertEqual(before, after)
+
+    def test_rebuild_recovers_a_malformed_database(self):
+        from esb_outages.__main__ import main
+
+        self.run_a_realistic_history()
+        with Store(self.data_dir) as st:
+            before = st.snapshot()
+        (self.data_dir / "esb.db").write_bytes(b"not a database" * 100)
+        with contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(main(["--data-dir", str(self.data_dir), "rebuild"]), 0)
+        with Store(self.data_dir) as st:
+            self.assertEqual(st.snapshot(), before)
+
+    def test_a_database_that_fails_to_open_leaves_the_store_closed(self):
+        (self.data_dir / "esb.db").write_bytes(b"not a database" * 100)
+        store = Store(self.data_dir)
+        with self.assertRaises(sqlite3.DatabaseError):
+            store.open()
+        self.assertRaises(RuntimeError, getattr, store, "conn")
+
+    def test_compact_does_not_need_the_database(self):
+        from esb_outages.__main__ import main
+
+        self.run_a_realistic_history()
+        old_month = self.data_dir / "raw" / "runs-2020-01.jsonl"
+        old_month.write_text('{"run_id": "x"}\n')
+        db = self.data_dir / "esb.db"
+        db.write_bytes(b"not a database" * 100)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(main(["--data-dir", str(self.data_dir), "compact"]), 0)
+        self.assertIn("runs-2020-01.jsonl.gz", out.getvalue())
+        self.assertFalse(old_month.exists())
+        self.assertEqual(db.read_bytes(), b"not a database" * 100)
 
     def test_rebuild_and_compact_wait_for_a_running_poll(self):
         from esb_outages.__main__ import main

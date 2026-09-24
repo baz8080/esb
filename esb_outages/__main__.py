@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import sys
 from pathlib import Path
@@ -104,7 +105,7 @@ def cmd_test_alert(args) -> int:
     return alert.EXIT_OK
 
 
-def _held_by_poll() -> int:
+def _lock_held() -> int:
     # Both delete files a poll writes to: esb.db and its journal, or the log.
     print(
         "the lock is held (by a poll, the backup, or esb rebuild or compact);"
@@ -117,8 +118,10 @@ def _held_by_poll() -> int:
 def cmd_rebuild(args) -> int:
     with poll_lock(Path(args.data_dir)) as acquired:
         if not acquired:
-            return _held_by_poll()
-        with Store(args.data_dir) as store:
+            return _lock_held()
+        # Not opened first: a malformed esb.db fails the moment it is opened,
+        # and rebuild deletes it unread.
+        with contextlib.closing(Store(args.data_dir)) as store:
             result = store.rebuild(verbose=True)
     if result["runs"] == 0 and result["observations"] == 0:
         print("nothing to replay: no raw logs found", file=sys.stderr)
@@ -128,9 +131,9 @@ def cmd_rebuild(args) -> int:
 def cmd_compact(args) -> int:
     with poll_lock(Path(args.data_dir)) as acquired:
         if not acquired:
-            return _held_by_poll()
-        with Store(args.data_dir) as store:
-            done = store.compact()
+            return _lock_held()
+        # Only raw/, so not opened: a malformed esb.db must not stop it.
+        done = Store(args.data_dir).compact()
     print(f"compacted {len(done)} file(s): {', '.join(done) or 'none'}")
     return alert.EXIT_OK
 
