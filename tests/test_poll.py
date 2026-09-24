@@ -1,10 +1,12 @@
 import contextlib
 import copy
+import errno
 import io
 import os
 import signal
 import sqlite3
 import tempfile
+import threading
 import unittest
 import unittest.mock
 import urllib.error
@@ -40,7 +42,7 @@ class PollTestCase(unittest.TestCase):
         self._tmp.cleanup()
 
     def poll(self, client):
-        return run_poll(self.data_dir, client=client, delay_ms=0)
+        return run_poll(self.data_dir, client=client, delay_ms=0, lock_wait_s=0)
 
     def store(self):
         return Store(self.data_dir).open()
@@ -304,20 +306,22 @@ class TestTheDelay(PollTestCase):
     def poll_with_env(self, value):
         os.environ["ESB_POLL_DELAY_MS"] = value
         client = self.client_with("fault", "restored")
-        with contextlib.redirect_stderr(io.StringIO()):
+        err = io.StringIO()
+        with contextlib.redirect_stderr(err):
             code = run_poll(self.data_dir, client=client)
-        return code, client
+        return code, client, err.getvalue()
 
     def test_a_negative_delay_falls_back_to_the_default(self):
         with unittest.mock.patch("esb_outages.poll.time.sleep") as sleep:
-            code, client = self.poll_with_env("-1")
+            code, client, err = self.poll_with_env("-1")
+        self.assertIn("0 or more", err)
         self.assertEqual(code, alert.EXIT_OK)
         self.assertEqual(len(client.detail_calls), 2)
         sleep.assert_called_with(DEFAULT_DELAY_MS / 1000.0)
 
     def test_a_delay_that_is_not_a_number_falls_back_to_the_default(self):
         with unittest.mock.patch("esb_outages.poll.time.sleep"):
-            code, client = self.poll_with_env("half a second")
+            code, client, _ = self.poll_with_env("half a second")
         self.assertEqual(code, alert.EXIT_OK)
         self.assertEqual(len(client.detail_calls), 2)
 
@@ -335,9 +339,42 @@ class TestLocking(PollTestCase):
         with poll_lock(self.data_dir) as acquired:
             self.assertTrue(acquired)
             client = self.client_with("fault")
-            # Exits 0: an overlapping trigger is not a failure worth emailing about.
-            self.assertEqual(self.poll(client), alert.EXIT_OK)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                # Exits 0: an overlapping trigger is not a failure worth emailing about.
+                self.assertEqual(self.poll(client), alert.EXIT_OK)
             self.assertEqual(client.list_calls, 0)
+            # Not only polls hold it, so the message must not blame one.
+            self.assertIn("the backup, or esb rebuild or compact", out.getvalue())
+
+    def test_a_lock_that_cannot_be_taken_is_not_a_quiet_skip(self):
+        error = OSError(errno.ENOLCK, "No locks available")
+        with unittest.mock.patch("esb_outages.poll.fcntl.flock", side_effect=error), \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_STORAGE)
+
+    def test_a_run_waits_out_a_brief_holder(self):
+        # The backup, committing: a poll that met it used to lose its slot.
+        held, release, acquired = threading.Event(), threading.Event(), []
+
+        def backup():
+            with poll_lock(self.data_dir) as got:
+                acquired.append(got)
+                held.set()
+                release.wait(5)
+
+        thread = threading.Thread(target=backup)
+        thread.start()
+        self.assertTrue(held.wait(5))
+        self.assertEqual(acquired, [True])
+        timer = threading.Timer(1, release.set)
+        timer.start()
+        client = self.client_with("fault")
+        code = run_poll(self.data_dir, client=client, delay_ms=0, lock_wait_s=10)
+        timer.join()
+        thread.join()
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(client.list_calls, 1)
 
     def test_lock_is_released_afterwards(self):
         with poll_lock(self.data_dir) as acquired:

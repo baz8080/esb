@@ -31,6 +31,11 @@ DEFAULT_DELAY_MS = 500
 # because a run systemd has to stop is a failed unit whatever it exits with.
 RUN_BUDGET_S = 24 * 60
 
+# The backup holds the lock for seconds while it commits; a poll holds it for
+# its whole run. Waiting this long tells the two apart, rather than skipping a
+# poll every time a backup slot meets a trigger.
+LOCK_WAIT_S = 120
+
 # A failed detail fetch is not lost data: the outage stays in the list for the
 # whole retention window and is not marked final, so the next hourly run retries
 # it - roughly four more chances before ESB purges it. Only a broad failure is
@@ -40,22 +45,29 @@ PARTIAL_FAILURE_MIN = 3
 
 
 @contextlib.contextmanager
-def poll_lock(data_dir: Path):
+def poll_lock(data_dir: Path, wait_s: float = 0):
     """Exclusive lock so two runs can never interleave writes.
 
-    At one request per second a large storm could in principle push a run past
-    the next hourly trigger. Overlapping runs would corrupt neither file
-    irrecoverably, but they would duplicate work and confuse change history.
+    A manual run can overlap the timer's, and a storm run can outlast the 30
+    minutes to the next trigger if it ever misses its budget. Overlapping runs
+    would corrupt neither file irrecoverably, but they would duplicate work and
+    confuse change history. The backup holds it too, for seconds.
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     lock_path = data_dir / ".poll.lock"
     handle = lock_path.open("w")
+    deadline = time.monotonic() + wait_s
     try:
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            yield False
-            return
+        while True:
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            # Only this means held; any other error must not read as a quiet skip.
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    yield False
+                    return
+                time.sleep(0.5)
         yield True
     finally:
         handle.close()
@@ -99,7 +111,7 @@ def _env_delay_ms() -> int:
     except ValueError:
         print(
             f"warning: ESB_POLL_DELAY_MS={raw!r} is not a whole number of "
-            f"milliseconds; using {DEFAULT_DELAY_MS}",
+            f"milliseconds, 0 or more; using {DEFAULT_DELAY_MS}",
             file=sys.stderr,
         )
         return DEFAULT_DELAY_MS
@@ -126,7 +138,10 @@ def run_poll(
     client: EsbClient | None = None,
     delay_ms: int | None = None,
     budget_s: float = RUN_BUDGET_S,
+    lock_wait_s: float = LOCK_WAIT_S,
 ) -> int:
+    # From the start, so a wait for the lock comes out of the budget.
+    deadline = time.monotonic() + budget_s
     data_dir = Path(data_dir)
     client = client or EsbClient()
     if delay_ms is None:
@@ -137,11 +152,14 @@ def run_poll(
         return alert.fail(alert.storage_banner(data_dir, problem), alert.EXIT_STORAGE)
 
     try:
-        with poll_lock(data_dir) as acquired:
+        with poll_lock(data_dir, lock_wait_s) as acquired:
             if not acquired:
-                print("another poll run holds the lock; skipping this trigger")
+                print(
+                    f"the lock has been held for {lock_wait_s:.0f}s (by a poll, the "
+                    "backup, or esb rebuild or compact); skipping this trigger"
+                )
                 return alert.EXIT_OK
-            code = _run(data_dir, client, delay_ms, budget_s)
+            code = _run(data_dir, client, delay_ms, deadline)
     # The probe above passes on a full disk, which still has inodes for an
     # empty file; the first real write is what fails.
     except Exception as exc:
@@ -179,14 +197,13 @@ def _stop_on_sigterm():
         signal.signal(signal.SIGTERM, previous)
 
 
-def _run(data_dir: Path, client: EsbClient, delay_ms: int, budget_s: float) -> int:
+def _run(data_dir: Path, client: EsbClient, delay_ms: int, deadline: float) -> int:
     with _stop_on_sigterm() as stop, Store(data_dir) as store:
-        return _collect(store, client, delay_ms, stop, budget_s)
+        return _collect(store, client, delay_ms, stop, deadline)
 
 
-def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, budget_s: float) -> int:
+def _collect(store: Store, client: EsbClient, delay_ms: int, stop: list, deadline: float) -> int:
     started_at = utc_now_iso()
-    deadline = time.monotonic() + budget_s
     # Timestamps are only second-resolution, so they cannot identify a run on
     # their own; rebuild groups observations by run_id and needs it unique.
     run_id = f"{started_at}-{uuid.uuid4().hex[:8]}"

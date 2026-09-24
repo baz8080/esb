@@ -106,7 +106,11 @@ def cmd_test_alert(args) -> int:
 
 def _held_by_poll() -> int:
     # Both delete files a poll writes to: esb.db and its journal, or the log.
-    print("a poll run holds the lock; try again when it has finished", file=sys.stderr)
+    print(
+        "the lock is held (by a poll, the backup, or esb rebuild or compact);"
+        " try again when it has finished",
+        file=sys.stderr,
+    )
     return 1
 
 
@@ -144,7 +148,10 @@ def main(argv=None) -> int:
     p_poll = sub.add_parser("poll", help="run one collection pass (the scheduled command)")
     p_poll.add_argument(
         "--delay-ms", type=milliseconds, default=None,
-        help=f"pause between detail requests (env: ESB_POLL_DELAY_MS, default {DEFAULT_DELAY_MS})",
+        help=(
+            "pause between detail requests, 0 or more "
+            f"(env: ESB_POLL_DELAY_MS, default {DEFAULT_DELAY_MS})"
+        ),
     )
     sub.add_parser("check", help="verify the API key and connectivity; writes nothing")
     sub.add_parser(
