@@ -2,6 +2,7 @@ import contextlib
 import copy
 import errno
 import io
+import json
 import os
 import signal
 import sqlite3
@@ -529,6 +530,31 @@ class TestWebhookAlerting(unittest.TestCase):
         self.assertEqual(len(self.received), 1)
         self.assertIn("SUBSCRIPTION KEY REJECTED", self.received[0][1])
 
+    def test_ntfy_gets_the_banner_as_the_body_with_a_title(self):
+        seen = []
+        url, server, thread = local_server([], seen)
+        try:
+            with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": url + "/ntfy"}):
+                self.assertTrue(alert.notify("the banner"))
+        finally:
+            stop_server(server, thread)
+        [(method, _, headers, body)] = seen
+        self.assertEqual((method, body), ("POST", "the banner"))
+        self.assertEqual(headers["Title"], "ESB poller failure")
+
+    def test_any_other_webhook_gets_json(self):
+        seen = []
+        url, server, thread = local_server([], seen)
+        try:
+            with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": url}):
+                self.assertTrue(alert.notify("the banner"))
+        finally:
+            stop_server(server, thread)
+        [(method, _, headers, body)] = seen
+        self.assertEqual(method, "POST")
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertEqual(json.loads(body), {"content": "the banner", "text": "the banner"})
+
     def test_notify_reports_delivery(self):
         with unittest.mock.patch.dict(os.environ, {"ESB_ALERT_WEBHOOK": self.url}):
             self.assertTrue(alert.notify("hello"))
@@ -615,12 +641,44 @@ class TestHeartbeat(PollTestCase):
         self.assertEqual(self.poll(storm_client(storm(), TestStorm.BUDGET)), alert.EXIT_OK)
         self.assertEqual(self.paths(), ["/hook"])
 
+    def test_a_partial_run_still_pings(self):
+        kinds = ["fault", "planned", "restored"]
+        client = FakeClient(
+            list_body=make_list(*[detail(k) for k in kinds]),
+            detail_errors={detail(k)["outageId"]: TransientError("503") for k in kinds},
+        )
+        self.assertEqual(self.poll(client), alert.EXIT_PARTIAL)
+        self.assertEqual(self.paths(), ["/hook"])
+
+    def test_the_ping_is_a_get(self):
+        seen = []
+        url, server, thread = local_server([], seen)
+        try:
+            os.environ["ESB_HEARTBEAT_URL"] = url
+            self.assertTrue(alert.heartbeat())
+        finally:
+            stop_server(server, thread)
+        self.assertEqual([method for method, *_ in seen], ["GET"])
+
     def test_a_rejected_key_does_not_ping(self):
         self.poll(FakeClient(list_error=AuthError("401 rejected")))
         self.assertEqual(self.paths(), [])
 
     def test_an_unreachable_feed_does_not_ping(self):
         self.poll(FakeClient(list_error=TransientError("connection refused")))
+        self.assertEqual(self.paths(), [])
+
+    def test_a_key_rejected_mid_run_does_not_ping(self):
+        dying = detail("fault")["outageId"]
+        client = FakeClient(
+            list_body=make_list(detail("fault")), detail_errors={dying: AuthError("401")}
+        )
+        self.assertEqual(self.poll(client), alert.EXIT_AUTH)
+        self.assertEqual(self.paths(), [])
+
+    def test_an_unwritable_directory_does_not_ping(self):
+        with unittest.mock.patch("esb_outages.poll.check_writable", return_value="read-only"):
+            self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_STORAGE)
         self.assertEqual(self.paths(), [])
 
     def test_a_skipped_trigger_does_not_ping(self):
@@ -639,6 +697,59 @@ class TestHeartbeat(PollTestCase):
         os.environ["ESB_HEARTBEAT_URL"] = "http://127.0.0.1:9/dead"
         self.assertFalse(alert.heartbeat())
         self.assertEqual(self.poll(self.client_with("fault")), alert.EXIT_OK)
+
+
+class TestTestAlert(PollTestCase):
+    """`esb test-alert` is the proof both channels work, so each outcome must
+    say what it found."""
+
+    def setUp(self):
+        super().setUp()
+        self.requests = []
+        self.url, self.server, self.thread = local_server(self.requests)
+
+    def tearDown(self):
+        stop_server(self.server, self.thread)
+        super().tearDown()
+
+    def run_it(self, **env):
+        from esb_outages.__main__ import main
+
+        os.environ.update(env)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            code = main(["--data-dir", str(self.data_dir), "test-alert"])
+        return code, err.getvalue()
+
+    def test_no_webhook_is_a_failure(self):
+        code, err = self.run_it()
+        self.assertEqual(code, 1)
+        self.assertIn("ESB_ALERT_WEBHOOK is not set", err)
+        self.assertEqual(self.requests, [])
+
+    def test_a_webhook_that_cannot_be_reached_is_a_failure(self):
+        code, err = self.run_it(ESB_ALERT_WEBHOOK="http://127.0.0.1:9/dead")
+        self.assertEqual(code, 1)
+        self.assertIn("alert delivery FAILED", err)
+
+    def test_no_heartbeat_passes_with_a_warning(self):
+        code, err = self.run_it(ESB_ALERT_WEBHOOK=self.url)
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertIn("ESB_HEARTBEAT_URL is not set", err)
+        self.assertEqual(len(self.requests), 1)
+
+    def test_a_heartbeat_that_cannot_be_reached_is_a_failure(self):
+        code, err = self.run_it(
+            ESB_ALERT_WEBHOOK=self.url, ESB_HEARTBEAT_URL="http://127.0.0.1:9/dead"
+        )
+        self.assertEqual(code, 1)
+        self.assertIn("heartbeat delivery FAILED", err)
+
+    def test_both_delivered(self):
+        code, _ = self.run_it(ESB_ALERT_WEBHOOK=self.url, ESB_HEARTBEAT_URL=self.url)
+        self.assertEqual(code, alert.EXIT_OK)
+        self.assertEqual(len(self.requests), 2)
+        self.assertIn("TEST ALERT", self.requests[0][1])
 
 
 class TestCheck(unittest.TestCase):
