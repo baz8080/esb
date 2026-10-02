@@ -1042,28 +1042,56 @@ class TestPartialDays(SiteModelCase):
 
 
 class TestStormDays(unittest.TestCase):
-    UNTIL = datetime(2026, 8, 12, 6, tzinfo=UTC)
+    UNTIL = datetime(2026, 8, 21, 6, tzinfo=UTC)
 
     def starts(self, per_day, planned=False):
+        # a location each, or event_count folds faults sharing a start into one
         return [
-            SimpleNamespace(start=model.midnight(day) + timedelta(hours=12), planned=planned)
+            SimpleNamespace(
+                start=model.midnight(day) + timedelta(hours=12), planned=planned,
+                location=f"{day} {i}", lat=53.0, lon=-7.0,
+            )
             for day, n in per_day.items()
-            for _ in range(n)
+            for i in range(n)
         ]
 
+    def calm(self, last=20):
+        return {date(2026, 8, d): 10 for d in range(1, last + 1)}
+
     def test_a_day_at_the_factor_is_a_storm_and_one_short_of_it_is_not(self):
-        days = {date(2026, 8, d): 10 for d in range(2, 12)}
-        days[date(2026, 8, 5)], days[date(2026, 8, 6)] = 40, 39
-        self.assertEqual(model.storm_days(self.starts(days), self.UNTIL), {"2026-08-05": 40})
+        days = self.calm()
+        days[date(2026, 8, 15)], days[date(2026, 8, 16)] = 40, 39
+        self.assertEqual(model.storm_days(self.starts(days), self.UNTIL), {"2026-08-15": 40})
+
+    def test_a_storm_stays_one_however_busy_the_months_after_it(self):
+        days = self.calm()
+        days[date(2026, 8, 15)] = 40
+        winter = {date(2026, 8, 21) + timedelta(days=i): 30 for i in range(60)}
+        later = datetime(2026, 10, 21, 6, tzinfo=UTC)
+        self.assertIn("2026-08-15", model.storm_days(self.starts(days | winter), later))
+
+    def test_a_day_is_dublins(self):
+        days = self.calm()
+        days[date(2026, 8, 15)] = 39
+        # 23:30 UTC on the 14th is half past midnight on the 15th in Dublin
+        late = SimpleNamespace(
+            start=datetime(2026, 8, 14, 23, 30, tzinfo=UTC), planned=False,
+            location="late", lat=53.0, lon=-7.0,
+        )
+        self.assertIn("2026-08-15", model.storm_days(self.starts(days) + [late], self.UNTIL))
+
+    def test_too_short_a_baseline_judges_nothing(self):
+        days = self.calm()
+        days[date(2026, 8, 4)] = 400
+        self.assertEqual(model.storm_days(self.starts(days), self.UNTIL), {})
 
     def test_planned_works_do_not_make_a_storm(self):
-        days = {date(2026, 8, d): 10 for d in range(2, 12)}
-        planned = self.starts({date(2026, 8, 5): 100}, planned=True)
-        self.assertEqual(model.storm_days(self.starts(days) + planned, self.UNTIL), {})
+        planned = self.starts({date(2026, 8, 15): 100}, planned=True)
+        self.assertEqual(model.storm_days(self.starts(self.calm()) + planned, self.UNTIL), {})
 
     def test_a_corpus_with_no_typical_day_has_no_storm(self):
         """A median of zero would otherwise make every day a storm."""
-        once = self.starts({date(2026, 8, 5): 1})
+        once = self.starts({date(2026, 8, 15): 1})
         self.assertEqual(model.storm_days(once, self.UNTIL), {})
 
 
@@ -1717,7 +1745,9 @@ class TestTheAppScript(unittest.TestCase):
         self.assertIn(".bar i.storm, .legend i.storm", css)
 
     def test_the_prose_states_the_storm_cut_the_model_uses(self):
-        words = {4.0: "four"}
-        self.assertIn(model.STORM_FACTOR, words, "say the new factor in site.html")
-        self.assertIn(f"a day with {words[model.STORM_FACTOR]} times the usual", self.page)
+        factor, weeks = {4.0: "four"}, {28: "four weeks"}
+        self.assertIn(model.STORM_FACTOR, factor, "say the new factor in site.html")
+        self.assertIn(model.STORM_BASELINE_DAYS, weeks, "say the new baseline in site.html")
+        self.assertIn(f"a day with {factor[model.STORM_FACTOR]} times the faults", self.page)
+        self.assertIn(f"in the {weeks[model.STORM_BASELINE_DAYS]}", self.page)
         self.assertIn('<span id="cmp-storms"></span>', self.page)

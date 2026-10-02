@@ -117,8 +117,8 @@
     2024</a>), and the Customer Charter exempts <q>exceptional cases such as
     storms</q>. Nothing in the public feed marks a storm day, so every grade and
     total here counts them. Only the comparison with ESB's own figures leaves
-    out a day with four times the usual number of faults, and the bars hatch
-    those days.</p>
+    out a day with four times the faults of a typical day in the four weeks
+    before it, and the bars hatch those days.</p>
     <p>Counties come from the nearest Census Small Area to each outage's
     coordinates - the feed carries no county field. A "customer" is a meter (a
     home, farm or business), and ESB publishes no per-county count, so the
@@ -561,11 +561,12 @@ function boot() {
   document.getElementById("cmp-caidi").textContent = D.compare.caidi;
   document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
   document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
-  var storms = Object.keys(STORMS).sort().map(fmtDay);
+  // ESB's storm days are its own and unpublished, so the page names this site's
+  var storms = Object.keys(STORMS).sort().map(function (d) { return fmtDate(d, D.observed_iso); });
   var last = storms.pop();
   document.getElementById("cmp-storms").textContent = !last ? "" :
-    " less the storm days ESB would also leave out (" +
-    (storms.length ? storms.join(", ") + " and " : "") + last + ")";
+    ", leaving out " + plural(storms.length + 1, "storm day") + " as ESB leaves out its own (" +
+    (storms.length > 2 ? "the latest " : storms.length ? storms.join(", ") + " and " : "") + last + ")";
   // A hit is an entry point rather than a drill-down, so it is a real link: an
   // area goes straight to its page, and a county keeps its click in the app
   // while still yielding c/<county>.html to a middle-click. `slug` here is

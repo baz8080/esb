@@ -71,17 +71,17 @@ class NationalCase(unittest.TestCase):
         self.assertEqual(len({o.county for o in self.outages}), 26)
 
     def test_the_storm_is_found_and_no_calm_day_is(self):
-        """29-30 September 2026 had 395 and 148 faults; 4 August, the busiest
-        calm day, had 106. See notes/grading.md."""
-        self.assertLessEqual({"2026-09-29", "2026-09-30"}, set(self.storms))
-        self.assertNotIn("2026-08-04", self.storms)
+        """A day's verdict never moves, so the set to 1 October is fixed. The
+        busiest calm day judged, 12 August, is 1.8x. See notes/grading.md."""
+        settled = {d for d in self.storms if d <= "2026-10-01"}
+        self.assertEqual(settled, {"2026-09-29", "2026-09-30"})
 
     def test_duration_per_interrupted_customer_matches_esb(self):
         """The strongest evidence that the timing model is right.
 
         CAIDI is CML divided by CI, so it cancels the customer-count bias
-        entirely and leaves only the clock. Landing within a few minutes of
-        ESB's own figure is what licenses this site to talk about durations.
+        entirely and leaves only the clock. Landing inside this bound of ESB's
+        own figure is what licenses this site to talk about durations.
         """
         customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.calm)
         caidi = customer_minutes / sum(o.customers for o in self.started)

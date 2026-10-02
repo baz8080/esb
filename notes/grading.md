@@ -962,21 +962,37 @@ feed details worth knowing, neither yet a pattern:
 No bound was moved. They did their job: they caught the first storm-inclusive
 figure set against a storm-excluded one.
 
-**A storm day is a Dublin day whose fault starts reach four times the median
-full day's** (`model.STORM_FACTOR`, `model.storm_days`). The 29th is 11.6× the
-median, the 30th 4.4×, the largest calm day 3.1×, so 4× takes both storm days
-and nothing else; 5× would take the 29th alone. The cut is this site's, fitted
-to one storm: ESB's own rule is not in the DAPR passages quoted above or in its
-2012 Performance Reporting Criteria. Re-measure it at the first winter storm.
+**A storm day is a Dublin day with four times the median faults of the full
+days before it, up to 28 of them** (`model.STORM_FACTOR`,
+`STORM_BASELINE_DAYS`, `model.storm_days`), counted as `event_count` counts
+them, so an event across a county line is one fault. A day with fewer than
+seven full days before it is not judged, which leaves 1 to 7 August unjudged,
+4 August's 106 faults among them.
+
+The first cut took one median over the whole corpus, and review caught what
+that meant: every build re-judged every day. The 30th was 4.35× a median of 34
+and would have dropped out once the median passed 37, which an ordinary autumn
+would do, putting its faults back into the cross-check with no new storm and
+failing the suite. Judged against the days before it, a past day's verdict
+does not move, and the baseline follows the season. On the corpus to 2
+October the 29th is 12.4× (390 against a median of 31.5) and the 30th 4.6×;
+the busiest judged calm day is 12 August at 1.8×, so any cut from 2× to 4.5×
+draws the same line. The cut is this site's, fitted to one storm: ESB's own
+rule is not in the DAPR passages quoted above or in its 2012 Performance
+Reporting Criteria. Re-measure it at the first winter storm.
 
 Faults that started on a storm day leave the cross-check and the explainer's
 three figures, and the suite's 24-hour test, because the charter exempts
 storms. The grade, the tiles, the day colours and the county pages' over-24-hour
 counts keep them, as settled. The explainer names the days it left
 out, and the bars hatch them over their colour, with the day's national fault
-count in the caption; the key gains "storm day" in a month that has one. On the
-corpus to 2 October the explainer reads 155.7 a year, 9% more customers, and
-103 minutes against ESB's 85, where it had read 238.0, 42% and 121.
+count in the caption; the key gains "storm day" in a month that has one. A fault
+that began the day before a storm and ran through it stays in, as it does
+under the usual major-event-day convention, which assigns an interruption to
+the day it began. On the corpus to 2 October the explainer reads 155.7 a year,
+9% more customers, and 103 minutes against ESB's 85, where it had read 238.0,
+42% and 121. It names this site's storm days, never ESB's, which ESB does not
+publish: up to three by date, then a count and the latest.
 
 Rejected:
 
