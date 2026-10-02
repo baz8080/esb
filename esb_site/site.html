@@ -53,8 +53,9 @@
     directory of the Census areas this site has recorded outages near, the named ones
     linking to their outage history.</p>
 
-    <p>Storm days are <b>not</b> excluded here, though ESB excludes them from its own
-    published figures, so winter months will read worse than ESB's.</p>
+    <p>Storm days are <b>not</b> excluded from the grades here, though ESB
+    excludes them from its own published figures, so winter months will read
+    worse than ESB's.</p>
 
     <details><summary>What this measures</summary>
     <p><b>The grade is ESB's own published aim:</b> supply restored within
@@ -90,10 +91,11 @@
     href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
     framework</a>). The figure shown against a month on this page is the same
     measure over that month, so it is not the one to hold against those two;
-    the comparable figure is this site's rate across everything collected,
-    about <b id="cmp-cml">–</b> a year. It does not set the grade: the
+    the comparable figure is this site's rate across everything
+    collected<span id="cmp-storms"></span>, about <b id="cmp-cml">–</b> a year.
+    It does not set the grade: the
     feed counts about <b id="cmp-bias">–</b> more interrupted customers than ESB
-    finally settles on, though the durations agree - an implied
+    finally settles on, and the durations come to an implied
     <b id="cmp-caidi">–</b> minutes per interrupted customer against ESB's
     <b id="cmp-esb-caidi">–</b>. A <em>share</em> of customers is immune to that
     overcount; a <em>total</em> of them is not.</p>
@@ -113,8 +115,10 @@
     other utilities (<a
     href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">DAPR
     2024</a>), and the Customer Charter exempts <q>exceptional cases such as
-    storms</q>. Nothing in the public feed identifies a storm day, so this site
-    excludes nothing.</p>
+    storms</q>. Nothing in the public feed marks a storm day, so every grade and
+    total here counts them. Only the comparison with ESB's own figures leaves
+    out a day with four times the usual number of faults, and the bars hatch
+    those days.</p>
     <p>Counties come from the nearest Census Small Area to each outage's
     coordinates - the feed carries no county field. A "customer" is a meter (a
     home, farm or business), and ESB publishes no per-county count, so the
@@ -136,6 +140,7 @@ var D = window.ESB_DATA || null;
 // The first and last days of collection are hours long rather than 24, so their
 // bars are built from less time than the rest and read calmer than they were.
 var PARTIAL = (D && D.partial) || [];
+var STORMS = (D && D.storms) || {};
 var HIST = window.ESB_CASES = window.ESB_CASES || {};
 var HSTATE = {};
 var curMonth = null, curCounty = null;
@@ -259,7 +264,9 @@ function describeCell(ch, date) {
   else if (b === 5) cap = day + ": planned works only";
   else if (b === 0) cap = day + ": no significant fault";
   else cap = day + ": " + BUCKET[b] + " fault disruption";
-  return ["b" + b, cap, b < 8];
+  var storm = b < 8 && STORMS[date];
+  if (storm) cap += " - a storm day, " + num(storm) + " faults across Ireland";
+  return ["b" + b + (storm ? " storm" : ""), cap, b < 8];
 }
 function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 
@@ -313,11 +320,13 @@ function gradeChip(g, faults) {
 // same site.css rules that colour the cells, so the key cannot drift from the
 // bars. The only copy since the county page stopped rendering a bar.
 function legendHtml() {
-  return [["b0", "no significant fault"], ["b1", "minor"], ["b2", "moderate"],
-          ["b3", "major"], ["b4", "severe"], ["b5", "planned works"], ["b8", "no data"]]
-    .map(function (l) {
-      return '<span><i class="' + l[0] + '"></i>' + l[1] + "</span>";
-    }).join("");
+  var keys = [["b0", "no significant fault"], ["b1", "minor"], ["b2", "moderate"],
+              ["b3", "major"], ["b4", "severe"], ["b5", "planned works"], ["b8", "no data"]];
+  if (Object.keys(STORMS).some(function (d) { return d.slice(0, 7) === curMonth; }))
+    keys.push(["storm", "storm day"]);
+  return keys.map(function (l) {
+    return '<span><i class="' + l[0] + '"></i>' + l[1] + "</span>";
+  }).join("");
 }
 
 /* --- overview ------------------------------------------------------------ */
@@ -552,6 +561,11 @@ function boot() {
   document.getElementById("cmp-caidi").textContent = D.compare.caidi;
   document.getElementById("cmp-esb-caidi").textContent = D.compare.esb_caidi;
   document.getElementById("cmp-bias").textContent = D.compare.bias + "%";
+  var storms = Object.keys(STORMS).sort().map(fmtDay);
+  var last = storms.pop();
+  document.getElementById("cmp-storms").textContent = !last ? "" :
+    " less the storm days ESB would also leave out (" +
+    (storms.length ? storms.join(", ") + " and " : "") + last + ")";
   // A hit is an entry point rather than a drill-down, so it is a real link: an
   // area goes straight to its page, and a county keeps its click in the app
   // while still yielding c/<county>.html to a middle-click. `slug` here is

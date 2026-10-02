@@ -16,7 +16,8 @@ import calendar
 import csv
 import math
 import sqlite3
-from collections import defaultdict
+import statistics
+from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
@@ -90,6 +91,10 @@ CHARTER_TARGET_SHARE = 95.0
 # The charter's other number: past this, compensation is due, and it is the
 # point at which an outage stops being an inconvenience.
 CHARTER_COMPENSATION_HOURS = 24.0
+
+# A day with this many times the median day's fault starts is a storm day. The cut
+# is this site's: ESB publishes no rule for the storm days it removes.
+STORM_FACTOR = 4.0
 
 GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0), ("E", 60.0))
 
@@ -1120,6 +1125,32 @@ def reason_label(reason):
     """
     reason = (reason or "").strip()
     return PLANNED_REASONS.get(reason.upper(), reason.lower())
+
+
+def storm_days(outages, until):
+    """{Dublin date: faults started} for every day reaching STORM_FACTOR times
+    the median full day. ESB leaves storm days out of the figures it publishes
+    and the feed marks none, so a comparison with those figures finds its own."""
+    counts = Counter(
+        local(o.start).date()
+        for o in outages
+        if not o.planned and COLLECTION_START <= o.start < until
+    )
+    first = local(COLLECTION_START).date()
+    last = local(until - timedelta(microseconds=1)).date()
+    full = [counts[first + timedelta(days=i)] for i in range(1, (last - first).days)]
+    median = statistics.median(full) if full else 0
+    if not median:
+        return {}
+    return {
+        d.isoformat(): n
+        for d, n in sorted(counts.items())
+        if n >= STORM_FACTOR * median
+    }
+
+
+def off_storm_days(outages, storms):
+    return [o for o in outages if local(o.start).date().isoformat() not in storms]
 
 
 def national_ci(outages, until):

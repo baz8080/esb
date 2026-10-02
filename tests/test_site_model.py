@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import tempfile
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1041,6 +1041,32 @@ class TestPartialDays(SiteModelCase):
         self.assertEqual(model.partial_days(until)[-1], "2026-08-13")
 
 
+class TestStormDays(unittest.TestCase):
+    UNTIL = datetime(2026, 8, 12, 6, tzinfo=UTC)
+
+    def starts(self, per_day, planned=False):
+        return [
+            SimpleNamespace(start=model.midnight(day) + timedelta(hours=12), planned=planned)
+            for day, n in per_day.items()
+            for _ in range(n)
+        ]
+
+    def test_a_day_at_the_factor_is_a_storm_and_one_short_of_it_is_not(self):
+        days = {date(2026, 8, d): 10 for d in range(2, 12)}
+        days[date(2026, 8, 5)], days[date(2026, 8, 6)] = 40, 39
+        self.assertEqual(model.storm_days(self.starts(days), self.UNTIL), {"2026-08-05": 40})
+
+    def test_planned_works_do_not_make_a_storm(self):
+        days = {date(2026, 8, d): 10 for d in range(2, 12)}
+        planned = self.starts({date(2026, 8, 5): 100}, planned=True)
+        self.assertEqual(model.storm_days(self.starts(days) + planned, self.UNTIL), {})
+
+    def test_a_corpus_with_no_typical_day_has_no_storm(self):
+        """A median of zero would otherwise make every day a storm."""
+        once = self.starts({date(2026, 8, 5): 1})
+        self.assertEqual(model.storm_days(once, self.UNTIL), {})
+
+
 class TestMonthList(unittest.TestCase):
     """A month reaches the strip on its first day, not on its first evening."""
 
@@ -1682,3 +1708,16 @@ class TestTheAppScript(unittest.TestCase):
     def test_a_malformed_link_cannot_throw_out_of_route(self):
         route = self.page.split("function route(", 1)[1].split("\nfunction ", 1)[0]
         self.assertIn("try { curCounty = m ? decodeURIComponent(m[1])", route)
+
+    def test_a_storm_day_is_marked_in_the_bars_and_the_key(self):
+        cell = self.page.split("function describeCell(", 1)[1].split("\nfunction ", 1)[0]
+        self.assertIn('(storm ? " storm" : "")', cell)
+        self.assertIn('keys.push(["storm", "storm day"])', self.page)
+        css = (Path(model.__file__).parent / "site.css").read_text()
+        self.assertIn(".bar i.storm, .legend i.storm", css)
+
+    def test_the_prose_states_the_storm_cut_the_model_uses(self):
+        words = {4.0: "four"}
+        self.assertIn(model.STORM_FACTOR, words, "say the new factor in site.html")
+        self.assertIn(f"a day with {words[model.STORM_FACTOR]} times the usual", self.page)
+        self.assertIn('<span id="cmp-storms"></span>', self.page)
