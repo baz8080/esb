@@ -69,3 +69,10 @@ ul.areas li .p { color: var(--muted); font-size: 12px; font-variant-numeric: tab
    read as a stray horizontal rule above one. The index, whose footer is a
    block of prose, opts back in at the bottom of site.html. */
 footer { margin-top: 26px; padding-top: 0; border-top: 0; }
+
+/* A storm day is hatched over its colour, which still says what the county saw. */
+.bar i.storm, .legend i.storm {
+  background-image: repeating-linear-gradient(
+    135deg, transparent 0 2px, color-mix(in srgb, var(--ink) 55%, transparent) 2px 3.5px);
+}
+.legend i.storm { background-color: var(--cell-empty); }
