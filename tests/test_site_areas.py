@@ -183,7 +183,7 @@ class AreaSiteCase(SiteModelCase):
         self._out = tempfile.TemporaryDirectory()
         self.addCleanup(self._out.cleanup)
         self.out = Path(self._out.name)
-        render.write(self.out, outages, index, SEPT, self.until)
+        self.data = render.write(self.out, outages, index, SEPT, self.until)
 
     def more(self):
         """Observations a subclass adds before the site is built."""
@@ -357,6 +357,26 @@ class TestTheRestOfTheSite(AreaSiteCase):
         page = self.page("c/dublin.html")
         self.assertIn("Areas with an outage", page)
         self.assertIn('href="../a/dublin/skerries.html"', page)
+
+    def test_the_payload_is_in_the_index_and_in_no_file_of_its_own(self):
+        index = self.page("index.html")
+        self.assertNotIn('src="data.js"', index)
+        self.assertFalse((self.out / "data.js").exists())
+        start = index.index("window.ESB_DATA = ") + len("window.ESB_DATA = ")
+        script = index[start : index.index("</script>", start)]
+        inline = json.loads(script.strip().rstrip(";"))
+        self.assertEqual(inline, json.loads(render._dumps(self.data)))
+
+    def test_nothing_else_the_site_ships_reads_data_js(self):
+        for path in [*self.out.rglob("*.html"), *self.out.rglob("*.js")]:
+            self.assertNotIn("data.js", path.read_text(), path.name)
+
+    def test_a_name_cannot_end_the_inline_script_early(self):
+        script = render._inline_data({"counties": ["a</script><!--b"]})
+        self.assertNotIn("<", script)
+        self.assertEqual(
+            json.loads(script.split(" = ", 1)[1].rstrip(";")), {"counties": ["a</script><!--b"]}
+        )
 
     def test_the_app_footer_links_the_directory(self):
         self.assertIn('href="areas.html"', self.page("index.html"))

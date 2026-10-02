@@ -697,3 +697,49 @@ a JS engine in a build that is standard library only, to get a number the gate
 already reaches. The pin also brings `scrollbar-gutter: stable` (the 0.634 above)
 and comment stripping from the inline script and style; a site marker inside a
 JS or CSS comment would now be filled and then stripped, so none may sit in one.
+
+## The payload rides in index.html - 2026-10-02
+
+`data.js` was 9.8 KB raw and 3.0 KB gzipped, and the app could draw nothing
+until it had made a round trip for it. It is now an inline script in
+`index.html` (`window.ESB_DATA = ...;`, filled at the `<!--DATA-->` marker by
+`render._inline_data`) and `data.js` is no longer written. Same harness as the
+entry above, seven runs, median:
+
+| | before | held back (previous entry) | inlined |
+|---|---|---|---|
+| LCP mobile | 584 ms | 560 ms | 388 ms |
+| LCP desktop | 592 ms | 596 ms | 264 ms |
+| index.html + data.js, gzipped | 21.3 + 3.0 KB | 14.0 + 3.0 KB | 17.1 KB, one response |
+
+Mobile LCP is two modes, about 240 ms when the first paint already includes the
+render and about 400 ms when the parser yields to a paint of the header first;
+both beat the 584 ms of the page waiting for a second file. The bytes do not
+move, because the data had to arrive anyway; the second request is what went.
+
+- **The initial-load budget still measures the initial load.** `size_report`
+  counts `index.html` and `data.js` if it exists, so the 500 KB figure is now
+  `index.html` alone, 53.6 KB raw before and after. `PayloadCase` asserts there
+  is no `data.js` beside the page, because a stale one would be counted twice,
+  and that the page is larger than the payload, so the budget cannot silently
+  stop covering it.
+- **`<` is escaped as `<`**, so no name can end the script or open a
+  comment early. The payload round-trips through `assemble()`'s comment
+  stripping to the same JSON (tested against the build's own `data`).
+- **The cache-skew guard went.** `noDataYet` fell back to the month order for a
+  `data.js` cached from before `nodata` existed. A page now carries the payload
+  it was built with, so the fallback could not run; the one place the index and
+  its data could disagree is gone.
+- Nothing else read `data.js`: no script, workflow, sitemap or other page. The
+  county and area pages never pulled it, and their tests still assert that.
+  `file://` works as before, and so do the missing-data cases: a payload of
+  `{}` throws in `boot()` and `load` releases the footer, and no payload at all
+  still says "Could not load".
+
+Rejected: `<link rel="preload" href="data.js">`, which keeps the second file and
+only starts it earlier: LCP 548 ms mobile and 568 ms desktop against 560 and
+596 without it, which is inside the noise. Rejected: writing `data.js` for one
+more deploy, for a tab holding the old `index.html`. GitHub Pages serves
+`max-age=600`, so the window is ten minutes, the failure is the "try
+reloading" line the page already has, and the file would be counted against the
+budget until someone remembered to delete it.

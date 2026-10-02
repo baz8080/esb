@@ -243,10 +243,15 @@ class PayloadCase(unittest.TestCase):
         total, report = render.size_report(self.dir)
         self.assertLess(total, self.BUDGET, f"\n{report}")
 
+    def test_the_budget_counts_the_payload_because_it_is_in_the_page(self):
+        self.assertFalse((self.dir / "data.js").exists())
+        payload = len(render._dumps(self.data).encode())
+        self.assertGreater((self.dir / "index.html").stat().st_size, payload)
+
     def test_the_payload_carries_no_per_outage_records(self):
         """The budget holds only because individual outages live in the shards.
 
-        A failure here means something started copying cases into data.js, which
+        A failure here means something started copying cases into the payload, which
         is the one change that would put the front page on a path to breaking
         the budget as the archive grows.
         """
