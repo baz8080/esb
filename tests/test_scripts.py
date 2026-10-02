@@ -1,5 +1,6 @@
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -57,7 +58,9 @@ class BackupTestCase(unittest.TestCase):
         if not shutil.which("flock") and os.environ.get("CI") != "true":
             stand_in = root / "bin" / "flock"
             stand_in.parent.mkdir()
-            stand_in.write_text(f"#!{sys.executable}" + FLOCK)
+            # A shebang line cannot hold an interpreter path with a space in it.
+            python = shlex.quote(sys.executable)
+            stand_in.write_text(f'#!/bin/sh\nexec {python} -c {shlex.quote(FLOCK)} "$@"\n')
             stand_in.chmod(0o755)
             self.env["PATH"] = f"{stand_in.parent}{os.pathsep}{self.env['PATH']}"
 
