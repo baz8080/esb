@@ -14,7 +14,11 @@
 <!--SITE-CSS-->
   /* The one footer that is a block of prose, so it keeps base.css's rule
      above it; site.css turns that off for the static pages. */
-  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); }</style>
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); }
+  /* The overview's first margin collapsed out through main and the county view's did not,
+     so main moved 20px when a #county/ link replaced the banner: CLS 0.018 on a phone. */
+  main::before { content: ""; display: table; }</style>
+<!--UI-WAIT-->
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
 <body>
@@ -31,30 +35,31 @@
         <span id="natline">Loading…</span>
         <span class="meta" id="natmeta"></span>
       </div>
-      <div class="controls">
+      <div class="controls" data-wait>
         <div class="months" id="months"></div>
         <div class="search">
           <input id="q" type="search" placeholder="Search a town or county" autocomplete="off" aria-label="Search a town or county">
           <div class="results" id="results" hidden></div>
         </div>
       </div>
-      <p class="basis" id="basis"></p>
-      <div class="legend" id="legend"></div>
-      <div id="list"></div>
-      <h3 class="natheading" id="natHeading"></h3>
-      <div class="tiles" id="tiles"></div>
+      <p class="basis" id="basis" data-wait></p>
+      <div class="legend" id="legend" data-wait></div>
+      <div id="list" data-wait></div>
+      <h3 class="natheading" id="natHeading" data-wait></h3>
+      <div class="tiles" id="tiles" data-wait></div>
     </section>
 
     <section id="countyview" hidden></section>
   </main>
 
-  <footer>
+  <footer data-wait>
     <p><a href="areas.html" style="color:inherit">Every area with an outage</a> - a full
     directory of the Census areas this site has recorded outages near, the named ones
     linking to their outage history.</p>
 
-    <p>Storm days are <b>not</b> excluded here, though ESB excludes them from its own
-    published figures, so winter months will read worse than ESB's.</p>
+    <p>Storm days are <b>not</b> excluded from the grades here, though ESB
+    excludes them from its own published figures, so winter months will read
+    worse than ESB's.</p>
 
     <details><summary>What this measures</summary>
     <p><b>The grade is ESB's own published aim:</b> supply restored within
@@ -90,10 +95,11 @@
     href="https://cruie-live-96ca64acab2247eca8a850a7e54b-5b34f62.divio-media.com/documents/CRU20154-PR5-Regulatory-Framework-Incentives-and-Reporting-1.pdf">PR5
     framework</a>). The figure shown against a month on this page is the same
     measure over that month, so it is not the one to hold against those two;
-    the comparable figure is this site's rate across everything collected,
-    about <b id="cmp-cml">–</b> a year. It does not set the grade: the
+    the comparable figure is this site's rate across everything collected
+    except storm days, which ESB leaves out of its own, about
+    <b id="cmp-cml">–</b> a year. It does not set the grade: the
     feed counts about <b id="cmp-bias">–</b> more interrupted customers than ESB
-    finally settles on, though the durations agree - an implied
+    finally settles on, and the durations come to an implied
     <b id="cmp-caidi">–</b> minutes per interrupted customer against ESB's
     <b id="cmp-esb-caidi">–</b>. A <em>share</em> of customers is immune to that
     overcount; a <em>total</em> of them is not.</p>
@@ -113,8 +119,9 @@
     other utilities (<a
     href="https://media.esbnetworks.ie/media/docs/default-source/publications/distribution-annual-performance-report-2024.pdf">DAPR
     2024</a>), and the Customer Charter exempts <q>exceptional cases such as
-    storms</q>. Nothing in the public feed identifies a storm day, so this site
-    excludes nothing.</p>
+    storms</q>. Nothing in the public feed marks a storm day, so every grade and
+    total here counts them. Only the comparison with ESB's own figures leaves
+    out a day with 140 or more faults, and the bars hatch those days.</p>
     <p>Counties come from the nearest Census Small Area to each outage's
     coordinates - the feed carries no county field. A "customer" is a meter (a
     home, farm or business), and ESB publishes no per-county count, so the
@@ -126,7 +133,9 @@
   </footer>
 </div>
 
-<script src="data.js"></script>
+<script>
+<!--DATA-->
+</script>
 <script>
 <!--UI-JS-->
 </script>
@@ -136,6 +145,7 @@ var D = window.ESB_DATA || null;
 // The first and last days of collection are hours long rather than 24, so their
 // bars are built from less time than the rest and read calmer than they were.
 var PARTIAL = (D && D.partial) || [];
+var STORMS = (D && D.storms) || [];
 var HIST = window.ESB_CASES = window.ESB_CASES || {};
 var HSTATE = {};
 var curMonth = null, curCounty = null;
@@ -259,7 +269,8 @@ function describeCell(ch, date) {
   else if (b === 5) cap = day + ": planned works only";
   else if (b === 0) cap = day + ": no significant fault";
   else cap = day + ": " + BUCKET[b] + " fault disruption";
-  return ["b" + b, cap, b < 8];
+  var storm = b < 8 && STORMS.indexOf(date) >= 0;
+  return ["b" + b + (storm ? " storm" : ""), cap + (storm ? " - storm day" : ""), b < 8];
 }
 function bar(cells, ym) { return dayCells(cells, ym, describeCell, PARTIAL); }
 
@@ -313,11 +324,12 @@ function gradeChip(g, faults) {
 // same site.css rules that colour the cells, so the key cannot drift from the
 // bars. The only copy since the county page stopped rendering a bar.
 function legendHtml() {
-  return [["b0", "no significant fault"], ["b1", "minor"], ["b2", "moderate"],
-          ["b3", "major"], ["b4", "severe"], ["b5", "planned works"], ["b8", "no data"]]
-    .map(function (l) {
-      return '<span><i class="' + l[0] + '"></i>' + l[1] + "</span>";
-    }).join("");
+  var keys = [["b0", "no significant fault"], ["b1", "minor"], ["b2", "moderate"],
+              ["b3", "major"], ["b4", "severe"], ["b5", "planned works"], ["b8", "no data"]];
+  if (STORMS.some(function (d) { return d.slice(0, 7) === curMonth; })) keys.push(["storm", "storm day"]);
+  return keys.map(function (l) {
+    return '<span><i class="' + l[0] + '"></i>' + l[1] + "</span>";
+  }).join("");
 }
 
 /* --- overview ------------------------------------------------------------ */
@@ -388,8 +400,7 @@ function renderOverview() {
 }
 
 /* --- county -------------------------------------------------------------- */
-// A data.js cached from before `nodata` existed falls back to the month order.
-function noDataYet(ym) { return D.nodata ? D.nodata.indexOf(ym) >= 0 : ym > D.observed_month; }
+function noDataYet(ym) { return D.nodata.indexOf(ym) >= 0; }
 
 function renderCounty() {
   var el = document.getElementById("countyview"), c = curCounty;
@@ -529,6 +540,9 @@ function render() {
   document.getElementById("overview").hidden = county;
   document.getElementById("countyview").hidden = !county;
   if (county) renderCounty(); else renderOverview();
+  // Before the reveal: a [data-wait] month strip measures zero and would not scroll.
+  // The footer waits for a shard because it would land after the first paint and push it down.
+  pending(county && HSTATE[curCounty] === "loading");
   revealMonthTab(document.getElementById(county ? "countyview" : "overview").querySelector(".months"));
 }
 
@@ -537,6 +551,7 @@ function boot() {
   if (!D) {
     document.getElementById("natline").textContent =
       "Could not load the data for this page. Try reloading.";
+    pending(false);
     return;
   }
   curMonth = D.months[D.months.length - 1];

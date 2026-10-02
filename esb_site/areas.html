@@ -25,6 +25,19 @@
 
   /* clears the two-line nav at desktop widths */
   section { margin-top: 26px; scroll-margin-top: 104px; }
+  /* Only where the clip margin is honoured: Safari skips but would cut the focus rings.
+     A search draws every section, because one already drawn keeps its height. */
+  @supports (overflow-clip-margin: 6px) {
+    section {
+      content-visibility: auto; overflow-clip-margin: 6px;
+      contain-intrinsic-size: auto calc(var(--n) * var(--row) + 44px);
+    }
+    .searching section { content-visibility: visible; }
+  }
+  /* a row's share of the height: two columns, which wrap below about 800px */
+  section { --row: 13.3px; }
+  @media (max-width: 799px) { section { --row: 14.5px; } }
+  @media (max-width: 689px) { section { --row: 18px; } }
   section h2 { font-size: 16px; font-weight: 650; padding-bottom: 6px;
                border-bottom: 1px solid var(--grid); }
   section h2 span { color: var(--muted); font-weight: 400; font-size: 13px; }
@@ -49,6 +62,7 @@
     nav { position: static; max-height: none; }
     section { scroll-margin-top: 12px; }
   }
+  @media (max-width: 640px) { section { --row: 26.6px; } }
 
   /* One line where the rows begin: it is about what a click does, and two
      thirds of the rows land on a county page. */
@@ -110,6 +124,7 @@
       }
       sec.hidden = !!s && !any;
     }
+    document.body.classList.toggle("searching", !!s);
     // half its links would scroll to a hidden section during a search
     nav.hidden = !!s;
     count.textContent = s

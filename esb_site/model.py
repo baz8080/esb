@@ -16,7 +16,7 @@ import calendar
 import csv
 import math
 import sqlite3
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
@@ -90,6 +90,10 @@ CHARTER_TARGET_SHARE = 95.0
 # The charter's other number: past this, compensation is due, and it is the
 # point at which an outage stops being an inconvenience.
 CHARTER_COMPENSATION_HOURS = 24.0
+
+# A Dublin day with this many faults started is a storm day. The cut is this
+# site's: ESB publishes no rule for the storm days it leaves out of its figures.
+STORM_FAULTS = 140
 
 GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0), ("E", 60.0))
 
@@ -1120,6 +1124,17 @@ def reason_label(reason):
     """
     reason = (reason or "").strip()
     return PLANNED_REASONS.get(reason.upper(), reason.lower())
+
+
+def storm_days(outages):
+    counts = Counter(
+        local(o.start).date().isoformat() for o in outages if o.start and not o.planned
+    )
+    return sorted(d for d, n in counts.items() if n >= STORM_FAULTS)
+
+
+def off_storm_days(outages, storms):
+    return [o for o in outages if not (o.start and local(o.start).date().isoformat() in storms)]
 
 
 def national_ci(outages, until):

@@ -10,7 +10,7 @@ from __future__ import annotations
 import math
 import tempfile
 import unittest
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1041,6 +1041,18 @@ class TestPartialDays(SiteModelCase):
         self.assertEqual(model.partial_days(until)[-1], "2026-08-13")
 
 
+class TestStormDays(unittest.TestCase):
+    def test_a_day_with_the_threshold_of_faults_is_a_storm(self):
+        def faults(day, n, planned=False):
+            start = model.midnight(day) + timedelta(hours=12)
+            return [SimpleNamespace(start=start, planned=planned)] * n
+
+        n = model.STORM_FAULTS
+        outages = (faults(date(2026, 9, 29), n) + faults(date(2026, 9, 30), n - 1)
+                   + faults(date(2026, 10, 1), n, planned=True))
+        self.assertEqual(model.storm_days(outages), ["2026-09-29"])
+
+
 class TestMonthList(unittest.TestCase):
     """A month reaches the strip on its first day, not on its first evening."""
 
@@ -1576,7 +1588,7 @@ class TestDublinDisplay(SiteModelCase):
 
     def test_the_app_reads_no_data_yet_from_the_payload_everywhere(self):
         page = (Path(model.__file__).parent / "site.html").read_text()
-        self.assertIn("function noDataYet(ym) { return D.nodata ? D.nodata.indexOf(ym) >= 0", page)
+        self.assertIn("function noDataYet(ym) { return D.nodata.indexOf(ym) >= 0; }", page)
         # "so far" belongs to the newest listed month only, and only once data reaches it
         self.assertIn("var partial = curMonth === D.months[D.months.length - 1] && "
                       "!noDataYet(curMonth)", page)
@@ -1682,3 +1694,7 @@ class TestTheAppScript(unittest.TestCase):
     def test_a_malformed_link_cannot_throw_out_of_route(self):
         route = self.page.split("function route(", 1)[1].split("\nfunction ", 1)[0]
         self.assertIn("try { curCounty = m ? decodeURIComponent(m[1])", route)
+
+    def test_storm_days_are_hatched_and_the_prose_states_the_cut(self):
+        self.assertIn('(storm ? " storm" : "")', self.page)
+        self.assertIn(f"a day with {model.STORM_FAULTS} or more faults", self.page)

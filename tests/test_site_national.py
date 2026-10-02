@@ -49,16 +49,19 @@ class NationalCase(unittest.TestCase):
         # the window the site publishes against.
         cls.lo, cls.hi = model.COLLECTION_START, cls.until
         cls.faults = [o for o in cls.outages if not o.planned]
+        # ESB's published figures leave storm days out, so the comparisons do too.
+        cls.storms = model.storm_days(cls.outages)
+        cls.calm = model.off_storm_days(cls.faults, cls.storms)
         # Only outages that began inside the window can be counted as
         # interruptions, or the rate is inflated by ones already under way.
-        cls.started = [o for o in cls.faults if o.start >= cls.lo]
+        cls.started = [o for o in cls.calm if o.start >= cls.lo]
 
     @property
     def years(self):
         return (self.hi - self.lo).total_seconds() / (365 * 86400)
 
     def national_cml(self):
-        return model.national_cml(self.outages, self.until)
+        return model.national_cml(self.calm, self.until)
 
     def national_ci(self):
         return sum(o.customers for o in self.started) / model.NATIONAL_CUSTOMERS / self.years
@@ -67,14 +70,18 @@ class NationalCase(unittest.TestCase):
         self.assertEqual(self.unplaced, 0)
         self.assertEqual(len({o.county for o in self.outages}), 26)
 
+    def test_the_storm_is_found_and_no_calm_day_is(self):
+        settled = {d for d in self.storms if d <= "2026-10-01"}
+        self.assertEqual(settled, {"2026-09-29", "2026-09-30"})
+
     def test_duration_per_interrupted_customer_matches_esb(self):
         """The strongest evidence that the timing model is right.
 
         CAIDI is CML divided by CI, so it cancels the customer-count bias
-        entirely and leaves only the clock. Landing within a few minutes of
-        ESB's own figure is what licenses this site to talk about durations.
+        entirely and leaves only the clock. Landing inside this bound of ESB's
+        own figure is what licenses this site to talk about durations.
         """
-        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.faults)
+        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.calm)
         caidi = customer_minutes / sum(o.customers for o in self.started)
         self.assertAlmostEqual(caidi, ESB_CAIDI, delta=25.0, msg=f"CAIDI {caidi:.1f} min")
 
@@ -129,7 +136,7 @@ class NationalCase(unittest.TestCase):
         """ESB names a restore time on nearly every fault and keeps most of
         them. A share far outside this band means the estimate or the restore
         time is being read wrongly, not that ESB changed overnight."""
-        judged = [o for o in self.started if not o.ongoing]
+        judged = [o for o in self.faults if o.start >= self.lo and not o.ongoing]
         share, estimates = model.estimate_share(judged)
         restored = sum(1 for o in judged if o.end_src == "restored")
         self.assertGreater(estimates / restored, 0.9, "most restored faults carry an estimate")
@@ -137,13 +144,14 @@ class NationalCase(unittest.TestCase):
         self.assertLess(share, 95.0, f"{share:.1f}% of estimates kept")
 
     def test_almost_nothing_reaches_the_compensation_threshold(self):
-        """24 hours is where the charter starts paying out. It should be rare."""
+        """24 hours is where the charter starts paying out, storms exempt. It
+        should be rare."""
         over = [
             o
-            for o in self.faults
+            for o in self.calm
             if o.minutes / 60.0 > model.CHARTER_COMPENSATION_HOURS
         ]
-        self.assertLess(len(over) / len(self.faults), 0.01)
+        self.assertLess(len(over) / len(self.calm), 0.01)
 
     def test_national_cml_tracks_the_bias_and_nothing_else(self):
         """CML should be off by the same factor CI is, and no more.
@@ -201,7 +209,7 @@ class NationalCase(unittest.TestCase):
         compare = render.build(self.outages, self.index, self.now, self.until)[0][
             "compare"
         ]
-        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.faults)
+        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.calm)
         caidi = customer_minutes / sum(o.customers for o in self.started)
         window = (self.hi - self.lo).total_seconds() / 60.0
         cml = customer_minutes / model.NATIONAL_CUSTOMERS * model.MINUTES_PER_YEAR / window
@@ -233,6 +241,7 @@ class PayloadCase(unittest.TestCase):
         outages, _, until = model.load_outages(DB_PATH, index, now)
         cls._tmp = tempfile.TemporaryDirectory()
         cls.dir = Path(cls._tmp.name)
+        (cls.dir / "data.js").write_text("window.ESB_DATA = {};")  # a build from before
         cls.data = render.write(cls.dir, outages, index, now, until)
 
     @classmethod
@@ -243,10 +252,15 @@ class PayloadCase(unittest.TestCase):
         total, report = render.size_report(self.dir)
         self.assertLess(total, self.BUDGET, f"\n{report}")
 
+    def test_the_budget_counts_the_payload_because_it_is_in_the_page(self):
+        self.assertFalse((self.dir / "data.js").exists())
+        page = (self.dir / "index.html").read_text(encoding="utf-8")
+        self.assertIn(render._inline_data(self.data), page)
+
     def test_the_payload_carries_no_per_outage_records(self):
         """The budget holds only because individual outages live in the shards.
 
-        A failure here means something started copying cases into data.js, which
+        A failure here means something started copying cases into the payload, which
         is the one change that would put the front page on a path to breaking
         the budget as the archive grows.
         """
@@ -255,7 +269,7 @@ class PayloadCase(unittest.TestCase):
             {
                 "generated", "observed", "observed_iso", "observed_month", "nodata",
                 "stale_hours",
-                "partial", "daygate", "compare",
+                "partial", "daygate", "storms", "compare",
                 "start", "months", "esb",
                 "counties", "customers", "stats", "national",
             },
