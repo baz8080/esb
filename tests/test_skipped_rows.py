@@ -70,6 +70,21 @@ class SkippedRowsCase(AreaSiteCase):
         for n, body in found:
             self.assertEqual(int(n), body.count("<li"))
 
+    def test_a_search_draws_every_section_because_a_drawn_one_keeps_its_height(self):
+        page = self.page("areas.html")
+        self.assertIn(".searching section { content-visibility: visible; }", page)
+        self.assertIn('document.body.classList.toggle("searching", !!s);', page)
+
+    def test_nothing_skips_where_the_clip_margin_is_not_honoured(self):
+        gate = "@supports (overflow-clip-margin: 6px)"
+        for rel in ("areas.html", "c/dublin.html"):
+            css = _stylesheet(self.page(rel))
+            for m in re.finditer("content-visibility: auto", css):
+                opened = css.rfind(gate, 0, m.start())
+                self.assertNotEqual(opened, -1, rel)
+                between = css[opened:m.start()]
+                self.assertGreater(between.count("{") - between.count("}"), 1, rel)
+
 
 if __name__ == "__main__":
     unittest.main()

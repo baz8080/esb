@@ -241,6 +241,7 @@ class PayloadCase(unittest.TestCase):
         outages, _, until = model.load_outages(DB_PATH, index, now)
         cls._tmp = tempfile.TemporaryDirectory()
         cls.dir = Path(cls._tmp.name)
+        (cls.dir / "data.js").write_text("window.ESB_DATA = {};")  # a build from before
         cls.data = render.write(cls.dir, outages, index, now, until)
 
     @classmethod
@@ -253,8 +254,8 @@ class PayloadCase(unittest.TestCase):
 
     def test_the_budget_counts_the_payload_because_it_is_in_the_page(self):
         self.assertFalse((self.dir / "data.js").exists())
-        payload = len(render._dumps(self.data).encode())
-        self.assertGreater((self.dir / "index.html").stat().st_size, payload)
+        page = (self.dir / "index.html").read_text(encoding="utf-8")
+        self.assertIn(render._inline_data(self.data), page)
 
     def test_the_payload_carries_no_per_outage_records(self):
         """The budget holds only because individual outages live in the shards.

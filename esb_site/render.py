@@ -1026,6 +1026,8 @@ def write(site_dir, outages, sa_index, now, until):
         _page(SITE_HTML, {"CANONICAL": f"{BASE_URL}/", "DATA": _inline_data(data)}),
         encoding="utf-8",
     )
+    # a data.js left by a build before the payload was inlined would be counted
+    (site_dir / "data.js").unlink(missing_ok=True)
     # ESB_PLACES, not ESB_SEARCH: search.js is fetched lazily, so a tab opened
     # before a deploy pairs its own inlined ui.js with the current file. The
     # entries carry a slug now, and the old searchHits calls toLowerCase on

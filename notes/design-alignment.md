@@ -723,7 +723,7 @@ move, because the data had to arrive anyway; the second request is what went.
   is no `data.js` beside the page, because a stale one would be counted twice,
   and that the page is larger than the payload, so the budget cannot silently
   stop covering it.
-- **`<` is escaped as `<`**, so no name can end the script or open a
+- **`<` is escaped as `\u003c`**, so no name can end the script or open a
   comment early. The payload round-trips through `assemble()`'s comment
   stripping to the same JSON (tested against the build's own `data`).
 - **The cache-skew guard went.** `noDataYet` fell back to the month order for a
@@ -804,3 +804,11 @@ which made it worse (0.16 to 0.33 on desktop: `:target` applies after the first
 paint and the rows above then grow); and exempting the last twelve rows, which
 only moved the join (0.10 on desktop, 0.73 on a phone). Not done: the app's own
 county view, whose lists are one month and carry no ids.
+
+### Amended after review, 2026-10-02
+
+- **A search draws every section.** Chromium gives every `content-visibility: auto` element `contain-intrinsic-size: auto`, so a county section drawn once kept its unfiltered height while skipped, and a search after scrolling the directory left a 25,089 px page over 4,190 px of rows at 1366 px (54,359 over 6,107 at 500). The filter now adds `.searching` to the body, which turns the skipping off: the filtered page measures exactly its rows (4,190 and 6,184 px). Clearing leaves sections their filtered height until they are near, so the scrollbar runs short for a while (18,710 against 31,479 px); anchor jumps after clearing measured 0 at 1366 and 412 px. uisce found and fixed the same thing the same day.
+- **The row's share follows the column width.** Between 641 and about 800 px the two columns are narrow enough that names wrap, and the 13.3 px desktop share left the estimate 29% short at 641 px and 13% at 700. `--row` is now 18 px to 689 px and 14.5 px to 799: 9% short at 641, 7% at 700, 5% over at 760, and unchanged at 820 and wider.
+- **Nothing skips where the clip margin is not honoured.** Safari supports `content-visibility: auto` but not `overflow-clip-margin`, so it would cut the timeline dots (4 px outside a case) and the focus rings the margin exists for. Both rules sit inside `@supports (overflow-clip-margin: 6px)`; Safari gets the page as it was before.
+- **The stray-`data.js` guard is real.** `write()` now deletes a `data.js` left by an earlier build, and `PayloadCase` seeds one before building and checks the page carries the payload itself, rather than only being larger than it.
+- **Not fixed here:** a county shard that lands after statusui's 10 s timeout is never shown, because loadShard ignores a late onload and `HSTATE` stays `"error"`; the fix belongs in loadShard, for every site at once.
