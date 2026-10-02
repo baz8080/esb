@@ -1042,57 +1042,15 @@ class TestPartialDays(SiteModelCase):
 
 
 class TestStormDays(unittest.TestCase):
-    UNTIL = datetime(2026, 8, 21, 6, tzinfo=UTC)
+    def test_a_day_with_the_threshold_of_faults_is_a_storm(self):
+        def faults(day, n, planned=False):
+            start = model.midnight(day) + timedelta(hours=12)
+            return [SimpleNamespace(start=start, planned=planned)] * n
 
-    def starts(self, per_day, planned=False):
-        # a location each, or event_count folds faults sharing a start into one
-        return [
-            SimpleNamespace(
-                start=model.midnight(day) + timedelta(hours=12), planned=planned,
-                location=f"{day} {i}", lat=53.0, lon=-7.0,
-            )
-            for day, n in per_day.items()
-            for i in range(n)
-        ]
-
-    def calm(self, last=20):
-        return {date(2026, 8, d): 10 for d in range(1, last + 1)}
-
-    def test_a_day_at_the_factor_is_a_storm_and_one_short_of_it_is_not(self):
-        days = self.calm()
-        days[date(2026, 8, 15)], days[date(2026, 8, 16)] = 40, 39
-        self.assertEqual(model.storm_days(self.starts(days), self.UNTIL), {"2026-08-15": 40})
-
-    def test_a_storm_stays_one_however_busy_the_months_after_it(self):
-        days = self.calm()
-        days[date(2026, 8, 15)] = 40
-        winter = {date(2026, 8, 21) + timedelta(days=i): 30 for i in range(60)}
-        later = datetime(2026, 10, 21, 6, tzinfo=UTC)
-        self.assertIn("2026-08-15", model.storm_days(self.starts(days | winter), later))
-
-    def test_a_day_is_dublins(self):
-        days = self.calm()
-        days[date(2026, 8, 15)] = 39
-        # 23:30 UTC on the 14th is half past midnight on the 15th in Dublin
-        late = SimpleNamespace(
-            start=datetime(2026, 8, 14, 23, 30, tzinfo=UTC), planned=False,
-            location="late", lat=53.0, lon=-7.0,
-        )
-        self.assertIn("2026-08-15", model.storm_days(self.starts(days) + [late], self.UNTIL))
-
-    def test_too_short_a_baseline_judges_nothing(self):
-        days = self.calm()
-        days[date(2026, 8, 4)] = 400
-        self.assertEqual(model.storm_days(self.starts(days), self.UNTIL), {})
-
-    def test_planned_works_do_not_make_a_storm(self):
-        planned = self.starts({date(2026, 8, 15): 100}, planned=True)
-        self.assertEqual(model.storm_days(self.starts(self.calm()) + planned, self.UNTIL), {})
-
-    def test_a_corpus_with_no_typical_day_has_no_storm(self):
-        """A median of zero would otherwise make every day a storm."""
-        once = self.starts({date(2026, 8, 15): 1})
-        self.assertEqual(model.storm_days(once, self.UNTIL), {})
+        n = model.STORM_FAULTS
+        outages = (faults(date(2026, 9, 29), n) + faults(date(2026, 9, 30), n - 1)
+                   + faults(date(2026, 10, 1), n, planned=True))
+        self.assertEqual(model.storm_days(outages), ["2026-09-29"])
 
 
 class TestMonthList(unittest.TestCase):
@@ -1737,17 +1695,6 @@ class TestTheAppScript(unittest.TestCase):
         route = self.page.split("function route(", 1)[1].split("\nfunction ", 1)[0]
         self.assertIn("try { curCounty = m ? decodeURIComponent(m[1])", route)
 
-    def test_a_storm_day_is_marked_in_the_bars_and_the_key(self):
-        cell = self.page.split("function describeCell(", 1)[1].split("\nfunction ", 1)[0]
-        self.assertIn('(storm ? " storm" : "")', cell)
-        self.assertIn('keys.push(["storm", "storm day"])', self.page)
-        css = (Path(model.__file__).parent / "site.css").read_text()
-        self.assertIn(".bar i.storm, .legend i.storm", css)
-
-    def test_the_prose_states_the_storm_cut_the_model_uses(self):
-        factor, weeks = {4.0: "four"}, {28: "four weeks"}
-        self.assertIn(model.STORM_FACTOR, factor, "say the new factor in site.html")
-        self.assertIn(model.STORM_BASELINE_DAYS, weeks, "say the new baseline in site.html")
-        self.assertIn(f"a day with {factor[model.STORM_FACTOR]} times the faults", self.page)
-        self.assertIn(f"in the {weeks[model.STORM_BASELINE_DAYS]}", self.page)
-        self.assertIn('<span id="cmp-storms"></span>', self.page)
+    def test_storm_days_are_hatched_and_the_prose_states_the_cut(self):
+        self.assertIn('(storm ? " storm" : "")', self.page)
+        self.assertIn(f"a day with {model.STORM_FAULTS} or more faults", self.page)

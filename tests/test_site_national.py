@@ -50,7 +50,7 @@ class NationalCase(unittest.TestCase):
         cls.lo, cls.hi = model.COLLECTION_START, cls.until
         cls.faults = [o for o in cls.outages if not o.planned]
         # ESB's published figures leave storm days out, so the comparisons do too.
-        cls.storms = model.storm_days(cls.outages, cls.until)
+        cls.storms = model.storm_days(cls.outages)
         cls.calm = model.off_storm_days(cls.faults, cls.storms)
         # Only outages that began inside the window can be counted as
         # interruptions, or the rate is inflated by ones already under way.
@@ -71,8 +71,6 @@ class NationalCase(unittest.TestCase):
         self.assertEqual(len({o.county for o in self.outages}), 26)
 
     def test_the_storm_is_found_and_no_calm_day_is(self):
-        """A day's verdict never moves, so the set to 1 October is fixed. The
-        busiest calm day judged, 12 August, is 1.8x. See notes/grading.md."""
         settled = {d for d in self.storms if d <= "2026-10-01"}
         self.assertEqual(settled, {"2026-09-29", "2026-09-30"})
 

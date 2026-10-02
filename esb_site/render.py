@@ -209,7 +209,7 @@ def build(outages, sa_index, now, until):
 
     search = {c: entries(c, names) for c, names in sorted(search.items())}
 
-    storms = model.storm_days(outages, until)
+    storms = model.storm_days(outages)
     # ESB's figures leave storm days out, so the paragraph that argues with them does too
     calm = model.off_storm_days(outages, storms)
 

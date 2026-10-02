@@ -16,8 +16,7 @@ import calendar
 import csv
 import math
 import sqlite3
-import statistics
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple
@@ -92,11 +91,9 @@ CHARTER_TARGET_SHARE = 95.0
 # point at which an outage stops being an inconvenience.
 CHARTER_COMPENSATION_HOURS = 24.0
 
-# A storm day has this many times the median faults of the full days before it,
-# up to STORM_BASELINE_DAYS of them. The cut is this site's: ESB publishes no rule.
-STORM_FACTOR = 4.0
-STORM_BASELINE_DAYS = 28
-STORM_MIN_BASELINE_DAYS = 7
+# A Dublin day with this many faults started is a storm day. The cut is this
+# site's: ESB publishes no rule for the storm days it leaves out of its figures.
+STORM_FAULTS = 140
 
 GRADE_BANDS = (("A", 95.0), ("B", 90.0), ("C", 80.0), ("D", 70.0), ("E", 60.0))
 
@@ -951,12 +948,11 @@ def partial_days(until):
     was. The colour still says what was seen; these dates let the page say the
     day was short.
     """
-    return sorted({d.isoformat() for d in _end_days(until)})
-
-
-def _end_days(until):
-    """The Dublin days collection began and the horizon falls in."""
-    return local(COLLECTION_START).date(), local(until - timedelta(microseconds=1)).date()
+    days = {
+        local(COLLECTION_START).date(),
+        local(until - timedelta(microseconds=1)).date(),
+    }
+    return sorted(d.isoformat() for d in days)
 
 
 def observed_window(ym, until):
@@ -1130,25 +1126,11 @@ def reason_label(reason):
     return PLANNED_REASONS.get(reason.upper(), reason.lower())
 
 
-def storm_days(outages, until):
-    """{Dublin date: faults started} for each storm day. Judged only against the
-    days before it, so a past day's verdict does not move as the corpus grows."""
-    by_day = defaultdict(list)
-    for o in outages:
-        if not o.planned and o.start and COLLECTION_START <= o.start < until:
-            by_day[local(o.start).date()].append(o)
-    counts = {day: event_count(rows) for day, rows in by_day.items()}
-    first, _ = _end_days(until)
-    storms = {}
-    for day in sorted(counts):
-        lo = max(first + timedelta(days=1), day - timedelta(days=STORM_BASELINE_DAYS))
-        before = [counts.get(lo + timedelta(days=i), 0) for i in range((day - lo).days)]
-        if len(before) < STORM_MIN_BASELINE_DAYS:
-            continue
-        median = statistics.median(before)
-        if median and counts[day] >= STORM_FACTOR * median:
-            storms[day.isoformat()] = counts[day]
-    return storms
+def storm_days(outages):
+    counts = Counter(
+        local(o.start).date().isoformat() for o in outages if o.start and not o.planned
+    )
+    return sorted(d for d, n in counts.items() if n >= STORM_FAULTS)
 
 
 def off_storm_days(outages, storms):

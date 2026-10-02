@@ -841,175 +841,54 @@ customer minutes lost goes from 11.9 to 12.0.
 
 ## The first storm moved the cross-check, not the model (2026-10-02)
 
-On the corpus to 2 October (horizon 11:01 UTC) three tests in
-`test_site_national.py` fail:
+On the corpus to 2 October three tests in `test_site_national.py` failed: CAIDI
+121.3 against ESB's 85.1 (bound ± 25), CML 2.03× against CI 1.42× (bound 0.35)
+and 1.10% of faults past 24 hours (bound 1%). The first two are one failure: the
+gap is the CI ratio times CAIDI's excess, 1.422 × (121.3 / 85.1 - 1) = 0.604.
 
-| Test | Measured | Bound |
-|---|---:|---:|
-| CAIDI against ESB's 85.1 | 121.3 | ± 25 |
-| CML ratio against CI ratio | 2.03× vs 1.42× | ± 0.35 |
-| Faults past 24 hours | 30 of 2,726, 1.10% | < 1% |
+**Not the model.** Every model since 5 September (92ef477, 8241911^, ac4016d and
+main at 4b11f84) gives the same figures on the same data. The suite pins `now`,
+but its window ends at the data's horizon, so it had grown from 17 days to 62.
 
-The first two are one failure. The CML gap is the CI ratio times CAIDI's
-excess, 1.422 × (121.3 / 85.1 - 1) = 0.604, so a CAIDI 36 minutes high fails
-both.
+**The storm of 29-30 September**, under Met Éireann yellow wind warnings and
+worst in Cork, Limerick and Tipperary: 395 faults started on the 29th and 148
+on the 30th, against a median day of 34 and a previous largest of 106
+(4 August). The two days are 23% of the window's interrupted customers and 35%
+of its customer-minutes, with a CAIDI of 182.6 and 19 of the 30 faults past 24
+hours. Every run closed `ok`, 436 of the 543 end on ESB's own `restoreTime`,
+and no event merged more than 5 ids. ESB's 117.47 and 1.38 leave storm days
+out; this suite did not.
 
-### Not the model
-
-On the same data, every model since 5 September gives the same four figures
-(CAIDI 121.3, CML 2.026×, CI 1.422×, 30 past 24 hours): 92ef477 (5 September),
-8241911^ (before the 24 September batch), ac4016d (a live fault ends at its last
-sighting) and main at 4b11f84. On the corpus to 17 August the 5 September model
-and main read 91.6 and 91.7. The suite pins `now` at 17 August, but `now` only
-decides what is in the future; the window ends at the data's horizon, so it
-grew from 17 days to 62 without any code changing.
-
-### The storm of 29-30 September
-
-Met Éireann yellow wind warnings; strong south-easterly winds and heavy rain from
-the afternoon of Tuesday 29 September into Wednesday, worst in Cork, Limerick and
-Tipperary. It was not named.
-
-| | Started 29-30 Sep | Rest of the window |
-|---|---:|---:|
-| Faults | 543 | 2,183 |
-| Customers interrupted | 193,259 (23.0%) | 647,699 |
-| Customer-minutes | 35.3M (34.6%) | 66.7M |
-| CAIDI | 182.6 | 103.0 |
-| Customers back inside 4 h | 69.6% | 85.0% |
-| Past 24 hours | 19 | 11 |
-
-395 faults started on the 29th against a median day of 34 and a previous
-largest of 106 (4 August), and 148 on the 30th, in all 26 counties. The listing
-peaked at 265 listed outages on the evening of the 29th, against 120 before it.
-
-It is what ESB reported, not something the pipeline made:
-
-- **Nothing was lost in collection.** Every run from 28 September to 1 October
-  closed `ok`, none cut short, the longest in under two minutes.
-- **The durations are ESB's own.** 436 of the 543 end on ESB's `restoreTime`,
-  carrying 88% of their customer-minutes; 30 end on an estimate and 77 on a last
-  sighting. None was still live at the horizon. 18 of the 19 past 24 hours carry
-  a restore time; Kenmare ends on its estimate.
-- **No over-merge.** 107 storm events merged ids, at most 5 each, under the
-  fault ceiling of 12.
-
-### ESB's figures exclude storm days; this cross-check did not
-
-85.1 is 117.47 over 1.38, both unplanned with storm days removed (§ The
-published prior art). Storm days stay in the grade and the tiles because nothing
-in the feed identifies one, and that is still right for the grade. But this
-suite, and the explainer that quotes it, set a storm-inclusive figure against a
-storm-excluded one. That cost nothing while the corpus had no storm.
-
-With faults that started on those Dublin dates left out of both sides:
-
-| | Nothing excluded | 29 Sep out | 29-30 Sep out |
-|---|---:|---:|---:|
-| CAIDI (85.1 ± 25) | 121.3 | 104.4 | 103.0 |
-| CML ratio | 2.026 | 1.410 | 1.325 |
-| CI ratio | 1.422 | 1.149 | 1.095 |
-| Gap (0.35) | 0.604 | 0.261 | 0.230 |
-| Past 24 hours (1%) | 1.10% | 0.56% | 0.50% |
-
-All three pass at their current bounds either way. Taking the storm days off the
-annualising clock too raises both ratios by about 0.04 and the gap by under 0.01.
-
-### What is left: three September faults
-
-Without the storm CAIDI is 103.0, not 91.6. August held (91.7 for faults
-starting 1-17 August, 92.7 for 18-31); faults starting 1-28 September read
-117.8. Their median got shorter, 125 to 119 minutes, so this is a heavier tail
-rather than slower restorations. Three faults are 19% of those 28 days'
-customer-minutes:
-
-| Fault | Customers | Hours | Customer-minutes |
-|---|---:|---:|---:|
-| Cahir, Tipperary, 8 September | 3,045 | 12.3 | 2.26M |
-| Boghall Road, Wicklow, 2 September | 1,669 peak | 32.8 | 2.18M |
-| Crane, Wexford, 12 September | 9,163 peak | 5.8 | 1.77M |
-
-Without them September reads 100.4 and the storm-free window 95.4. Two carry
-feed details worth knowing, neither yet a pattern:
-
-- **Cahir was never seen live.** First seen already `Restored`, at 10:31 UTC on
-  9 September, six minutes after its restore time, though the collector polled
-  every half hour through the night. It is the "only ever seen restored" case
-  (§ Outages we only ever see restored) at a size the August sample never had,
-  so its 3,045 is held flat for all 12.3 hours.
-- **Boghall Road's restore time looks like a close-off.** Its last section,
-  2841085, sat as a Fault at 1,095 customers for 32 hours, then flipped to
-  Restored at 23:59 on 3 September, and in the same poll its estimate was
-  rewritten to the midnight a day earlier. A 23:59 restore is 1 of 2,572 in the
-  corpus. Boghall Road alone is 3.1 minutes of the storm-free CAIDI (99.9
-  without it).
-
-### Two smaller findings
-
-- **The count bias sits nearer its floor than the headline says.** Storm-free
-  September faults give a CI ratio of 1.045, against the suite's floor of 1.0
-  and an explainer that says the feed counts "about N% more". ESB's 1.38 is a
-  year's rate with winter in it, so a summer window understates the bias rather
-  than measures it.
-- **CI runs this suite; it has not run since the storm.** `ci.yml` checks out
-  esb-data on every push to main and every pull request, and its last run was
-  24 September, so the next PR fails. The Pages build runs no tests: the 2
-  October 11:01 build publishes "the durations agree - an implied 121 minutes per
-  interrupted customer against ESB's 85", and "about 42% more".
-
-### Decided: the cross-check leaves storm days out (owner, 2026-10-02)
-
-No bound was moved. They did their job: they caught the first storm-inclusive
-figure set against a storm-excluded one.
-
-**A storm day is a Dublin day with four times the median faults of the full
-days before it, up to 28 of them** (`model.STORM_FACTOR`,
-`STORM_BASELINE_DAYS`, `model.storm_days`), counted as `event_count` counts
-them, so an event across a county line is one fault. A day with fewer than
-seven full days before it is not judged, which leaves 1 to 7 August unjudged,
-4 August's 106 faults among them.
-
-The first cut took one median over the whole corpus, and review caught what
-that meant: every build re-judged every day. The 30th was 4.35× a median of 34
-and would have dropped out once the median passed 37, which an ordinary autumn
-would do, putting its faults back into the cross-check with no new storm and
-failing the suite. Judged against the days before it, a past day's verdict
-does not move, and the baseline follows the season. On the corpus to 2
-October the 29th is 12.4× (390 against a median of 31.5) and the 30th 4.6×;
-the busiest judged calm day is 12 August at 1.8×, so any cut from 2× to 4.5×
-draws the same line. The cut is this site's, fitted to one storm: ESB's own
-rule is not in the DAPR passages quoted above or in its 2012 Performance
-Reporting Criteria. Re-measure it at the first winter storm.
-
-Faults that started on a storm day leave the cross-check and the explainer's
-three figures, and the suite's 24-hour test, because the charter exempts
-storms. The grade, the tiles, the day colours and the county pages' over-24-hour
-counts keep them, as settled. The explainer names the days it left
-out, and the bars hatch them over their colour, with the day's national fault
-count in the caption; the key gains "storm day" in a month that has one. A fault
-that began the day before a storm and ran through it stays in, as it does
-under the usual major-event-day convention, which assigns an interruption to
-the day it began. On the corpus to 2 October the explainer reads 155.7 a year,
-9% more customers, and 103 minutes against ESB's 85, where it had read 238.0,
-42% and 121. It names this site's storm days, never ESB's, which ESB does not
-publish: up to three by date, then a count and the latest.
+**Decided (owner): the comparison with ESB's figures leaves storm days out.** A
+storm day is a Dublin day with 140 or more faults started (`model.STORM_FAULTS`),
+which takes both days and no other. Faults started on one leave the
+cross-check, the explainer's three figures and the 24-hour test, since the
+charter exempts storms; the grade, tiles, day colours and county pages keep
+them. The bars hatch storm days and the key names them. The explainer reads
+155.7 a year, 9% more customers and 103 minutes against ESB's 85, where it had
+read 238.0, 42% and 121, and no longer says "the durations agree". The cut is
+this site's: ESB's rule is not in the DAPR passages quoted above or in its 2012
+Performance Reporting Criteria.
 
 Rejected:
 
-- **Ending the suite's window before the storm.** It passes, but
-  `test_the_page_quotes_the_figures_this_suite_derives` still holds the page to
-  the storm-inclusive figure, so the page's "the durations agree" would have
-  stayed false.
-- **Widening the bounds** to 37 minutes, 0.61 and 1.1%. 85.1 + 37 passes a
-  model that overstates every duration by 43%, and each winter storm would want
-  them widened again.
-- **Changing only the sentence**, so it stops claiming agreement over a window
-  with a storm in it. That leaves the suite with no reference to hold to.
+- **A multiple of the median day.** 4× the corpus median re-judged every day on
+  every build: the 30th was 4.35× a median of 34 and would have dropped out once
+  an ordinary autumn passed 37. Judging each day against the 28 before it fixed
+  that but needed a minimum baseline and handling for days the collector
+  missed. A fixed count never moves; it does not follow the season, but a
+  winter day busy enough to cross it is likely one ESB would call a storm too.
+- **Ending the suite's window before the storm.** The page would have kept the
+  storm-inclusive figures and the sentence that called them agreement.
+- **Widening the bounds** to 37 minutes, 0.61 and 1.1%: 85.1 + 37 passes a model
+  that overstates every duration by 43%.
 
-The explainer no longer says "the durations agree": 103 against 85 is inside
-the suite's ±25, but not the few minutes the CAIDI test's docstring describes.
-It now states the two figures and leaves the reader to weigh them (owner,
-2026-10-02).
+**What is left.** Without the storm CAIDI is 103.0, not August's 91.6. Three
+September faults are 19% of that month's storm-free customer-minutes: Cahir
+(3,045 customers for 12.3 h, only ever seen restored), Boghall Road (32.8 h,
+closed with the corpus's only 23:59 restore time) and Crane (9,163 at peak).
+Without them the window reads 95.4. Storm-free September's CI ratio is 1.045,
+near the suite's floor of 1.0, because ESB's 1.38 is a year with winter in it.
 
-DAPR 2025 is out in draft for consultation. When it is final, refresh the three
-constants as § When to refresh says; that moves 85.1 itself.
+DAPR 2025 is out in draft. When it is final, refresh the three constants as
+§ When to refresh says; that moves 85.1 itself.
