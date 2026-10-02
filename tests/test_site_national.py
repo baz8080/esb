@@ -49,16 +49,19 @@ class NationalCase(unittest.TestCase):
         # the window the site publishes against.
         cls.lo, cls.hi = model.COLLECTION_START, cls.until
         cls.faults = [o for o in cls.outages if not o.planned]
+        # ESB's published figures leave storm days out, so the comparisons do too.
+        cls.storms = model.storm_days(cls.outages)
+        cls.calm = model.off_storm_days(cls.faults, cls.storms)
         # Only outages that began inside the window can be counted as
         # interruptions, or the rate is inflated by ones already under way.
-        cls.started = [o for o in cls.faults if o.start >= cls.lo]
+        cls.started = [o for o in cls.calm if o.start >= cls.lo]
 
     @property
     def years(self):
         return (self.hi - self.lo).total_seconds() / (365 * 86400)
 
     def national_cml(self):
-        return model.national_cml(self.outages, self.until)
+        return model.national_cml(self.calm, self.until)
 
     def national_ci(self):
         return sum(o.customers for o in self.started) / model.NATIONAL_CUSTOMERS / self.years
@@ -67,14 +70,18 @@ class NationalCase(unittest.TestCase):
         self.assertEqual(self.unplaced, 0)
         self.assertEqual(len({o.county for o in self.outages}), 26)
 
+    def test_the_storm_is_found_and_no_calm_day_is(self):
+        settled = {d for d in self.storms if d <= "2026-10-01"}
+        self.assertEqual(settled, {"2026-09-29", "2026-09-30"})
+
     def test_duration_per_interrupted_customer_matches_esb(self):
         """The strongest evidence that the timing model is right.
 
         CAIDI is CML divided by CI, so it cancels the customer-count bias
-        entirely and leaves only the clock. Landing within a few minutes of
-        ESB's own figure is what licenses this site to talk about durations.
+        entirely and leaves only the clock. Landing inside this bound of ESB's
+        own figure is what licenses this site to talk about durations.
         """
-        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.faults)
+        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.calm)
         caidi = customer_minutes / sum(o.customers for o in self.started)
         self.assertAlmostEqual(caidi, ESB_CAIDI, delta=25.0, msg=f"CAIDI {caidi:.1f} min")
 
@@ -129,7 +136,7 @@ class NationalCase(unittest.TestCase):
         """ESB names a restore time on nearly every fault and keeps most of
         them. A share far outside this band means the estimate or the restore
         time is being read wrongly, not that ESB changed overnight."""
-        judged = [o for o in self.started if not o.ongoing]
+        judged = [o for o in self.faults if o.start >= self.lo and not o.ongoing]
         share, estimates = model.estimate_share(judged)
         restored = sum(1 for o in judged if o.end_src == "restored")
         self.assertGreater(estimates / restored, 0.9, "most restored faults carry an estimate")
@@ -137,13 +144,14 @@ class NationalCase(unittest.TestCase):
         self.assertLess(share, 95.0, f"{share:.1f}% of estimates kept")
 
     def test_almost_nothing_reaches_the_compensation_threshold(self):
-        """24 hours is where the charter starts paying out. It should be rare."""
+        """24 hours is where the charter starts paying out, storms exempt. It
+        should be rare."""
         over = [
             o
-            for o in self.faults
+            for o in self.calm
             if o.minutes / 60.0 > model.CHARTER_COMPENSATION_HOURS
         ]
-        self.assertLess(len(over) / len(self.faults), 0.01)
+        self.assertLess(len(over) / len(self.calm), 0.01)
 
     def test_national_cml_tracks_the_bias_and_nothing_else(self):
         """CML should be off by the same factor CI is, and no more.
@@ -201,7 +209,7 @@ class NationalCase(unittest.TestCase):
         compare = render.build(self.outages, self.index, self.now, self.until)[0][
             "compare"
         ]
-        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.faults)
+        customer_minutes = sum(o.customer_minutes(self.lo, self.hi) for o in self.calm)
         caidi = customer_minutes / sum(o.customers for o in self.started)
         window = (self.hi - self.lo).total_seconds() / 60.0
         cml = customer_minutes / model.NATIONAL_CUSTOMERS * model.MINUTES_PER_YEAR / window
@@ -260,7 +268,7 @@ class PayloadCase(unittest.TestCase):
             {
                 "generated", "observed", "observed_iso", "observed_month", "nodata",
                 "stale_hours",
-                "partial", "daygate", "compare",
+                "partial", "daygate", "storms", "compare",
                 "start", "months", "esb",
                 "counties", "customers", "stats", "national",
             },

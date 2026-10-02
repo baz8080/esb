@@ -210,6 +210,10 @@ def build(outages, sa_index, now, until):
 
     search = {c: entries(c, names) for c, names in sorted(search.items())}
 
+    storms = model.storm_days(outages)
+    # ESB's figures leave storm days out, so the paragraph that argues with them does too
+    calm = model.off_storm_days(outages, storms)
+
     data = {
         "generated": _stamp(now),
         # What the build knows, as distinct from when it ran. Without this the
@@ -233,17 +237,18 @@ def build(outages, sa_index, now, until):
         # rather than on every month of every county's row.
         "partial": model.partial_days(until),
         "daygate": _daygate(months, until),
+        "storms": storms,
         # The three figures the CML explainer quotes about itself. They move
         # with every rebuild, and hard-coding them into the prose meant the
         # paragraph making the site's credibility argument quietly went wrong.
         "compare": {
             # the one annual figure left, for the paragraph that argues with
             # ESB's own yearly number; every other figure on the site is a month
-            "cml": round(model.national_cml(outages, until), 1),
-            "caidi": round(model.national_caidi(outages, until) or 0),
+            "cml": round(model.national_cml(calm, until), 1),
+            "caidi": round(model.national_caidi(calm, until) or 0),
             "esb_caidi": round(model.ESB_NATIONAL_CML / model.ESB_NATIONAL_CI),
             "bias": round(
-                (model.national_ci(outages, until) / model.ESB_NATIONAL_CI - 1) * 100
+                (model.national_ci(calm, until) / model.ESB_NATIONAL_CI - 1) * 100
             ),
         },
         "start": model.local(model.COLLECTION_START).strftime("%-d %B %Y"),

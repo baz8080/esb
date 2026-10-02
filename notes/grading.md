@@ -332,7 +332,8 @@ stop being listed, so their duration is an ESB estimate ESB never confirms.
 **Storm days are not excluded**, because nothing in the feed identifies one. Both
 the CRU indices and the charter guarantee exempt storms; this site cannot, so
 winter months will read worse than ESB's own figures for a reason that is not
-ESB's fault. Said plainly in the page footer.
+ESB's fault. Said plainly in the page footer. The comparison with ESB's own figures
+does leave them out (2026-10-02, § The first storm moved the cross-check).
 
 **The end of an outage without a restore time is the ESB estimate, not the last
 sighting.** Measured against the 648 outages whose true restore time is known:
@@ -837,3 +838,57 @@ months. One Monaghan fault that began just before midnight on 31 July, Irish
 time, moves from July into August (Monaghan August 99.5% to 98.9% restored in
 4 h), which leaves July empty: under Dublin months it holds under two observed hours, from 21:02 to 23:00 UTC. National September
 customer minutes lost goes from 11.9 to 12.0.
+
+## The first storm moved the cross-check, not the model (2026-10-02)
+
+On the corpus to 2 October three tests in `test_site_national.py` failed: CAIDI
+121.3 against ESB's 85.1 (bound ± 25), CML 2.03× against CI 1.42× (bound 0.35)
+and 1.10% of faults past 24 hours (bound 1%). The first two are one failure: the
+gap is the CI ratio times CAIDI's excess, 1.422 × (121.3 / 85.1 - 1) = 0.604.
+
+**Not the model.** Every model since 5 September (92ef477, 8241911^, ac4016d and
+main at 4b11f84) gives the same figures on the same data. The suite pins `now`,
+but its window ends at the data's horizon, so it had grown from 17 days to 62.
+
+**The storm of 29-30 September**, under Met Éireann yellow wind warnings and
+worst in Cork, Limerick and Tipperary: 395 faults started on the 29th and 148
+on the 30th, against a median day of 34 and a previous largest of 106
+(4 August). The two days are 23% of the window's interrupted customers and 35%
+of its customer-minutes, with a CAIDI of 182.6 and 19 of the 30 faults past 24
+hours. Every run closed `ok`, 436 of the 543 end on ESB's own `restoreTime`,
+and no event merged more than 5 ids. ESB's 117.47 and 1.38 leave storm days
+out; this suite did not.
+
+**Decided (owner): the comparison with ESB's figures leaves storm days out.** A
+storm day is a Dublin day with 140 or more faults started (`model.STORM_FAULTS`),
+which takes both days and no other. Faults started on one leave the
+cross-check, the explainer's three figures and the 24-hour test, since the
+charter exempts storms; the grade, tiles, day colours and county pages keep
+them. The bars hatch storm days and the key names them. The explainer reads
+155.7 a year, 9% more customers and 103 minutes against ESB's 85, where it had
+read 238.0, 42% and 121, and no longer says "the durations agree". The cut is
+this site's: ESB's rule is not in the DAPR passages quoted above or in its 2012
+Performance Reporting Criteria.
+
+Rejected:
+
+- **A multiple of the median day.** 4× the corpus median re-judged every day on
+  every build: the 30th was 4.35× a median of 34 and would have dropped out once
+  an ordinary autumn passed 37. Judging each day against the 28 before it fixed
+  that but needed a minimum baseline and handling for days the collector
+  missed. A fixed count never moves; it does not follow the season, but a
+  winter day busy enough to cross it is likely one ESB would call a storm too.
+- **Ending the suite's window before the storm.** The page would have kept the
+  storm-inclusive figures and the sentence that called them agreement.
+- **Widening the bounds** to 37 minutes, 0.61 and 1.1%: 85.1 + 37 passes a model
+  that overstates every duration by 43%.
+
+**What is left.** Without the storm CAIDI is 103.0, not August's 91.6. Three
+September faults are 19% of that month's storm-free customer-minutes: Cahir
+(3,045 customers for 12.3 h, only ever seen restored), Boghall Road (32.8 h,
+closed with the corpus's only 23:59 restore time) and Crane (9,163 at peak).
+Without them the window reads 95.4. Storm-free September's CI ratio is 1.045,
+near the suite's floor of 1.0, because ESB's 1.38 is a year with winter in it.
+
+DAPR 2025 is out in draft. When it is final, refresh the three constants as
+§ When to refresh says; that moves 85.1 itself.
