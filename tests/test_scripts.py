@@ -1,7 +1,9 @@
 import os
 import re
+import shutil
 import signal
 import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -11,6 +13,16 @@ from esb_outages.poll import poll_lock
 
 REPO = Path(__file__).resolve().parent.parent
 BACKUP = REPO / "scripts" / "backup-to-git.sh"
+
+# macOS has no flock(1); this takes the same flock(2) lock on the descriptor it is handed.
+FLOCK = """
+import fcntl, signal, sys
+if len(sys.argv) != 4 or sys.argv[1] != "-w":
+    sys.exit(f"the flock stand-in takes only -w SECONDS FD, not {sys.argv[1:]}")
+signal.signal(signal.SIGALRM, lambda *_: sys.exit(1))
+signal.alarm(int(sys.argv[2]))
+fcntl.flock(int(sys.argv[3]), fcntl.LOCK_EX)
+"""
 
 
 def git(cwd, *args):
@@ -39,15 +51,23 @@ class BackupTestCase(unittest.TestCase):
         git(self.data, "remote", "add", "origin", str(self.origin))
         (self.data / "raw").mkdir()
         (self.data / "raw" / "runs-2026-09.jsonl").write_text('{"run_id": "a"}\n')
+        self.env = {**GIT_ENV, "ESB_DATA_DIR": str(self.data)}
+        self.env.pop("ESB_ALERT_WEBHOOK", None)
+        # CI must keep testing util-linux's own, so there a missing one fails.
+        if not shutil.which("flock") and os.environ.get("CI") != "true":
+            stand_in = root / "bin" / "flock"
+            stand_in.parent.mkdir()
+            stand_in.write_text(f"#!{sys.executable}" + FLOCK)
+            stand_in.chmod(0o755)
+            self.env["PATH"] = f"{stand_in.parent}{os.pathsep}{self.env['PATH']}"
 
     def tearDown(self):
         self._tmp.cleanup()
 
     def backup(self, **env):
-        env = {**GIT_ENV, "ESB_DATA_DIR": str(self.data), **env}
-        env.pop("ESB_ALERT_WEBHOOK", None)
         return subprocess.run(
-            ["sh", str(BACKUP)], env=env, capture_output=True, text=True, timeout=60
+            ["sh", str(BACKUP)], env={**self.env, **env}, capture_output=True, text=True,
+            timeout=60,
         )
 
     def pushed(self):
@@ -93,12 +113,10 @@ class TestBackup(BackupTestCase):
         self.assertNotIn("/tmp/", BACKUP.read_text())
 
     def test_it_waits_for_a_poll_to_finish_writing(self):
-        env = {**GIT_ENV, "ESB_DATA_DIR": str(self.data)}
-        env.pop("ESB_ALERT_WEBHOOK", None)
         with poll_lock(self.data) as acquired:
             self.assertTrue(acquired)
             proc = subprocess.Popen(
-                ["sh", str(BACKUP)], env=env, stdout=subprocess.PIPE,
+                ["sh", str(BACKUP)], env=self.env, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True,
             )
             time.sleep(2)
@@ -118,11 +136,9 @@ class TestBackup(BackupTestCase):
             log.write('{"run_id": "c"}\n')
         fetched = self.data / ".git" / "FETCH_HEAD"
         before = fetched.stat().st_mtime_ns
-        env = {**GIT_ENV, "ESB_DATA_DIR": str(self.data)}
-        env.pop("ESB_ALERT_WEBHOOK", None)
         with poll_lock(self.data):
             proc = subprocess.Popen(
-                ["sh", str(BACKUP)], env=env, stdout=subprocess.PIPE,
+                ["sh", str(BACKUP)], env=self.env, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True,
             )
             deadline = time.monotonic() + 30
@@ -175,11 +191,9 @@ class TestBackup(BackupTestCase):
         self.assertIn('"c"', log)
 
     def test_the_unit_s_timeout_is_announced(self):
-        env = {**GIT_ENV, "ESB_DATA_DIR": str(self.data)}
-        env.pop("ESB_ALERT_WEBHOOK", None)
         with poll_lock(self.data):
             proc = subprocess.Popen(
-                ["sh", str(BACKUP)], env=env, stdout=subprocess.PIPE,
+                ["sh", str(BACKUP)], env=self.env, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, text=True, start_new_session=True,
             )
             time.sleep(1)
