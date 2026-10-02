@@ -42,6 +42,24 @@
 /* which part of a short month was watched, under the month's own name */
 .mtable .part { display: block; color: var(--muted); font-size: 11.5px; font-weight: 400; }
 
+/* Not the first ten: an estimate a few px out there shifted area pages 0.0046. Sizes are
+   content-box (27px of padding and border on top) and per shape, so a restored scroll lands
+   close. Only where the clip margin that keeps the timeline dots is honoured (not Safari). */
+@supports (overflow-clip-margin: 6px) {
+  .case[id]:nth-of-type(n+11) {
+    --case: 44px; --rep: 0px; --tl: 0px;
+    content-visibility: auto; overflow-clip-margin: 6px;
+    contain-intrinsic-size: auto calc(var(--case) + var(--rep) + var(--tl));
+  }
+  .case[id]:nth-of-type(n+11):has(> .repeat) { --rep: 26px; }
+  .case[id]:nth-of-type(n+11):has(> .tl) { --tl: 80px; }
+  @media (max-width: 640px) {
+    .case[id]:nth-of-type(n+11) { --case: 69px; }
+    .case[id]:nth-of-type(n+11):has(> .repeat) { --rep: 51px; }
+    .case[id]:nth-of-type(n+11):has(> .tl) { --tl: 84px; }
+  }
+}
+
 .card h2 .n { color: var(--muted); font-weight: 400; font-size: 13px; }
 
 /* Per-area rows, shared by areas.html, c/*.html and the nearby card. A

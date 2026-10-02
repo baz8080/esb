@@ -1,11 +1,12 @@
 """Emit the static site.
 
-The payload split is the thing this file exists to get right. `data.js` carries
-only what the front page needs - one row per county per month, with the day bars
-packed into a string - while the individual outages live in a per-county shard
-that is never fetched until a reader opens that county. Everything the reader
-first downloads has to fit inside 500 KB and keep fitting for years, and the
-only way to hold that line is to never put a per-outage record in `data.js`.
+The payload split is the thing this file exists to get right. The payload
+inlined into index.html carries only what the front page needs - one row per
+county per month, with the day bars packed into a string - while the individual
+outages live in a per-county shard that is never fetched until a reader opens
+that county. Everything the reader first downloads has to fit inside 500 KB and
+keep fitting for years, and the only way to hold that line is to never put a
+per-outage record in it.
 """
 
 from __future__ import annotations
@@ -886,7 +887,8 @@ def _areas_index_html(index):
         # data-county is the bare name for the search: matching the heading
         # would make "page" select every county in the country
         sections.append(
-            f'<section id="c-{slug(county)}" data-county="{html.escape(county)}">'
+            f'<section id="c-{slug(county)}" data-county="{html.escape(county)}" '
+            f'style="--n:{len(areas)}">'
             f"<h2>County {html.escape(county)} <span>· {len(areas)} "
             f'area{"" if len(areas) == 1 else "s"} · '
             f'<a href="c/{slug(county)}.html">county page</a></span></h2>'
@@ -1005,6 +1007,11 @@ def _page(template, markers):
     return statusui.assemble(template.read_text(encoding="utf-8"), markers)
 
 
+def _inline_data(data):
+    # "<" cannot end the script or open a comment early if it never appears
+    return "window.ESB_DATA = " + _dumps(data).replace("<", "\\u003c") + ";"
+
+
 def write(site_dir, outages, sa_index, now, until):
     site_dir = Path(site_dir)
     (site_dir / "c").mkdir(parents=True, exist_ok=True)
@@ -1016,11 +1023,11 @@ def write(site_dir, outages, sa_index, now, until):
     nearby = nearby_areas(index, sa_index)
 
     (site_dir / "index.html").write_text(
-        _page(SITE_HTML, {"CANONICAL": f"{BASE_URL}/"}), encoding="utf-8"
+        _page(SITE_HTML, {"CANONICAL": f"{BASE_URL}/", "DATA": _inline_data(data)}),
+        encoding="utf-8",
     )
-    (site_dir / "data.js").write_text(
-        "window.ESB_DATA = " + _dumps(data) + ";\n", encoding="utf-8"
-    )
+    # a data.js left by a build before the payload was inlined would be counted
+    (site_dir / "data.js").unlink(missing_ok=True)
     # ESB_PLACES, not ESB_SEARCH: search.js is fetched lazily, so a tab opened
     # before a deploy pairs its own inlined ui.js with the current file. The
     # entries carry a slug now, and the old searchHits calls toLowerCase on

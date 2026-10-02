@@ -643,3 +643,172 @@ once data resumes after it, the in-window gap grading.md already names. Rejected
 leaving the month out until data arrives, which would make the month list
 depend on the collector rather than the calendar; `month_list` walks the
 calendar on purpose, so a month is listed from its first instant.
+
+## The index holds back what its script has not drawn - 2026-10-02
+
+`site.html` shipped an empty skeleton (a month strip 8px high, empty `#list`,
+`#basis` and `#tiles`) above a footer that was visible at first paint, and
+`boot()` filled it once `data.js` arrived. The footer jumped by the height of
+the list. Lab, Chromium, three runs, median, cache off; mobile is 412px at
+2.625x on 150ms/1.6Mbit with 4x CPU, desktop is 1366px on 40ms/9Mbit:
+
+| | before | after |
+|---|---|---|
+| load CLS, mobile | 0.412 | 0 |
+| load CLS, desktop | 0.203 (0.634 with classic scrollbars) | 0 (0 with them) |
+| county click at 3g, shard late | 0.283 | 0 |
+| deep link `#county/Cork`, mobile / desktop | 0.503 / 0.225 | 0 / 0 |
+| LCP mobile / desktop | 552 / 604 ms | 576 / 596 ms |
+
+LCP does not move: the banner stays visible and is drawn first, and what is held
+back was never the largest paint.
+
+The mechanism is statusui's (43e1852), pinned here: `<!--UI-WAIT-->` in the head
+adds `wait` to `<html>`, `base.css` hides `[data-wait]` while it is set, and
+`pending()` lets it go. `data-wait` is on `.controls`, `#basis`, `#legend`,
+`#list`, `#natHeading`, `#tiles` and the footer; the banner is the one thing
+left showing. `render()` calls `pending(county && HSTATE[curCounty] ===
+"loading")`, so a county shard that lands after the click is held back from the
+footer the same way, and `boot()` releases it when there is no data. Without
+JavaScript nothing adds the class and the page reads as it always did. The
+`load` event and an 8s timer are the fallbacks upstream, checked here with
+`data.js` missing (the banner says it could not load), with `data = {}` (boot
+throws, the footer is back at `load`), with a shard that 404s, off `file://`,
+and with the shard dropped mid-click and the reader going back.
+
+Two traps the prototype had not met:
+
+- **`pending()` goes before `revealMonthTab()`.** The strip is inside `.controls`,
+  so while it is held back it measures zero and the reveal does nothing: at 260px
+  the newest month stayed off the right edge (`scrollLeft` 140 became 0).
+  Measured by building it the other way round.
+- **The deep link still shifted `main` by 20px** (CLS 0.0175 mobile, 0.0064
+  desktop). The overview's first margin collapses out through `main` and the
+  county view's does not, so replacing the banner with a county moved the box.
+  `main::before { content: ""; display: table }` keeps the margin inside. Every
+  visible element, `main`'s bottom and the document height are where they were,
+  at 412, 1366 and 260px, overview and county view (compared by bounding box).
+
+Rejected: reserving height for the list. It is 3,573px at 412px and 2,681px at
+1366px, so any constant is wrong somewhere and the footer pays the difference
+as a shift; a gate has no estimate to be out by. Rejected: rendering the
+overview into `index.html` at build. It needs the app's renderers in Python or
+a JS engine in a build that is standard library only, to get a number the gate
+already reaches. The pin also brings `scrollbar-gutter: stable` (the 0.634 above)
+and comment stripping from the inline script and style; a site marker inside a
+JS or CSS comment would now be filled and then stripped, so none may sit in one.
+
+## The payload rides in index.html - 2026-10-02
+
+`data.js` was 9.8 KB raw and 3.0 KB gzipped, and the app could draw nothing
+until it had made a round trip for it. It is now an inline script in
+`index.html` (`window.ESB_DATA = ...;`, filled at the `<!--DATA-->` marker by
+`render._inline_data`) and `data.js` is no longer written. Same harness as the
+entry above, seven runs, median:
+
+| | before | held back (previous entry) | inlined |
+|---|---|---|---|
+| LCP mobile | 584 ms | 560 ms | 388 ms |
+| LCP desktop | 592 ms | 596 ms | 264 ms |
+| index.html + data.js, gzipped | 21.3 + 3.0 KB | 14.0 + 3.0 KB | 17.1 KB, one response |
+
+Mobile LCP is two modes, about 240 ms when the first paint already includes the
+render and about 400 ms when the parser yields to a paint of the header first;
+both beat the 584 ms of the page waiting for a second file. The bytes do not
+move, because the data had to arrive anyway; the second request is what went.
+
+- **The initial-load budget still measures the initial load.** `size_report`
+  counts `index.html` and `data.js` if it exists, so the 500 KB figure is now
+  `index.html` alone, 53.6 KB raw before and after. `PayloadCase` asserts there
+  is no `data.js` beside the page, because a stale one would be counted twice,
+  and that the page is larger than the payload, so the budget cannot silently
+  stop covering it.
+- **`<` is escaped as `\u003c`**, so no name can end the script or open a
+  comment early. The payload round-trips through `assemble()`'s comment
+  stripping to the same JSON (tested against the build's own `data`).
+- **The cache-skew guard went.** `noDataYet` fell back to the month order for a
+  `data.js` cached from before `nodata` existed. A page now carries the payload
+  it was built with, so the fallback could not run; the one place the index and
+  its data could disagree is gone.
+- Nothing else read `data.js`: no script, workflow, sitemap or other page. The
+  county and area pages never pulled it, and their tests still assert that.
+  `file://` works as before, and so do the missing-data cases: a payload of
+  `{}` throws in `boot()` and `load` releases the footer, and no payload at all
+  still says "Could not load".
+
+Rejected: `<link rel="preload" href="data.js">`, which keeps the second file and
+only starts it earlier: LCP 548 ms mobile and 568 ms desktop against 560 and
+596 without it, which is inside the noise. Rejected: writing `data.js` for one
+more deploy, for a tab holding the old `index.html`. GitHub Pages serves
+`max-age=600`, so the window is ten minutes, the failure is the "try
+reloading" line the page already has, and the file would be counted against the
+budget until someone remembered to delete it.
+
+## Long static lists skip layout until they are near - 2026-10-02
+
+`areas.html` is one 340 KB document of 26 sections, and a county page lists every
+outage (Cork 626 cases, 5,000 nodes). Both now use `content-visibility: auto`:
+a county's rows in the directory, and the cases past the tenth in `.case[id]`
+lists (county and area pages). Same harness, mobile at 4x CPU, three runs:
+
+| | before | after |
+|---|---|---|
+| filter box on `areas.html`, slowest interaction | 280-320 ms | 56-72 ms |
+| Cork long tasks at load | 3-4, 290-344 ms | 2, 123-135 ms |
+| Dublin long tasks at load | 2, 133-191 ms | 1, 56-80 ms |
+| CLS scrolling each page down and back, phone and desktop | 0 | 0 |
+| `areas.html` nav jump | lands at the scroll margin, 0 | same, 0 |
+
+LCP does not move, and printing is unchanged (Cork 53 pages and 626 cases, the
+directory 29 pages, both before and after).
+
+What makes it safe is the estimate a skipped box holds until it has been drawn
+once (`contain-intrinsic-size: auto`), because the page is only as stable as that
+guess:
+
+- **A case's estimate is its shape.** On all 5,637 cases the border-box height
+  falls into four classes with sd 3px wide and 9px on a phone: plain 71px
+  (96 on a phone), a repeat-fault line +26 (+51), a timeline +80 (+84), both. A
+  rule per shape (`:has(> .repeat)`, `:has(> .tl)`) sets it; a browser without
+  `:has()` keeps the plain figure. The sizes are content-box, so the 27px of
+  padding and border are added. Whole-page height is then within 0.2% on desktop
+  and 0.8% on a phone for Cork.
+- **A section's estimate is its row count.** `--n` rides on each `<section>` and the
+  height is `n * 13.3px + 44px` in two columns (max error 11px over 26 sections)
+  and `n * 26.6px + 44px` in one, where site.css folds the list (exact at 600px).
+- **Why not one constant.** A single median per kind was the first cut (1,000px a
+  section, 71px a case). Scroll restoration with the bfcache off, mid-page on
+  desktop, landed 856px from where the page itself restores on Cork and 3,057px
+  (6,081px on a phone) on the directory, because the error accumulates over every
+  row above. With shapes and `--n` it lands 229px off on Cork (187px on a phone)
+  and 23px off (55px) on the directory. The bfcache restores exactly in either case.
+- **The first ten stay laid out.** Unguarded, the area pages shifted 0.0046: a
+  short list's cards sit under the first screenful. `nth-of-type` counts divs, so
+  `tests/test_skipped_rows.py` also holds that nothing else in the card is one.
+- **`overflow-clip-margin: 6px`.** Paint containment is implied, and clipped the
+  top and left of a focus ring and half of every timeline dot (screenshots,
+  with and without); with the margin both match the page as it was.
+
+Find-in-page reaches text in a skipped row and scrolls to it, as before: CLS 0.0003
+on desktop and 0.0007 to 0.03 on a phone, from the neighbours of the match
+settling.
+
+**The edge left open.** A load-time link to one outage (`c/cork.html#o2827410`,
+the id is on every row for exactly that) lands among rows still on estimates, and
+whatever is laid out for real below them moves when they are drawn. Over the last
+ten rows of Cork's list that is at most 0.0007 on desktop and 0.01 to 0.12 on a
+phone, and 0 anywhere further up, because the rows below are skipped too. No page
+links to an outage id, so only a hand-made link arrives there. Tried and rejected:
+un-skipping the card when it holds the `:target` (`.card:has(.case:target)`),
+which made it worse (0.16 to 0.33 on desktop: `:target` applies after the first
+paint and the rows above then grow); and exempting the last twelve rows, which
+only moved the join (0.10 on desktop, 0.73 on a phone). Not done: the app's own
+county view, whose lists are one month and carry no ids.
+
+### Amended after review, 2026-10-02
+
+- **A search draws every section.** Chromium gives every `content-visibility: auto` element `contain-intrinsic-size: auto`, so a county section drawn once kept its unfiltered height while skipped, and a search after scrolling the directory left a 25,089 px page over 4,190 px of rows at 1366 px (54,359 over 6,107 at 500). The filter now adds `.searching` to the body, which turns the skipping off: the filtered page measures exactly its rows (4,190 and 6,184 px). Clearing leaves sections their filtered height until they are near, so the scrollbar runs short for a while (18,710 against 31,479 px); anchor jumps after clearing measured 0 at 1366 and 412 px. uisce found and fixed the same thing the same day.
+- **The row's share follows the column width.** Between 641 and about 800 px the two columns are narrow enough that names wrap, and the 13.3 px desktop share left the estimate 29% short at 641 px and 13% at 700. `--row` is now 18 px to 689 px and 14.5 px to 799: 9% short at 641, 7% at 700, 5% over at 760, and unchanged at 820 and wider.
+- **Nothing skips where the clip margin is not honoured.** Safari supports `content-visibility: auto` but not `overflow-clip-margin`, so it would cut the timeline dots (4 px outside a case) and the focus rings the margin exists for. Both rules sit inside `@supports (overflow-clip-margin: 6px)`; Safari gets the page as it was before.
+- **The stray-`data.js` guard is real.** `write()` now deletes a `data.js` left by an earlier build, and `PayloadCase` seeds one before building and checks the page carries the payload itself, rather than only being larger than it.
+- **Not fixed here:** a county shard that lands after statusui's 10 s timeout is never shown, because loadShard ignores a late onload and `HSTATE` stays `"error"`; the fix belongs in loadShard, for every site at once.

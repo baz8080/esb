@@ -1588,7 +1588,7 @@ class TestDublinDisplay(SiteModelCase):
 
     def test_the_app_reads_no_data_yet_from_the_payload_everywhere(self):
         page = (Path(model.__file__).parent / "site.html").read_text()
-        self.assertIn("function noDataYet(ym) { return D.nodata ? D.nodata.indexOf(ym) >= 0", page)
+        self.assertIn("function noDataYet(ym) { return D.nodata.indexOf(ym) >= 0; }", page)
         # "so far" belongs to the newest listed month only, and only once data reaches it
         self.assertIn("var partial = curMonth === D.months[D.months.length - 1] && "
                       "!noDataYet(curMonth)", page)
