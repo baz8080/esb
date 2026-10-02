@@ -42,6 +42,26 @@
 /* which part of a short month was watched, under the month's own name */
 .mtable .part { display: block; color: var(--muted); font-size: 11.5px; font-weight: 400; }
 
+/* A long outage list skips layout for the rows past the first screenful until they are
+   near the screen. Not the first ten: an estimate a few px out would shift the cards
+   below them (area pages, 0.0046). Until a row has been drawn its size is an estimate,
+   and the shapes are few (measured on all 5,637: plain, a repeat-fault line, a timeline,
+   both; sd 3px wide, 9px on a phone), so a restored scroll position lands near where it
+   was left. Content-box sizes: the 27px of padding and border are added to them. The clip
+   margin keeps the focus rings and the timeline dots that paint containment would cut. */
+.case[id]:nth-of-type(n+11) {
+  --rep: 0px; --tl: 0px;
+  content-visibility: auto; overflow-clip-margin: 6px;
+  contain-intrinsic-size: auto calc(44px + var(--rep) + var(--tl));
+}
+.case[id]:nth-of-type(n+11):has(> .repeat) { --rep: 26px; }
+.case[id]:nth-of-type(n+11):has(> .tl) { --tl: 80px; }
+@media (max-width: 640px) {
+  .case[id]:nth-of-type(n+11) { contain-intrinsic-size: auto calc(69px + var(--rep) + var(--tl)); }
+  .case[id]:nth-of-type(n+11):has(> .repeat) { --rep: 51px; }
+  .case[id]:nth-of-type(n+11):has(> .tl) { --tl: 84px; }
+}
+
 .card h2 .n { color: var(--muted); font-weight: 400; font-size: 13px; }
 
 /* Per-area rows, shared by areas.html, c/*.html and the nearby card. A

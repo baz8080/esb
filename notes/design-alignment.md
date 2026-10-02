@@ -743,3 +743,64 @@ more deploy, for a tab holding the old `index.html`. GitHub Pages serves
 `max-age=600`, so the window is ten minutes, the failure is the "try
 reloading" line the page already has, and the file would be counted against the
 budget until someone remembered to delete it.
+
+## Long static lists skip layout until they are near - 2026-10-02
+
+`areas.html` is one 340 KB document of 26 sections, and a county page lists every
+outage (Cork 626 cases, 5,000 nodes). Both now use `content-visibility: auto`:
+a county's rows in the directory, and the cases past the tenth in `.case[id]`
+lists (county and area pages). Same harness, mobile at 4x CPU, three runs:
+
+| | before | after |
+|---|---|---|
+| filter box on `areas.html`, slowest interaction | 280-320 ms | 56-72 ms |
+| Cork long tasks at load | 3-4, 290-344 ms | 2, 123-135 ms |
+| Dublin long tasks at load | 2, 133-191 ms | 1, 56-80 ms |
+| CLS scrolling each page down and back, phone and desktop | 0 | 0 |
+| `areas.html` nav jump | lands at the scroll margin, 0 | same, 0 |
+
+LCP does not move, and printing is unchanged (Cork 53 pages and 626 cases, the
+directory 29 pages, both before and after).
+
+What makes it safe is the estimate a skipped box holds until it has been drawn
+once (`contain-intrinsic-size: auto`), because the page is only as stable as that
+guess:
+
+- **A case's estimate is its shape.** On all 5,637 cases the border-box height
+  falls into four classes with sd 3px wide and 9px on a phone: plain 71px
+  (96 on a phone), a repeat-fault line +26 (+51), a timeline +80 (+84), both. A
+  rule per shape (`:has(> .repeat)`, `:has(> .tl)`) sets it; a browser without
+  `:has()` keeps the plain figure. The sizes are content-box, so the 27px of
+  padding and border are added. Whole-page height is then within 0.2% on desktop
+  and 0.8% on a phone for Cork.
+- **A section's estimate is its row count.** `--n` rides on each `<section>` and the
+  height is `n * 13.3px + 44px` in two columns (max error 11px over 26 sections)
+  and `n * 26.6px + 44px` in one, where site.css folds the list (exact at 600px).
+- **Why not one constant.** A single median per kind was the first cut (1,000px a
+  section, 71px a case). Scroll restoration with the bfcache off, mid-page on
+  desktop, landed 856px from where the page itself restores on Cork and 3,057px
+  (6,081px on a phone) on the directory, because the error accumulates over every
+  row above. With shapes and `--n` it lands 229px off on Cork (187px on a phone)
+  and 23px off (55px) on the directory. The bfcache restores exactly in either case.
+- **The first ten stay laid out.** Unguarded, the area pages shifted 0.0046: a
+  short list's cards sit under the first screenful. `nth-of-type` counts divs, so
+  `tests/test_skipped_rows.py` also holds that nothing else in the card is one.
+- **`overflow-clip-margin: 6px`.** Paint containment is implied, and clipped the
+  top and left of a focus ring and half of every timeline dot (screenshots,
+  with and without); with the margin both match the page as it was.
+
+Find-in-page reaches text in a skipped row and scrolls to it, as before: CLS 0.0003
+on desktop and 0.0007 to 0.03 on a phone, from the neighbours of the match
+settling.
+
+**The edge left open.** A load-time link to one outage (`c/cork.html#o2827410`,
+the id is on every row for exactly that) lands among rows still on estimates, and
+whatever is laid out for real below them moves when they are drawn. Over the last
+ten rows of Cork's list that is at most 0.0007 on desktop and 0.01 to 0.12 on a
+phone, and 0 anywhere further up, because the rows below are skipped too. No page
+links to an outage id, so only a hand-made link arrives there. Tried and rejected:
+un-skipping the card when it holds the `:target` (`.card:has(.case:target)`),
+which made it worse (0.16 to 0.33 on desktop: `:target` applies after the first
+paint and the rows above then grow); and exempting the last twelve rows, which
+only moved the join (0.10 on desktop, 0.73 on a phone). Not done: the app's own
+county view, whose lists are one month and carry no ids.

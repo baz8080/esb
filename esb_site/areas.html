@@ -23,8 +23,16 @@
   nav a { text-decoration: none; }
   nav a:hover { text-decoration: underline; }
 
-  /* clears the two-line nav at desktop widths */
-  section { margin-top: 26px; scroll-margin-top: 104px; }
+  /* clears the two-line nav at desktop widths. A county's rows are skipped until it
+     is near the screen, which keeps a keystroke in the box off the other 25. Until it
+     has been drawn its height is the row count (--n) times a row, which fits to 11px
+     in two columns and exactly in one, so anchors and a restored scroll land right.
+     The clip margin keeps the focus rings that paint containment would cut. */
+  section {
+    margin-top: 26px; scroll-margin-top: 104px;
+    content-visibility: auto; overflow-clip-margin: 6px;
+    contain-intrinsic-size: auto calc(var(--n) * 13.3px + 44px);
+  }
   section h2 { font-size: 16px; font-weight: 650; padding-bottom: 6px;
                border-bottom: 1px solid var(--grid); }
   section h2 span { color: var(--muted); font-weight: 400; font-size: 13px; }
@@ -48,6 +56,10 @@
   @media (max-width: 900px) {
     nav { position: static; max-height: none; }
     section { scroll-margin-top: 12px; }
+  }
+  /* one column, where site.css folds ul.areas, doubles the row's share */
+  @media (max-width: 640px) {
+    section { contain-intrinsic-size: auto calc(var(--n) * 26.6px + 44px); }
   }
 
   /* One line where the rows begin: it is about what a click does, and two

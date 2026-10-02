@@ -882,7 +882,8 @@ def _areas_index_html(index):
         # data-county is the bare name for the search: matching the heading
         # would make "page" select every county in the country
         sections.append(
-            f'<section id="c-{slug(county)}" data-county="{html.escape(county)}">'
+            f'<section id="c-{slug(county)}" data-county="{html.escape(county)}" '
+            f'style="--n:{len(areas)}">'
             f"<h2>County {html.escape(county)} <span>· {len(areas)} "
             f'area{"" if len(areas) == 1 else "s"} · '
             f'<a href="c/{slug(county)}.html">county page</a></span></h2>'
