@@ -643,3 +643,57 @@ once data resumes after it, the in-window gap grading.md already names. Rejected
 leaving the month out until data arrives, which would make the month list
 depend on the collector rather than the calendar; `month_list` walks the
 calendar on purpose, so a month is listed from its first instant.
+
+## The index holds back what its script has not drawn - 2026-10-02
+
+`site.html` shipped an empty skeleton (a month strip 8px high, empty `#list`,
+`#basis` and `#tiles`) above a footer that was visible at first paint, and
+`boot()` filled it once `data.js` arrived. The footer jumped by the height of
+the list. Lab, Chromium, three runs, median, cache off; mobile is 412px at
+2.625x on 150ms/1.6Mbit with 4x CPU, desktop is 1366px on 40ms/9Mbit:
+
+| | before | after |
+|---|---|---|
+| load CLS, mobile | 0.412 | 0 |
+| load CLS, desktop | 0.203 (0.634 with classic scrollbars) | 0 (0 with them) |
+| county click at 3g, shard late | 0.283 | 0 |
+| deep link `#county/Cork`, mobile / desktop | 0.503 / 0.225 | 0 / 0 |
+| LCP mobile / desktop | 552 / 604 ms | 576 / 596 ms |
+
+LCP does not move: the banner stays visible and is drawn first, and what is held
+back was never the largest paint.
+
+The mechanism is statusui's (43e1852), pinned here: `<!--UI-WAIT-->` in the head
+adds `wait` to `<html>`, `base.css` hides `[data-wait]` while it is set, and
+`pending()` lets it go. `data-wait` is on `.controls`, `#basis`, `#legend`,
+`#list`, `#natHeading`, `#tiles` and the footer; the banner is the one thing
+left showing. `render()` calls `pending(county && HSTATE[curCounty] ===
+"loading")`, so a county shard that lands after the click is held back from the
+footer the same way, and `boot()` releases it when there is no data. Without
+JavaScript nothing adds the class and the page reads as it always did. The
+`load` event and an 8s timer are the fallbacks upstream, checked here with
+`data.js` missing (the banner says it could not load), with `data = {}` (boot
+throws, the footer is back at `load`), with a shard that 404s, off `file://`,
+and with the shard dropped mid-click and the reader going back.
+
+Two traps the prototype had not met:
+
+- **`pending()` goes before `revealMonthTab()`.** The strip is inside `.controls`,
+  so while it is held back it measures zero and the reveal does nothing: at 260px
+  the newest month stayed off the right edge (`scrollLeft` 140 became 0).
+  Measured by building it the other way round.
+- **The deep link still shifted `main` by 20px** (CLS 0.0175 mobile, 0.0064
+  desktop). The overview's first margin collapses out through `main` and the
+  county view's does not, so replacing the banner with a county moved the box.
+  `main::before { content: ""; display: table }` keeps the margin inside. Every
+  visible element, `main`'s bottom and the document height are where they were,
+  at 412, 1366 and 260px, overview and county view (compared by bounding box).
+
+Rejected: reserving height for the list. It is 3,573px at 412px and 2,681px at
+1366px, so any constant is wrong somewhere and the footer pays the difference
+as a shift; a gate has no estimate to be out by. Rejected: rendering the
+overview into `index.html` at build. It needs the app's renderers in Python or
+a JS engine in a build that is standard library only, to get a number the gate
+already reaches. The pin also brings `scrollbar-gutter: stable` (the 0.634 above)
+and comment stripping from the inline script and style; a site marker inside a
+JS or CSS comment would now be filled and then stripped, so none may sit in one.

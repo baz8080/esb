@@ -14,7 +14,11 @@
 <!--SITE-CSS-->
   /* The one footer that is a block of prose, so it keeps base.css's rule
      above it; site.css turns that off for the static pages. */
-  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); }</style>
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--border); }
+  /* The overview's first margin collapsed out through main and the county view's did not,
+     so main moved 20px when a #county/ link replaced the banner: CLS 0.018 on a phone. */
+  main::before { content: ""; display: table; }</style>
+<!--UI-WAIT-->
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "38aafde3cd5b407fbeda43cd3fc4a66c"}'></script><!-- End Cloudflare Web Analytics -->
 </head>
 <body>
@@ -31,24 +35,24 @@
         <span id="natline">Loading…</span>
         <span class="meta" id="natmeta"></span>
       </div>
-      <div class="controls">
+      <div class="controls" data-wait>
         <div class="months" id="months"></div>
         <div class="search">
           <input id="q" type="search" placeholder="Search a town or county" autocomplete="off" aria-label="Search a town or county">
           <div class="results" id="results" hidden></div>
         </div>
       </div>
-      <p class="basis" id="basis"></p>
-      <div class="legend" id="legend"></div>
-      <div id="list"></div>
-      <h3 class="natheading" id="natHeading"></h3>
-      <div class="tiles" id="tiles"></div>
+      <p class="basis" id="basis" data-wait></p>
+      <div class="legend" id="legend" data-wait></div>
+      <div id="list" data-wait></div>
+      <h3 class="natheading" id="natHeading" data-wait></h3>
+      <div class="tiles" id="tiles" data-wait></div>
     </section>
 
     <section id="countyview" hidden></section>
   </main>
 
-  <footer>
+  <footer data-wait>
     <p><a href="areas.html" style="color:inherit">Every area with an outage</a> - a full
     directory of the Census areas this site has recorded outages near, the named ones
     linking to their outage history.</p>
@@ -529,6 +533,9 @@ function render() {
   document.getElementById("overview").hidden = county;
   document.getElementById("countyview").hidden = !county;
   if (county) renderCounty(); else renderOverview();
+  // Before the reveal: a [data-wait] month strip measures zero and would not scroll.
+  // The footer waits for a shard because it would land after the first paint and push it down.
+  pending(county && HSTATE[curCounty] === "loading");
   revealMonthTab(document.getElementById(county ? "countyview" : "overview").querySelector(".months"));
 }
 
@@ -537,6 +544,7 @@ function boot() {
   if (!D) {
     document.getElementById("natline").textContent =
       "Could not load the data for this page. Try reloading.";
+    pending(false);
     return;
   }
   curMonth = D.months[D.months.length - 1];
